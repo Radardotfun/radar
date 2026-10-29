@@ -54,3 +54,32 @@ assert.equal(wantsCoins(post('@radardotfunn gm', [14, 16], [['radardotfunn', 0]]
 // Typed, but a conversation rather than a request.
 assert.equal(wantsCoins(post('@Bob honestly @radardotfunn has been my favourite tool this week, great work all', [5, 81], [['Bob', 0], ['radardotfunn', 14]]), me).ok, false);
 console.log('PASS bot: answers typed tags, ignores replies under our posts and conversation');
+
+// The coin the post names leads the reply; its copycats and major-ticker coins are left out of the picks.
+import { cashtags, pickNamed, botCoins } from '../bot/coins.js';
+assert.deepEqual(cashtags('Just aped $PURR - $HYPE rewards, up to $104K, $purr again'), ['PURR']);
+assert.deepEqual(cashtags('$VI — Welcome to Vice City'), ['VI']);
+const tok = (symbol, name, address, marketCap, extra = {}) => ({ symbol, name, address, chain: 'solana', marketCap, liquidity: marketCap / 10, mcapBacked: true, createdAt: Date.parse('2026-10-01'), volume: { h1: 5000, h24: 50_000 }, txns: { h1: { buys: 10, sells: 5 }, h24: { buys: 100, sells: 50 } }, priceChange: { h1: 5 }, relevance: 95, ...extra });
+const superInu = tok('SI', 'Super Inu', 'DEW9dSN6QpWyNthphCpMmAbZP1Q4cEKR9xQXAri98WDP', 12_500_000);
+const superAi = tok('SI', 'Super Intelligence', '9aqmJjCnnMQv42TXLk921ceUkN35nea2QP969n1caqjj', 470_000);
+assert.equal(pickNamed('SI', [superAi, superInu], 'whales are buying $SI'), superInu, 'the biggest coin with the ticker');
+assert.equal(pickNamed('SI', [superAi, superInu], '$SI, Super Intelligence is back'), superAi, 'its name in the post wins');
+const purr = tok('PURR', 'Hypurr', '8RNUw4N655VSrZKuhGdywhbSMDTrheguFPfxbpE2NZHQ', 3_800_000);
+const fakes = [tok('PURR', 'Hypurr', 'FakePurr1111111111111111111111111111111pump', 26_000), tok('Hypurr', 'Hypurr', 'FakePurr2222222222222222222222222222222pump', 197_000), tok('HYPE', 'Hype', '98sMhvDwXj1RQi5c5Mndm3vPe9cBqPrbLaufMXFNMh5g', 105_000), tok('HCAT', 'Hyperliquid Cat', 'HCat33333333333333333333333333333333333pump', 90_000, { createdAt: Date.parse('2026-09-01') }), tok('KITTY', 'Red Kitten Crew', 'Kitty4444444444444444444444444444444444pump', 900_000, { relevance: 70 })];
+const scan = { mentioned: [purr], picks: [], roleCandidates: fakes };
+const coins = await botCoins(scan, { text: 'Just aped $PURR' }, { search: async () => [] });
+assert.equal(coins.named, purr);
+assert.deepEqual(coins.picks.map((p) => `${p.role}=${p.token.symbol}`), ['top=PURR', 'og=HCAT'], "no fake PURRs, no $HYPE, nothing under the on-story bar; the post's own coin is the Highest MC");
+const named = botReply({ ...coins, picks: coins.picks }, 'x', now);
+assert.match(named, /^Coins on this post \(\d\d:\d\d UTC\):\n\n📌 In the post \(Highest MC\): \$PURR · \$3\.80M\n8RNUw4N655VSrZKuhGdywhbSMDTrheguFPfxbpE2NZHQ\n\n🥇 OG: HCAT · launched/);
+assert.ok((named.match(/\$[A-Za-z]/g) || []).length <= 1, 'still one cashtag');
+// A ticker the scan didn't judge is looked up on DexScreener.
+const pair = (t) => ({ chainId: 'solana', dexId: 'raydium', pairAddress: `${t.address.slice(0, 20)}pool`, baseToken: { address: t.address, name: t.name, symbol: t.symbol }, quoteToken: { address: 'So11111111111111111111111111111111111111112' }, priceUsd: '1', priceNative: '0.005', liquidity: { usd: t.marketCap / 10, quote: t.marketCap / 2000 }, marketCap: t.marketCap, fdv: t.marketCap, volume: { h24: 50_000 } });
+const looked = await botCoins({ mentioned: [], picks: [], roleCandidates: [] }, { text: 'whales accumulated $SI' }, { search: async (q) => (q === 'SI' ? [superAi, superInu].map(pair) : []) });
+assert.equal(looked.named?.address, superInu.address);
+console.log('PASS bot: the coin a post names (CA or $ticker) leads, copycats and major tickers left out');
+// The scan's CA lookup came back empty (DexScreener busy): the address is looked up again, never guessed from the ticker.
+const again = await botCoins({ mentioned: [], picks: [], roleCandidates: fakes }, { text: 'Just aped $PURR - 8RNUw4N655VSrZKuhGdywhbSMDTrheguFPfxbpE2NZHQ' }, { search: async () => fakes.map(pair), lookupCa: async (ca) => (ca === purr.address ? purr : null) });
+assert.equal(again.named, purr);
+await assert.rejects(botCoins({ mentioned: [], picks: [] }, { text: 'CA 8RNUw4N655VSrZKuhGdywhbSMDTrheguFPfxbpE2NZHQ' }, { search: async () => [], lookupCa: async () => { throw new Error('DexScreener rate limited'); } }), /rate limited/, 'a busy lookup retries the tag');
+console.log('PASS bot: a CA in the post is looked up again when the scan missed it');

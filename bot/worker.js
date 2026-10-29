@@ -13,7 +13,9 @@
 // pages below). Pages (BOT_TOKEN as ?token= or x-bot-token): GET /health, GET /log, GET /preview?url=<post>,
 // POST /poll (run one round now).
 import { makeHandlers, API_BASE, DEFAULTS } from '../extension/src/lib/handlers.js';
+import { searchPairs, allPairs, aggregate } from '../extension/src/lib/market.js';
 import { botReply, NO_COINS, xLength } from './reply.js';
+import { botCoins } from './coins.js';
 import { oauthHeader } from './oauth.js';
 import { wantsCoins } from './trigger.js';
 
@@ -37,7 +39,8 @@ globalThis.fetch = (input, init) => {
 // 15 or so lookups at once, which a browser gets away with. So the bot paces them (two at a time, 300 ms apart) and,
 // after a 429, holds every lookup back 2.5 s. The retrying itself is market.js's (four tries with backoff).
 // A run may make only 50 requests, so each scan gets DEX_BUDGET real DexScreener requests; past that a lookup
-// answers 429 without going out, the scan fails, and the tag goes on the retry list for the next minute.
+// fails at once without going out (a 503, which market.js doesn't retry), the scan fails, and the tag goes on the retry
+// list for the next minute.
 const DEX_BUDGET = 34;
 let dexBudget = DEX_BUDGET;
 let dexActive = 0;
@@ -56,7 +59,7 @@ function dexDone() {
   dexWaiting.shift()?.();
 }
 async function dexFetch(input, init = {}) {
-  if (dexBudget <= 0) return new Response('{}', { status: 429, headers: { 'content-type': 'application/json' } });
+  if (dexBudget <= 0) return new Response('{}', { status: 503, headers: { 'content-type': 'application/json' } });
   dexBudget -= 1;
   // The caller's 8 s timeout would also count the time waiting for a slot here and cancel the lookup; the request
   // itself gets its own 10 s instead.
@@ -104,6 +107,21 @@ async function xApi(env, method, url, body) {
   return data;
 }
 
+// A Solana address written in a post: the token at it, or the token of the pool at it (a dexscreener.com/solana/<pool>
+// link), or null when it is neither (a wallet). A busy DexScreener throws, and the tag is retried.
+async function lookupCa(ca) {
+  let address = ca;
+  let pairs = await allPairs('solana', ca);
+  if (!pairs.length) {
+    const r = await fetch(`https://api.dexscreener.com/latest/dex/pairs/solana/${ca}`, { signal: AbortSignal.timeout(10_000) });
+    if (!r.ok) throw new Error(`DexScreener ${r.status} looking up the coin in the post`);
+    address = (await r.json().catch(() => ({}))).pairs?.[0]?.baseToken?.address;
+    if (!address) return null;
+    pairs = await allPairs('solana', address);
+  }
+  return aggregate(pairs).find((t) => t.address === address) || null;
+}
+
 // One post, as the bot would answer it. Kept 10 minutes, so a post tagged many times is scanned once.
 const scans = new Map();
 async function replyFor(postUrl) {
@@ -117,8 +135,11 @@ async function replyFor(postUrl) {
       const tip = `Tag me under a news post, a meme or any post with a story, and I'll reply with the coins behind it (${new Date().toISOString().slice(11, 16)} UTC).`;
       return { text: tip, short: tip, links: tip, story: 'our own post' };
     }
-    const res = await handlers.coins({ post });
-    if (res.engineError) throw new Error('Radar could not read this post right now');
+    // The panel skips the AI judge when the read gives anchor words (any coin naming one counts); the bot posts in
+    // public, so every candidate is judged.
+    const scan = await handlers.coins({ post, judge: true });
+    if (scan.engineError) throw new Error('Radar could not read this post right now');
+    const res = { ...scan, ...await botCoins(scan, post, { search: searchPairs, lookupCa, chains: DEFAULTS.chains }) };
     return { text: botReply(res, postUrl) || NO_COINS, short: botReply(res, postUrl, Date.now(), { full: false }) || NO_COINS, links: botReply(res, postUrl, Date.now(), { links: true }) || NO_COINS, story: res.narrative || '' };
   })();
   scans.set(postUrl, { at: Date.now(), p });

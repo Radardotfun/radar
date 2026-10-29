@@ -1,6 +1,7 @@
-// The Radar bot's reply to a tag: the tagged post's three picks, as the panel picks them (market.js pickThree):
-// the highest market cap, the OG (first launched) and the mover (trading hardest right now). Each carries the number
-// that earned the pick and its full contract address, so a copycat with the same ticker can't pass for it. No checks.
+// The Radar bot's reply to a tag: first the coin the post itself names (📌, from bot/coins.js), then the story's three
+// picks, as the panel picks them (market.js pickThree): the highest market cap, the OG (first launched) and the mover
+// (trading hardest right now). Each carries the number that earned the pick and its full contract address, so a
+// copycat with the same ticker can't pass for it. No checks.
 // With three addresses a reply runs past 280 characters, which @radardotfunn's Premium allows.
 
 const SITE = 'https://tryradar.fun';
@@ -34,21 +35,30 @@ export const scanUrl = (postUrl) => `${SITE}/scan?url=${encodeURIComponent(postU
 export function botReply(result, postUrl, now = Date.now(), { full = true, links = false } = {}) {
   // Not a check, just no dust: a pick under $1K market cap that isn't trading at least $1K a day is left out.
   const picks = (result?.picks || []).filter((p) => p?.token?.address && ((p.token.marketCap || 0) >= 1000 || (p.token.volume?.h24 || 0) >= 1000));
-  if (!picks.length) return null;
+  // The coin the post names shows whatever its size: it's the one the tagger is asking about.
+  const named = result?.named?.address ? result.named : null;
+  if (!picks.length && !named) return null;
   const lines = [];
-  for (const [role, label] of ROLES) {
-    const t = picks.find((p) => p.role === role)?.token;
-    if (!t) continue;
-    const stat = role === 'top' ? usd(t.marketCap)
-      : role === 'og' ? (ago(t.createdAt, now) ? `launched ${ago(t.createdAt, now)} ago` : usd(t.marketCap))
-        : usd(t.volume?.h24) ? `${usd(t.volume.h24)} vol 24h` : usd(t.marketCap);
+  const add = (label, t, stat) => {
     // X refuses a post with more than one cashtag ("Posts are limited to a maximum of one cashtag"), so only the
-    // first pick gets its $.
+    // first coin gets its $.
     // The full contract on its own line, so it copies with one long-press.
     const head = `${label}: ${lines.length ? '' : '$'}${ticker(t.symbol)}${stat ? ` · ${stat}` : ''}`;
     if (links) lines.push(head, `https://dexscreener.com/${String(t.chain || 'solana').replace(/[^a-z]/g, '')}/${contract(t.address)}`, '');
     else if (full) lines.push(head, contract(t.address), '');
     else lines.push(`${head} · ${shortCa(t.address)}`);
+  };
+  // The roles the named coin won itself ("📌 In the post (Highest MC, OG)") instead of lines repeating it.
+  if (named) {
+    const won = ROLES.filter(([role]) => picks.find((p) => p.role === role)?.token.address === named.address).map(([, label]) => label.replace(/^\S+ /, ''));
+    add(`📌 In the post${won.length ? ` (${won.join(', ')})` : ''}`, named, usd(named.marketCap));
+  }
+  for (const [role, label] of ROLES) {
+    const t = picks.find((p) => p.role === role)?.token;
+    if (!t || t.address === named?.address) continue;
+    add(label, t, role === 'top' ? usd(t.marketCap)
+      : role === 'og' ? (ago(t.createdAt, now) ? `launched ${ago(t.createdAt, now)} ago` : usd(t.marketCap))
+        : usd(t.volume?.h24) ? `${usd(t.volume.h24)} vol 24h` : usd(t.marketCap));
   }
   if (!full) lines.push('');
   // No other link: X bills a post with a URL at $0.20 against $0.01 for a reply to a tag (docs.x.com pricing,

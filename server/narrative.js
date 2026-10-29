@@ -33,17 +33,21 @@ When the post names a specific coin (shown as "Coin in this post"), that coin is
 
 Also give anchors: 1 to 5 lowercase words or tickers, at least one of which a coin's name or ticker must contain to be about this narrative. Anchors are specific names only: the person, project, brand, character, animal, place or the distinctive catchphrase word (e.g. "bach", "spacex", "spcx", "biscuit", "opensea"). Never a generic word like mobile, chain, revenue, ai, app, safety, market.
 
+Also give the coin the post itself names, when it names one: tickers lists up to 3 coin tickers written as $TICKER in the post or shown in an image (without the $; never BTC, ETH, SOL or a stablecoin), and cas lists every token contract address shown in an image, copied character for character (Solana: 32-44 letters and digits; EVM: 0x and 40 hex). Leave either empty when there is none; never guess one.
+
 Set coinable to false when the post carries no tradeable narrative (pure chatter, replies, ads). The narrative field is one short plain sentence of at most 12 words saying what the coin trade is about. Keep the whole answer brief.`;
 
 const INTERPRET_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['narrative', 'coinable', 'terms', 'anchors'],
+  required: ['narrative', 'coinable', 'terms', 'anchors', 'tickers', 'cas'],
   properties: {
     narrative: { type: 'string' },
     coinable: { type: 'boolean' },
     terms: { type: 'array', items: { type: 'string' } },
     anchors: { type: 'array', items: { type: 'string' } },
+    tickers: { type: 'array', items: { type: 'string' } },
+    cas: { type: 'array', items: { type: 'string' } },
   },
 };
 
@@ -53,7 +57,7 @@ Keep a token when its name or ticker clearly refers to:
 - the narrative itself: its event, phrase, image or meme
 - the people, animals or things at the center of the post. The established coin of the person behind the news counts (a post about Trump's tariffs makes the main TRUMP coin relevant)
 
-Sharing a common word is not enough: a coin named "Mars Bar" is not about a SpaceX Mars launch, and "Helium Mobile" is not about OpenSea's mobile app. A generic word on its own (mobile, chain, revenue, AI, app, earnings, safety) never ties a token to the story; the token must name the specific person, project, thing or meme. Leave out anything that is not a memecoin: exchange tokens, stablecoins, wrapped assets, protocol or chain tokens, tokenized stocks. A token marked LINKS THIS POST was launched off this exact post and is definitely related.
+Sharing a common word is not enough: a coin named "Mars Bar" is not about a SpaceX Mars launch, and "Helium Mobile" is not about OpenSea's mobile app. Another animal, person or thing of the same kind is a different subject: for a tiger sitting in a box marked "free kitten", "Red Kitten Crew" and "Sand Kitten" are other cats, not this meme. A token that only copies a famous project's name (a "Hyperliquid" or "HyperEVM" token on Solana) is an imitation of that project, not a memecoin about the post. A generic word on its own (mobile, chain, revenue, AI, app, earnings, safety) never ties a token to the story; the token must name the specific person, project, thing or meme. Leave out anything that is not a memecoin: exchange tokens, stablecoins, wrapped assets, protocol or chain tokens, tokenized stocks. A token marked LINKS THIS POST was launched off this exact post and is definitely related.
 
 Keep at most 8 tokens, the most relevant first. For each, give only its index number from the list and a score from 60 to 100 (90+ made for this exact narrative, 75-89 the central subject's own coin, 60-74 clearly the same subject).`;
 
@@ -315,8 +319,10 @@ function postText(post) {
 
 const GENERIC = new Set('mobile chain revenue ai app safety market crypto token coin news earnings price trading defi meme memes art cards perps the and ceo dog cat x usa us new official target classical music theme park west east north south world global'.split(' '));
 const CA = /\b[1-9A-HJ-NP-Za-km-z]{32,44}\b|\b0x[a-fA-F0-9]{40}\b/g;
+const ONE_CA = /^(?:[1-9A-HJ-NP-Za-km-z]{32,44}|0x[a-fA-F0-9]{40})$/;
+const MAJORS = new Set('BTC ETH SOL USDC USDT BNB XRP WBTC WETH WSOL'.split(' '));
 
-/** post: { text, quoted, card, author, url, images[] } -> { narrative, coinable, terms[] } */
+/** post: { text, quoted, card, author, url, images[] } -> { narrative, coinable, terms[], anchors[], tickers[], cas[] } */
 export async function interpret(ai, post) {
   const imgs = await imageBlocks(post.images);
   const read = await ask(ai, INTERPRET_SYSTEM, [
@@ -328,11 +334,18 @@ export async function interpret(ai, post) {
   const anchors = [...new Set((read.anchors || []).map((a) => String(a).toLowerCase().replace(/^[$#]/, '').trim())
     // Single specific words only: no numbers, no phrases, no generic words.
     .filter((a) => a.length >= 2 && a.length <= 30 && !/\s/.test(a) && !/^\d+$/.test(a) && !GENERIC.has(a)))].slice(0, 6);
+  // The coin the post names: its tickers ("SI", from "$SI") and any contract address read off an image. Only what
+  // has an address's shape is kept; the client checks each one exists before showing it.
+  const tickers = [...new Set((read.tickers || []).map((t) => String(t).replace(/^\$+/, '').trim().toUpperCase())
+    .filter((t) => /^[A-Z0-9]{1,12}$/.test(t) && !MAJORS.has(t)))].slice(0, 3);
+  const cas = [...new Set((read.cas || []).map((a) => String(a).trim()).filter((a) => ONE_CA.test(a)))].slice(0, 3);
   return {
     narrative: String(read.narrative || '').slice(0, 200),
     coinable: read.coinable !== false,
     terms,
     anchors,
+    tickers,
+    cas,
     // Claude is a reliable judge; the free models aren't, so free mode filters by anchors instead.
     judge: ai.kind === 'claude',
     model: read.model,
