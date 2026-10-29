@@ -150,14 +150,21 @@ async function fxStatus(id) {
 async function readTweet(url, ctx) {
   const id = String(url || '').match(/^https?:\/\/(?:www\.|mobile\.)?(?:x|twitter)\.com\/\w+\/status\/(\d+)/i)?.[1];
   if (!id) return json(400, { error: 'That is not a link to a post on X' });
-  const key = new Request(`https://cache.narrative-radar/tw/${id}`);
+  const key = new Request(`https://cache.narrative-radar/tw2/${id}`);
   const hit = await caches.default.match(key);
   if (hit) return new Response(hit.body, { headers: { 'content-type': 'application/json', ...CORS } });
   const t = await fxStatus(id);
   if (!t) return json(404, { error: "Couldn't open that post. It may be deleted, private or age-restricted." });
   const parent = t.replying_to_status ? await fxStatus(t.replying_to_status).catch(() => null) : null;
-  const video = t.media?.videos?.[0] || null;
-  const images = [video?.thumbnail_url, ...(t.media?.photos || []).map((m) => m.url)]
+  // The pictures the AI looks at (it takes 3): the post's own (a video's thumbnail first), then the quoted post's,
+  // then those of the post it replies to. The image is often the whole story, and it's often in the quote or a post
+  // above: people tag under a reply ("this one") or quote a meme.
+  const mediaOf = (x) => ({ video: x?.media?.videos?.[0] || null, photos: (x?.media?.photos || []).map((m) => m.url) });
+  const own = mediaOf(t);
+  const quote = mediaOf(t.quote);
+  const above = mediaOf(parent);
+  const video = own.video || quote.video || above.video;
+  const images = [...new Set([own.video?.thumbnail_url, ...own.photos, quote.video?.thumbnail_url, ...quote.photos, above.video?.thumbnail_url, ...above.photos])]
     .filter((u) => /^https:\/\/pbs\.twimg\.com\//.test(u || ''));
   const author = t.author?.screen_name || '';
   const post = {
@@ -170,7 +177,7 @@ async function readTweet(url, ctx) {
     parent: parent?.text || '',
     parentAuthor: parent?.author?.screen_name || '',
     url: `https://x.com/${author || 'i'}/status/${id}`,
-    images: images.slice(0, 2),
+    images: images.slice(0, 3),
     hasVideo: !!video,
     ...(video && /^https:\/\/video\.twimg\.com\//.test(video.url || '') ? { videoUrl: video.url, gif: video.type === 'gif' } : {}),
   };
