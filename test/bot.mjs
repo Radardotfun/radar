@@ -107,3 +107,9 @@ console.log('PASS bot: a picture post leads with the coin whose logo is that pic
 const si276 = tok('SI276', 'Super Inu 276', 'HMYd9tosnUXuNHmq7pXmoePRVBLBBjA3JBfydq6upump', 20_000, { createdAt: Date.parse('2026-01-01') });
 assert.deepEqual((await botCoins({ mentioned: [superInu], picks: [], roleCandidates: [si276] }, { text: '' }, { search: async () => [] })).picks.map((p) => p.token.symbol), ['SI'], 'SI276 is a copy of SI');
 console.log('PASS bot: a ticker with a number added is a copy');
+// A post giving an EVM (0x) contract: its coin isn't on Solana, so no Solana coin is named after its ticker.
+const solInu = tok('INU', 'inu', 'E28eQFoCPndfLUPnxYgEWHhbnEVqSpyNPgAacoAEpump', 59_000);
+const evm = await botCoins({ mentioned: [], picks: [], roleCandidates: [solInu] }, { text: 'vote for $INU 0x63ee32ac3077d1fbd8a77ebba2a6ed4b8e96f0a1' }, { search: async () => [pair(solInu)], lookupCa: async () => null });
+assert.equal(evm.named, null);
+assert.deepEqual(evm.picks, [], 'Solana coins under an EVM coin\'s ticker are copies');
+console.log('PASS bot: an EVM contract in the post is never matched to a Solana coin by ticker');

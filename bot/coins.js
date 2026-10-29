@@ -48,6 +48,7 @@ function sameCoin(t, n) {
 export const ON_STORY = 80;
 
 const SOL_CA = /\b[1-9A-HJ-NP-Za-km-z]{32,44}\b/g;
+const EVM_CA = /\b0x[a-fA-F0-9]{40}\b/;
 
 // A post that is a picture with at most a short caption (links and @handles don't count).
 export const picturePost = (post) => (post?.images?.length || 0) > 0 && String(post.text || '').replace(/https?:\/\/\S+|@\w+/g, '').trim().length <= 80;
@@ -76,11 +77,14 @@ export async function botCoins(res, post, { search, lookupCa, matchImages, chain
       if (named) break;
     }
   }
-  if (!named) {
+  // A 0x address in the post: its coin lives on an EVM chain the bot doesn't scan, so its ticker must not be matched to
+  // a Solana coin ($INU with a BNB address named a Solana "inu"); Solana coins under that ticker are copies.
+  const typed = cashtags(text);
+  const elsewhere = !named && EVM_CA.test(text) ? new Set(typed) : new Set();
+  if (!named && !elsewhere.size) {
     // Tickers typed in the post; else the one ticker an image shows. Several tickers in an image (a screenshot of a
     // token list) don't say which coin the post is about.
     const seenInImage = (res?.tickers || []).map((t) => String(t).toUpperCase()).filter((t) => !MAJORS.has(t));
-    const typed = cashtags(text);
     const wanted = (typed.length ? typed : seenInImage.length === 1 ? seenInImage : []).slice(0, 2);
     for (const tk of wanted) {
       const found = aggregate(await search(tk).catch(() => [])).filter((t) => chains.includes(t.chain));
@@ -103,7 +107,7 @@ export async function botCoins(res, post, { search, lookupCa, matchImages, chain
   const story = scanned.filter((t) => {
     if (seen.has(t.address)) return false;
     seen.add(t.address);
-    return (t.relevance || 0) >= ON_STORY && !MAJORS.has(sym(t)) && !(named && sameCoin(t, named));
+    return (t.relevance || 0) >= ON_STORY && !MAJORS.has(sym(t)) && !elsewhere.has(sym(t)) && !(named && sameCoin(t, named));
   });
   // Other coins with the same picture under another name were made for this post too.
   for (const t of pictured) if (!seen.has(t.address) && !sameCoin(t, named)) { seen.add(t.address); story.push({ ...t, relevance: 99 }); }
