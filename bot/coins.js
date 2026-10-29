@@ -4,7 +4,9 @@
 //   exact ticker (its name written in the post wins over size);
 // - leaves out copycats of that coin (same ticker or same name), so a shilled $PURR isn't followed by three fake PURRs;
 // - leaves out coins trading under a major's ticker (a "$HYPE" on Solana is not Hyperliquid), which otherwise win
-//   Highest MC on posts about the majors themselves.
+//   Highest MC on posts about the majors themselves;
+// - keeps the story's main runner (its biggest real coin, carrying a name the post uses) even when the judge rates it
+//   low, so a pile of small copies can't take Highest MC from it.
 import { aggregate, pickThree, alive } from '../extension/src/lib/market.js';
 
 const MAJORS = new Set('BTC ETH SOL HYPE XRP BNB USDC USDT WBTC WETH WSOL'.split(' '));
@@ -52,6 +54,18 @@ export const ON_STORY = 80;
 
 const SOL_CA = /\b[1-9A-HJ-NP-Za-km-z]{32,44}\b/g;
 const EVM_CA = /\b0x[a-fA-F0-9]{40}\b/;
+
+// The story's main runner: the biggest liquidity-backed coin the judge kept at all (60+) whose ticker or name is a name
+// the post itself uses. The judge sometimes rates it only "the same subject": a $9.7M GTA VI trading $24M a day got 62
+// next to 85 for an $836K "GTA memes", and the reply's Highest MC went to a coin a tenth its size.
+const key = (s) => String(s || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
+const MAJOR_NAME = new Set('bitcoin ethereum solana hyperliquid ripple binance'.split(' '));
+export function runnerOf(tokens, words) {
+  const names = new Set(words.map(key).filter((k) => k.length >= 3 && !MAJOR_NAME.has(k)));
+  return tokens.filter((t) => t?.address && (t.relevance || 0) >= 60 && t.mcapBacked && alive(t) && !MAJORS.has(sym(t))
+    && (names.has(key(t.symbol)) || names.has(key(t.name))))
+    .sort((a, b) => (b.marketCap || 0) - (a.marketCap || 0))[0] || null;
+}
 
 // A post that is a picture with at most a short caption (links and @handles don't count).
 export const picturePost = (post) => (post?.images?.length || 0) > 0 && String(post.text || '').replace(/https?:\/\/\S+|@\w+/g, '').trim().length <= 80;
@@ -106,12 +120,13 @@ export async function botCoins(res, post, { search, lookupCa, matchImages, chain
     named = leadOf(pictured);
     if (named) how = 'picture';
   }
+  const runner = runnerOf(scanned, [...(res?.anchors || []), ...(res?.terms || []), ...typed]);
   const seen = new Set();
   const story = scanned.filter((t) => {
     if (seen.has(t.address)) return false;
     seen.add(t.address);
-    return (t.relevance || 0) >= ON_STORY && !MAJORS.has(sym(t)) && !elsewhere.has(sym(t)) && !(named && sameCoin(t, named));
-  });
+    return ((t.relevance || 0) >= ON_STORY || t.address === runner?.address) && !MAJORS.has(sym(t)) && !elsewhere.has(sym(t)) && !(named && sameCoin(t, named));
+  }).map((t) => (t.address === runner?.address ? { ...t, relevance: Math.max(t.relevance || 0, 90) } : t));
   // Other coins with the same picture under another name were made for this post too.
   for (const t of pictured) if (!seen.has(t.address) && !sameCoin(t, named)) { seen.add(t.address); story.push({ ...t, relevance: 99 }); }
   if (named) story.push({ ...named, relevance: Math.max(100, ...story.map((t) => t.relevance || 0)) });

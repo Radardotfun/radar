@@ -75,8 +75,10 @@ async function dexFetch(input, init = {}) {
 }
 
 const mem = new Map();
+// The bot answers for Solana only, whatever chains the panel scans.
+const SETTINGS = { ...DEFAULTS, chains: ['solana'] };
 const handlers = makeHandlers({
-  settings: async () => DEFAULTS,
+  settings: async () => SETTINGS,
   store: { get: async (k) => mem.get(k), set: async (k, v) => mem.set(k, v) },
   openWindow: () => {},
   rpcUrl: async () => null,
@@ -145,7 +147,7 @@ async function replyFor(postUrl) {
     // public, so every candidate is judged.
     const scan = await handlers.coins({ post, judge: true });
     if (scan.engineError) throw new Error('Radar could not read this post right now');
-    const res = { ...scan, ...await botCoins(scan, post, { search: searchPairs, lookupCa, matchImages, chains: DEFAULTS.chains }) };
+    const res = { ...scan, ...await botCoins(scan, post, { search: searchPairs, lookupCa, matchImages, chains: SETTINGS.chains }) };
     return { text: botReply(res, postUrl) || NO_COINS, short: botReply(res, postUrl, Date.now(), { full: false }) || NO_COINS, links: botReply(res, postUrl, Date.now(), { links: true }) || NO_COINS, story: res.narrative || '' };
   })();
   scans.set(postUrl, { at: Date.now(), p });

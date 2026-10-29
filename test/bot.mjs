@@ -117,3 +117,15 @@ const evm = await botCoins({ mentioned: [], picks: [], roleCandidates: [solInu] 
 assert.equal(evm.named, null);
 assert.deepEqual(evm.picks, [], 'Solana coins under an EVM coin\'s ticker are copies');
 console.log('PASS bot: an EVM contract in the post is never matched to a Solana coin by ticker');
+
+// The story's main runner counts even when the judge rates it low: a $9.7M GTA VI at 62 beside an $836K "GTA memes" at 85.
+const gtaMemes = tok('GTA', 'GTA memes', 'GtaMemes111111111111111111111111111111pump', 836_000, { relevance: 85 });
+const gta6 = tok('GTA6', 'GTA VI', 'Gta6Runner2222222222222222222222222222zDnz', 9_700_000, { relevance: 62 });
+const otherCat = tok('PODCAT', 'Podcast Cat', 'PodCat33333333333333333333333333333333pump', 20_000_000, { relevance: 70 });
+const gtaScan = { mentioned: [], picks: [], roleCandidates: [gtaMemes, gta6, otherCat], anchors: ['gta', 'gta6'], terms: ['GTA 6'] };
+const gtaCoins = await botCoins(gtaScan, { text: 'TOP 10 GTA 6 MEME COINS' }, { search: async () => [] });
+assert.equal(gtaCoins.picks.find((p) => p.role === 'top')?.token.address, gta6.address, 'the runner is Highest MC');
+assert.ok(!gtaCoins.picks.some((p) => p.token.address === otherCat.address), 'a big coin without a name from the post stays out');
+const noName = await botCoins({ ...gtaScan, anchors: ['vice'], terms: ['Vice City'] }, { text: 'Vice City memes' }, { search: async () => [] });
+assert.ok(!noName.picks.some((p) => p.token.address === gta6.address), 'no runner when its name is not in the post');
+console.log('PASS bot: the story\'s main runner takes Highest MC even when the judge rates it low');
