@@ -54,6 +54,15 @@ One tap opens the biggest coin on the post that passes the holder check, or tell
 - the top 10 hold less than 50%;
 - insiders hold less than 25%.
 
+## The Radar bot on X
+
+Tag **@radardotfunn** under any post on X and it replies with that post's coins: the highest market cap, the OG and the mover, each with its number and its contract (a DexScreener link until 5 November 2026, while X refuses crypto addresses from a new app; the address itself after that). It runs on Cloudflare ([bot/worker.js](bot/worker.js)) with the same scan as the extension and the web version, and it checks for tags every minute.
+
+- It answers only a tag someone typed, not replies under @radardotfunn's own posts or conversation ([bot/trigger.js](bot/trigger.js)).
+- It never replies to itself, and a tag can never get two replies: the bot saves its place before replying.
+- Tickers are cleaned so a coin's name can't make the bot mention people or post links ([bot/reply.js](bot/reply.js)).
+- Its X keys are Cloudflare secrets, not in this repo. `node test/bot.mjs` checks its signing against X's published example and its reply format.
+
 ## Permissions
 
 | Permission | Why |
@@ -88,6 +97,7 @@ server/      Cloudflare Worker: reads a post's story, larp check, Solana RPC rel
 web/         tryradar.fun: home, privacy, Quick Buy page, Radar on the web (scan)
 webapp/      Radar on the web: the extension's panel and checks running in a page, bundled into web/scan.js
 userscript/  wrapper that runs the extension as a userscript (iPhone Safari, Tampermonkey)
+bot/         the Radar bot on X: replies to tags with the post's coins (Cloudflare Worker)
 scripts/     builds the site, the zip, the .crx, the Firefox build, the userscript and web/scan.js
 test/        offline tests and live checks against real posts and coins
 ```

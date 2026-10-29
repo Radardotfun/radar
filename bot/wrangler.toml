@@ -1,0 +1,25 @@
+# The Radar bot: a separate Worker, so its keys, schedule and limits stay apart from the Radar server.
+# Deploy from this folder: npx wrangler deploy
+name = "radar-bot"
+main = "worker.js"
+compatibility_date = "2026-09-01"
+
+[triggers]
+crons = ["* * * * *"]
+
+[[kv_namespaces]]
+binding = "BOT_KV"
+id = "49b7576e1bd54ae2b7148d2a75d522cb"
+
+# Requests to the Radar server (narrative-radar) go through this binding instead of the public internet.
+[[services]]
+binding = "RADAR"
+service = "narrative-radar"
+
+# This Worker itself: each tag is handled in its own run, so a busy minute never hits the per-run request limit.
+[[services]]
+binding = "SELF"
+service = "radar-bot"
+
+[vars]
+BOT_LIVE = "1"
