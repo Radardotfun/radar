@@ -50,6 +50,7 @@ h1 { margin:8px 0 6px; font-size:clamp(30px,7vw,42px); line-height:1.1; letter-s
 .fee-box { margin-top:17px; padding:12px 13px; border:1px solid rgba(168,120,255,.22); border-radius:10px; background:rgba(168,120,255,.055); }
 .fee-box b { font-size:12px; }
 .fee-box p { margin:5px 0 0; color:#bcb7c7; font-size:11px; }
+.fee-box p a { color:var(--text); text-underline-offset:3px; white-space:nowrap; }
 .button.primary { width:100%; margin-top:15px; border-color:transparent; background:#f5f2fa; color:#17131f; }
 .button.primary:hover:not(:disabled) { background:#fff; }
 .message { min-height:18px; margin:9px 1px 0; color:var(--muted); font-size:11px; overflow-wrap:anywhere; }

@@ -203,4 +203,4 @@ h3 { font-size: 18px; letter-spacing: -0.02em; font-weight: 700; }
 .ca-k { font: 600 11px var(--mono); letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
 .ca-v { font: 500 clamp(13px, 1.5vw, 16px) var(--mono); word-break: break-all; }
 .coin .fine { margin-top: 18px; max-width: 46em; }
-.coin .fine a { color: var(--muted); text-underline-offset: 3px; }
+.coin .fine a, .proof .fine a { color: var(--muted); text-underline-offset: 3px; }
