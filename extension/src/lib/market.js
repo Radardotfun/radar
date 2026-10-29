@@ -91,7 +91,8 @@ export function aggregate(pairs) {
       chain: primary.chainId,
       address: primary.baseToken.address,
       name: primary.baseToken.name,
-      symbol: primary.baseToken.symbol,
+      // Some tickers carry their own "$" ($WIF); everything that shows one adds it, so it's dropped here.
+      symbol: String(primary.baseToken.symbol || '').trim().replace(/^\$+/, ''),
       image: info.imageUrl || null,
       websites: (info.websites || []).map((w) => w.url).slice(0, 3),
       socials: (info.socials || []).map((s) => ({ type: s.type, url: s.url })).slice(0, 4),

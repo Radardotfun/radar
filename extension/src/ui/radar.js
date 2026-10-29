@@ -132,6 +132,16 @@ const setPrefTerm = (id) => { try { localStorage.setItem(TERM_KEY, id); } catch 
 // so it can be pasted if a terminal lands somewhere other than the token page.
 // Radar Quick Buy (tryradar.fun/trade): only the contract goes in the link; the page looks the coin up itself.
 const quickBuyUrl = (t) => `https://tryradar.fun/trade?mint=${encodeURIComponent(t.address)}`;
+// Insta Buy: the same page as a small window over X, with the card's amount picked (the last one chosen, 0.1 at first).
+const INSTA_SOL = ['0.05', '0.1', '0.25', '0.5', '1'];
+const INSTA_KEY = 'nr:insta-sol';
+const instaSol = () => { try { const v = localStorage.getItem(INSTA_KEY); return INSTA_SOL.includes(v) ? v : '0.1'; } catch { return '0.1'; } };
+const setInstaSol = (v) => { try { localStorage.setItem(INSTA_KEY, v); } catch {} };
+const instaUrl = (addr, sol) => `https://tryradar.fun/trade?mint=${encodeURIComponent(addr)}&sol=${sol}&insta=1`;
+// Markets PumpPortal builds buys on (same list as QUICK_MARKETS in web/quickbuy-guard.js). Coins only on Orca or
+// Meteora get no Insta Buy; a coin whose market isn't known yet keeps it, and the buy page explains if it can't.
+const QUICK_MARKETS = new Set(['pumpfun', 'pumpswap', 'raydium']);
+const quickBuyable = (t) => t.chain === 'solana' && (!t.dexId || QUICK_MARKETS.has(t.dexId));
 
 function terminals(t) {
   if (t.chain !== 'solana') return [];
@@ -211,6 +221,7 @@ class Radar {
     this.frMsg = new Map(); // address -> result line (HTML built from validated values)
     this.render();
     this.loadFrontrun();
+    this.listenForBuys();
     send('settings').then((s) => { this.refreshSec = s.refreshSec || 10; }).catch(() => {});
     document.addEventListener('visibilitychange', () => this.updateLive());
   }
@@ -674,7 +685,14 @@ class Radar {
     const fr = this.frontrun?.connected && t.chain === 'solana';
     const frOpen = fr && this.expanded.has(`fr:${t.address}`);
     const buyBtn = fr ? `<button class="fr-buy${frOpen ? ' on' : ''}" data-fr-buy="${t.address}" aria-expanded="${frOpen}" title="Buy with your Frontrun wallet">${I.bolt}Frontrun</button>` : '';
-    const quick = t.chain === 'solana' ? `<a class="radar-buy" href="${esc(quickBuyUrl(t))}" target="_blank" rel="noopener noreferrer" title="Buy with your own wallet on Radar">Buy on Radar</a>` : '';
+    const sol = instaSol();
+    const instaOpen = this.expanded.has(`ib:${t.address}`);
+    const quick = quickBuyable(t) ? `<div class="insta">
+        <button type="button" class="radar-buy" data-insta="${t.address}" title="Buy ${sol} SOL with your own wallet, in a small window over this page">Insta buy · ${sol} SOL</button>
+        <button type="button" class="insta-more" data-insta-menu="${t.address}" aria-expanded="${instaOpen}" title="Change the amount">${I.chevron}</button>
+        ${instaOpen ? `<div class="insta-menu">${INSTA_SOL.map((v) => `<button type="button" data-insta-sol="${v}" data-addr="${t.address}"${v === sol ? ' class="on"' : ''}>${v}</button>`).join('')}
+          <a href="${esc(quickBuyUrl(t))}" target="_blank" rel="noopener noreferrer">Full buy page: any amount, slippage ↗</a></div>` : ''}
+      </div>` : '';
     return `${quick}${buyBtn}${trade}<span class="lc-slot" data-lc="${t.address}">${lcButtonHtml(this.larp.get(t.address)?.lc)}</span>${frOpen ? this.frSheetHtml(t) : ''}`;
   }
 
@@ -1100,6 +1118,23 @@ class Radar {
     if (frs) { this.frSelFor(frs.dataset.frSol).sol = frs.dataset.v; this.renderActions(frs.dataset.frSol); return; }
     const frg = e.target.closest('[data-fr-go]');
     if (frg) { await this.frBuy(frg.dataset.frGo); return; }
+    // Insta Buy opens its window right here, inside the click, so the browser lets it through.
+    const ib = e.target.closest('[data-insta]');
+    if (ib) { this.instaBuy(ib.dataset.insta); return; }
+    const ibm = e.target.closest('[data-insta-menu]');
+    if (ibm) {
+      const k = `ib:${ibm.dataset.instaMenu}`;
+      this.expanded.has(k) ? this.expanded.delete(k) : this.expanded.add(k);
+      this.renderActions(ibm.dataset.instaMenu);
+      return;
+    }
+    const ibs = e.target.closest('[data-insta-sol]');
+    if (ibs) {
+      setInstaSol(ibs.dataset.instaSol);
+      this.expanded.delete(`ib:${ibs.dataset.addr}`);
+      for (const t of this.cardTokens()) this.renderActions(t.address);
+      return;
+    }
     const reroute = e.target.closest('[data-reroute]');
     if (reroute) {
       await this.rerouteFromPanel(reroute);
@@ -1191,6 +1226,32 @@ class Radar {
   // Instant reroute through the one shared check (lib/reroute.js, run by the backend).
   // The post button calls this without candidates; the panel passes the coins it already shows.
   // The post goes through preparePost so the button and the panel share one cached search.
+  // Insta Buy: tryradar.fun/trade as a small window at the right of this one, amount picked. The user's own wallet
+  // still approves the buy there; the window reports back (see listenForBuys) and closes when Solana confirms it.
+  instaBuy(addr) {
+    const t = this.tokens.get(addr);
+    const w = 440;
+    const h = 780;
+    const left = Math.max(0, (window.screenX || 0) + (window.outerWidth || w) - w - 32);
+    const top = Math.max(0, (window.screenY || 0) + 72);
+    const win = window.open(instaUrl(addr, instaSol()), 'radar-insta', `popup=yes,width=${w},height=${h},left=${left},top=${top}`);
+    if (!win) {
+      window.open(quickBuyUrl({ address: addr }), '_blank', 'noopener');
+      this.toast('Pop-ups are blocked here, so the buy page opened in a tab', 3200);
+      return;
+    }
+    win.focus?.();
+    this.toast(`Approve the ${instaSol()} SOL buy${t?.symbol ? ` of $${String(t.symbol).trim()}` : ''} in your wallet`, 3200);
+  }
+
+  listenForBuys() {
+    window.addEventListener('message', (e) => {
+      if (e.origin !== 'https://tryradar.fun' || e.data?.type !== 'radar:bought') return;
+      const symbol = String(e.data.symbol || '').replace(/[^\w$./-]/g, '').slice(0, 20);
+      this.toast(`Bought ${symbol ? `$${symbol}` : 'it'} · confirmed on Solana`, 4200);
+    });
+  }
+
   async route(post, candidates = null) {
     const p = await this.preparePost(post);
     return send('reroute', { post: p, candidates });

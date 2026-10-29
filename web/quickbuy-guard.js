@@ -61,8 +61,30 @@
     if (!list.length) return null;
     const top = list.sort((a, b) => ((b.liquidity && b.liquidity.usd) || 0) - ((a.liquidity && a.liquidity.usd) || 0))[0];
     const clean = (s, max) => String(s || '').replace(/[\u0000-\u001f\u007f<>]/g, '').trim().slice(0, max);
-    return { name: clean(top.baseToken.name, 40) || 'Unnamed coin', symbol: clean(top.baseToken.symbol, 20) || '?', marketCap: Number(top.marketCap || top.fdv || 0), pair: top.pairAddress || '' };
+    // A ticker that carries its own "$" ($WIF) loses it: the page adds one.
+    return { name: clean(top.baseToken.name, 40) || 'Unnamed coin', symbol: clean(top.baseToken.symbol, 20).replace(/^\$+/, '') || '?', marketCap: Number(top.marketCap || top.fdv || 0), pair: top.pairAddress || '' };
   }
 
-  root.RadarQuickBuyGuard = { PROGRAMS, txBlock, spendBlock, simulationWhy, coinFromPairs };
+  // The markets PumpPortal builds buys on, by DexScreener dexId. Checked with live unsigned builds on 29 Oct 2026:
+  // pump.fun curve, PumpSwap and Raydium work; Orca (where $WIF and $BONK trade) and Meteora come back "Bad Request".
+  // extension/src/ui/radar.js keeps the same list for the cards' Insta Buy button.
+  const QUICK_MARKETS = new Set(['pumpfun', 'pumpswap', 'raydium']);
+  const MARKET_NAMES = { orca: 'Orca', meteora: 'Meteora', meteoradbc: 'Meteora', raydium: 'Raydium', pumpfun: 'pump.fun', pumpswap: 'PumpSwap' };
+
+  // Whether Quick Buy can buy this coin: true, false, or null when DexScreener lists no market for it.
+  function quickBuyable(pairs, mint) {
+    const markets = (Array.isArray(pairs) ? pairs : []).filter((p) => p && p.chainId === 'solana' && p.baseToken && p.baseToken.address === mint).map((p) => p.dexId);
+    if (!markets.length) return null;
+    return markets.some((m) => QUICK_MARKETS.has(m));
+  }
+
+  // Plain words for a coin Quick Buy can't buy.
+  function marketWhy(pairs, mint) {
+    const top = (Array.isArray(pairs) ? pairs : []).filter((p) => p && p.chainId === 'solana' && p.baseToken && p.baseToken.address === mint)
+      .sort((a, b) => ((b.liquidity && b.liquidity.usd) || 0) - ((a.liquidity && a.liquidity.usd) || 0))[0];
+    const where = top ? MARKET_NAMES[top.dexId] || 'a market' : 'a market';
+    return `Quick Buy can't buy this coin yet. It trades on ${where}, and PumpPortal, which builds Radar's buys, only covers pump.fun, PumpSwap and Raydium. Open it on a terminal below. Nothing was signed.`;
+  }
+
+  root.RadarQuickBuyGuard = { PROGRAMS, QUICK_MARKETS, txBlock, spendBlock, simulationWhy, coinFromPairs, quickBuyable, marketWhy };
 })(typeof window !== 'undefined' ? window : globalThis);

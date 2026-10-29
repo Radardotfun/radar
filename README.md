@@ -15,7 +15,7 @@ Not financial advice. Memecoins are extremely risky.
 ## What Radar never does
 
 - **It never asks for your seed phrase or private key.** Nothing in this code reads or stores either one. Anyone who asks you for them in Radar's name is a scammer.
-- **The extension never connects to a wallet and never signs anything.** Its "Buy on Radar" button is a plain link to `tryradar.fun/trade?mint=<contract>`.
+- **The extension never connects to a wallet and never signs anything.** Its Insta Buy button only opens `tryradar.fun/trade?mint=<contract>&sol=<amount>&insta=1` in a small window; the wallet connects to that page, not to X or the extension.
 - **It never holds your SOL.** Quick Buy builds the transaction, and your own wallet signs it.
 - **It takes no fee.** PumpPortal, which builds the buy, charges 0.5%. A 0.0001 SOL priority fee goes to the Solana network so the buy lands.
 - **No accounts, ads or tracking.** A post only leaves your browser when you tap the radar on it. See [web/privacy.html](web/privacy.html), live at https://tryradar.fun/privacy.
@@ -24,6 +24,10 @@ Not financial advice. Memecoins are extremely risky.
 ## How Quick Buy works
 
 All of it is in [web/trade.js](web/trade.js) and [web/quickbuy-guard.js](web/quickbuy-guard.js).
+
+**Insta Buy** (on every card for a coin Quick Buy can buy) opens this page as a small window over X with the card's amount. If your wallet already trusts tryradar.fun it connects by itself and the buy starts; your wallet still has to approve it. When Solana confirms it, the page tells the card (the coin and the transaction signature, nothing else) and closes itself. The full page, for any amount and slippage, is in the card's menu.
+
+**Which coins:** PumpPortal builds buys on pump.fun, PumpSwap and Raydium. Coins that only trade on Orca or Meteora (such as $WIF and $BONK) get no Insta Buy, and the buy page says why and links the terminals instead (`quickBuyable` in the guard; `test/quickbuy.mjs --live` fails if PumpPortal starts covering Orca).
 
 1. **The coin is looked up from its contract** on DexScreener. A link's own name or ticker is never trusted, so a spoofed link can't show you a fake name.
 2. **PumpPortal builds an unsigned buy** for your wallet's public address, the amount and the slippage you picked (`trade-local` API).

@@ -373,6 +373,18 @@ svg { display: block; }
 /* Quick Buy: opens tryradar.fun/trade for the coin */
 .radar-buy { flex: 1 1 100%; display: flex; align-items: center; justify-content: center; height: 34px; border-radius: 10px; background: var(--text); color: var(--bg); font: 800 11.5px var(--mono); letter-spacing: 0.08em; text-transform: uppercase; text-decoration: none; border: 1px solid var(--text); transition: transform 0.15s, opacity 0.15s; }
 .radar-buy:hover { transform: translateY(-1px); opacity: 0.92; }
+/* Insta Buy: the white buy button, ▾ for the amount and the full buy page. */
+.insta { flex: 1 1 100%; display: flex; flex-wrap: wrap; }
+.insta .radar-buy { flex: 1; min-width: 0; border-radius: 10px 0 0 10px; }
+.insta-more { flex: none; width: 34px; height: 34px; display: grid; place-items: center; border-radius: 0 10px 10px 0; background: var(--text); color: var(--bg); border: 1px solid var(--text); border-left-color: color-mix(in srgb, var(--bg) 25%, var(--text)); }
+.insta-more svg { width: 12px; height: 12px; transition: transform 0.2s; }
+.insta-more[aria-expanded="true"] svg { transform: rotate(180deg); }
+.insta-menu { flex: 1 1 100%; margin-top: 4px; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; padding: 4px; border-radius: 12px; background: var(--card-2); border: 1px solid var(--line); }
+.insta-menu button { height: 30px; border-radius: 8px; border: 1px solid transparent; color: var(--muted); font: 700 11.5px var(--mono); }
+.insta-menu button:hover { color: var(--text); border-color: var(--line-2); }
+.insta-menu button.on { background: var(--text); color: var(--bg); }
+.insta-menu a { grid-column: 1 / -1; height: 28px; display: flex; align-items: center; justify-content: center; font: 600 11.5px var(--font); color: var(--muted); text-decoration: none; }
+.insta-menu a:hover { color: var(--text); }
 /* Frontrun buy */
 .fr-buy { height: 32px; display: inline-flex; align-items: center; gap: 6px; padding: 0 12px; border-radius: 10px; font: 800 12px var(--font); color: var(--text); background: var(--card-2); border: 1px solid var(--line-2); transition: transform 0.15s, opacity 0.15s; }
 .fr-buy:hover { transform: translateY(-1px); }

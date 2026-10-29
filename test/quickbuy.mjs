@@ -60,7 +60,18 @@ const coin = G.coinFromPairs([
 assert.deepEqual({ ...coin }, { name: 'Geminiscript', symbol: 'GEMINI', marketCap: 160000, pair: 'deep' });
 assert.equal(G.coinFromPairs([], MINT), null);
 assert.equal(G.coinFromPairs(null, MINT), null);
-console.log('PASS quick buy guard: programs, payer, signers, spend limit, messages, coin lookup');
+// A ticker that carries its own "$" isn't shown as "$$WIF".
+assert.equal(G.coinFromPairs([{ chainId: 'solana', baseToken: { address: MINT, name: 'dogwifhat', symbol: '$WIF' }, liquidity: { usd: 1 } }], MINT).symbol, 'WIF');
+
+// Markets PumpPortal builds on.
+const on = (dexId, usd = 1) => ({ chainId: 'solana', dexId, baseToken: { address: MINT, name: 'x', symbol: 'X' }, liquidity: { usd } });
+assert.equal(G.quickBuyable([on('raydium')], MINT), true);
+assert.equal(G.quickBuyable([on('orca', 9), on('pumpswap')], MINT), true, 'one covered market is enough');
+assert.equal(G.quickBuyable([on('orca')], MINT), false);
+assert.equal(G.quickBuyable([on('meteoradbc')], MINT), false);
+assert.equal(G.quickBuyable([], MINT), null);
+assert.match(G.marketWhy([on('orca')], MINT), /trades on Orca.*pump\.fun, PumpSwap and Raydium.*Nothing was signed/);
+console.log('PASS quick buy guard: programs, payer, signers, spend limit, messages, coin lookup, markets');
 
 if (process.argv.includes('--live')) {
   const wallet = web3.Keypair.generate().publicKey.toBase58();
@@ -75,4 +86,14 @@ if (process.argv.includes('--live')) {
     assert.equal(G.txBlock(built, wallet), null, `${label} should pass`);
     console.log(`PASS live: ${label} unsigned PumpPortal buy passes the guard`);
   }
+  // Orca isn't covered: if PumpPortal starts building these, QUICK_MARKETS (guard and radar.js) can grow.
+  const wif = 'EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm';
+  const r = await fetch('https://pumpportal.fun/api/trade-local', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ publicKey: wallet, action: 'buy', mint: wif, amount: 0.01, denominatedInSol: 'true', slippage: 10, priorityFee: 0.0001, pool: 'auto' }),
+  });
+  const pairs = await (await fetch(`https://api.dexscreener.com/tokens/v1/solana/${wif}`)).json();
+  assert.equal(r.status, 400, 'PumpPortal now builds Orca buys: widen QUICK_MARKETS');
+  assert.equal(G.quickBuyable(pairs, wif), false, '$WIF should read as not covered');
+  console.log('PASS live: Orca ($WIF) is refused by PumpPortal and read as not covered');
 }

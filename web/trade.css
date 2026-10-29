@@ -80,3 +80,12 @@ footer a { text-decoration:none; }
   .wallet-row .button { padding:0 12px; }
   .terminal-links { grid-template-columns:repeat(2,1fr); }
 }
+/* Insta Buy: the same page as a small window over X. Only what the buy needs; the wallet note and footer drop out. */
+.insta .nav, .insta .lede, .insta .wallet-note, .insta footer, .insta .field-help, .insta .wallet-address-row p { display:none; }
+.insta .trade-page { width:min(100% - 24px,520px); margin:16px auto 20px; }
+.insta h1 { font-size:26px; margin:4px 0 0; }
+.insta .coin-box { margin:12px 0 10px; padding:12px 13px; gap:9px; }
+.insta .swap-box { padding:14px; }
+.insta .fee-box { margin-top:12px; padding:10px 11px; }
+.insta .risk { margin-top:12px; font-size:10.5px; }
+.after-buy.neutral { border-color:var(--line); background:rgba(255,255,255,.025); }

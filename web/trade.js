@@ -35,6 +35,21 @@
 
   $('coin-mint').textContent = validMint ? mint : 'Invalid token address';
 
+  // Insta Buy: a coin card opened this page as a small window with the amount already picked. It connects the wallet
+  // if it already trusts this site, starts the buy (the wallet still asks to approve it), tells the card when Solana
+  // confirms it, and then closes itself.
+  const insta = params.get('insta') === '1';
+  const instaSol = Number(params.get('sol'));
+  let instaPending = false;
+  if (insta) {
+    document.body.classList.add('insta');
+    document.querySelector('.eyebrow').textContent = 'Radar Insta Buy · Solana';
+  }
+  const saved = {
+    get: (key) => { try { return localStorage.getItem(`radar:${key}`); } catch { return null; } },
+    set: (key, value) => { try { localStorage.setItem(`radar:${key}`, String(value)); } catch {} },
+  };
+
   const setMessage = (text, kind) => {
     message.textContent = text;
     message.classList.toggle('error', kind === 'error');
@@ -48,7 +63,7 @@
   };
 
   if (!validMint) {
-    setMessage('Radar did not receive a valid Solana token address. Close this tab and use Buy on Radar from a coin card.', 'error');
+    setMessage('Radar did not receive a valid Solana token address. Close this window and use Insta Buy from a coin card.', 'error');
     connectButton.disabled = true;
     return;
   }
@@ -72,11 +87,24 @@
 
   // The coin, looked up from its contract. A link can name any coin; the page only shows what the chain data says.
   const money = (n) => (n >= 1e9 ? `$${(n / 1e9).toFixed(2)}B` : n >= 1e6 ? `$${(n / 1e6).toFixed(2)}M` : n >= 1e3 ? `$${(n / 1e3).toFixed(1)}K` : `$${Math.round(n)}`);
-  (async () => {
+  // A coin on a market PumpPortal can't build buys on: say so, keep Buy off, and point to the terminals.
+  let unbuyable = '';
+  const blockBuy = (why) => {
+    unbuyable = why;
+    buyButton.disabled = true;
+    buyButton.textContent = 'Not on Quick Buy yet';
+    setMessage(why, 'error');
+    showAfterBuy('Buy it on a terminal', "Quick Buy can't buy this coin's market yet. Each terminal below opens this exact coin.", 'failed');
+    afterBuy.classList.add('neutral');
+    $('tx-link').hidden = true;
+  };
+  const coinReady = (async () => {
     try {
       const r = await fetch(`https://api.dexscreener.com/tokens/v1/solana/${encodeURIComponent(mint)}`, { cache: 'no-store', signal: AbortSignal.timeout(10000) });
-      const coin = guard.coinFromPairs(await r.json(), mint);
+      const pairs = await r.json();
+      const coin = guard.coinFromPairs(pairs, mint);
       if (!coin) throw new Error('not listed');
+      if (guard.quickBuyable(pairs, mint) === false) blockBuy(guard.marketWhy(pairs, mint));
       coinKnown = true;
       $('coin-name').textContent = coin.name;
       $('coin-symbol').textContent = '$' + coin.symbol;
@@ -152,6 +180,7 @@
     buyButton.disabled = false;
     buyButton.textContent = 'Review buy in wallet';
     setMessage('Connected. Your wallet stays in control and must approve every transaction.');
+    if (unbuyable) blockBuy(unbuyable);
   };
 
   connectButton.addEventListener('click', async () => {
@@ -179,6 +208,8 @@
       const publicKey = provider.publicKey || result?.publicKey;
       if (!publicKey) throw new Error('The wallet did not return a public address.');
       updateConnected(provider, publicKey);
+      saved.set('wallet', label);
+      if (instaPending) { instaPending = false; runBuy(); }
     } catch (error) {
       setMessage(error?.message === 'User rejected the request.' ? 'Wallet connection was cancelled.' : 'Could not connect wallet. Unlock it and try again.', 'error');
     } finally {
@@ -188,7 +219,7 @@
 
   const setBusy = (value) => {
     busy = value;
-    buyButton.disabled = value || !connectedProvider || awaitingConfirmation;
+    buyButton.disabled = value || !connectedProvider || awaitingConfirmation || !!unbuyable;
     connectButton.disabled = value;
     document.querySelectorAll('.amount-presets button').forEach((button) => { button.disabled = value; });
     amountInput.disabled = value;
@@ -202,8 +233,20 @@
       setMessage('Buy amount set to ' + button.dataset.amount + ' SOL. Check the final details in your wallet.');
     });
   });
-  amountInput.addEventListener('input', () => {
+  const markPreset = () => {
     document.querySelectorAll('.amount-presets button').forEach((item) => item.setAttribute('aria-pressed', String(Number(item.dataset.amount) === Number(amountInput.value))));
+  };
+  amountInput.addEventListener('input', markPreset);
+  if (insta && Number.isFinite(instaSol) && instaSol >= 0.001 && instaSol <= 25) {
+    amountInput.value = String(instaSol);
+    markPreset();
+  }
+  // The last slippage you used, here and in Insta Buy.
+  const savedSlip = Number(saved.get('slippage'));
+  if (Number.isFinite(savedSlip) && savedSlip >= 0.1 && savedSlip <= 50) slippageInput.value = String(savedSlip);
+  slippageInput.addEventListener('change', () => {
+    const v = Number(slippageInput.value);
+    if (Number.isFinite(v) && v >= 0.1 && v <= 50) saved.set('slippage', v);
   });
 
   const BASE58 = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
@@ -232,8 +275,27 @@
     return { pending: true };
   };
 
-  buyButton.addEventListener('click', async () => {
+  // Insta Buy, after Solana confirms: tell the card (only public facts: the coin and the signature), then close
+  // in a few seconds unless the user starts using the window.
+  const instaDone = (signature) => {
+    const symbol = coinKnown ? $('coin-symbol').textContent.replace(/^\$/, '') : '';
+    try { window.opener?.postMessage({ type: 'radar:bought', mint, symbol, signature }, '*'); } catch {}
+    let keepOpen = false;
+    document.addEventListener('pointerdown', () => { keepOpen = true; setMessage('Bought.', 'success'); }, { once: true, capture: true });
+    let left = 5;
+    const tick = () => {
+      if (keepOpen) return;
+      if (left <= 0) { window.close(); return; }
+      setMessage(`Bought. This window closes in ${left}s. Tap anywhere to keep it open.`, 'success');
+      left -= 1;
+      setTimeout(tick, 1000);
+    };
+    tick();
+  };
+
+  const runBuy = async () => {
     if (busy || !connectedProvider || !connectedAddress) return;
+    if (unbuyable) { setMessage(unbuyable, 'error'); return; }
     const solAmount = Number(amountInput.value);
     const slippage = Number(slippageInput.value);
     if (!Number.isFinite(solAmount) || solAmount < 0.001) { setMessage('Enter a buy amount of at least 0.001 SOL.', 'error'); amountInput.focus(); return; }
@@ -254,6 +316,8 @@
       } catch (e) {
         throw new Error(e?.name === 'TimeoutError' ? 'The buy builder timed out. Nothing was signed.' : 'Could not reach PumpPortal. Nothing was signed.');
       }
+      // PumpPortal answers a bare "Bad Request" for coins on markets it doesn't cover (DexScreener can miss some).
+      if (response.status === 400) { blockBuy(guard.marketWhy([], mint)); return; }
       if (!response.ok) {
         const detail = (await response.text()).replace(/[\u0000-\u001f\u007f]/g, ' ').slice(0, 160);
         throw new Error((detail || 'PumpPortal returned HTTP ' + response.status) + '. Nothing was signed.');
@@ -314,6 +378,7 @@
         awaitingConfirmation = false;
         showAfterBuy('Buy confirmed', 'Solana confirmed it. Open the coin in a terminal below.', '');
         setMessage(coinKnown ? 'Bought.' : 'Bought. This coin is not on DexScreener yet, so check it in a terminal.', 'success');
+        if (insta) instaDone(signature);
       } else if (confirmation.failed) {
         awaitingConfirmation = false;
         showAfterBuy('Buy failed', 'Solana rejected it. Check Solscan for the reason before trying again.', 'failed');
@@ -327,7 +392,33 @@
     } finally {
       setBusy(false);
     }
-  });
+  };
+  buyButton.addEventListener('click', runBuy);
+
+  // Insta Buy start: the wallet used last time (or the first one found), connected silently if it already trusts
+  // tryradar.fun. Otherwise one Connect tap, and the buy starts right after it.
+  const instaStart = async () => {
+    await coinReady;
+    if (unbuyable || !walletProviders.length) return;
+    const index = Math.max(0, walletProviders.findIndex(([label]) => label === saved.get('wallet')));
+    walletChoice.value = String(index);
+    const [, provider] = walletProviders[index];
+    try {
+      const result = await provider.connect({ onlyIfTrusted: true });
+      const publicKey = provider.publicKey || result?.publicKey;
+      if (!publicKey) throw new Error('not trusted yet');
+      updateConnected(provider, publicKey);
+      runBuy();
+    } catch {
+      instaPending = true;
+      setMessage('Connect your wallet and the buy starts right after.');
+    }
+  };
 
   discoverWallets();
+  if (insta) {
+    // Some wallets add themselves to the page a moment after it loads.
+    if (walletProviders.length) instaStart();
+    else setTimeout(() => { discoverWallets(); instaStart(); }, 700);
+  }
 })();

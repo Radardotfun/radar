@@ -1,4 +1,4 @@
-// Radar 1.7.13 on the web: built from the extension source at https://tryradar.fun. Not financial advice.
+// Radar 1.7.14 on the web: built from the extension source at https://tryradar.fun. Not financial advice.
 (() => {
   // extension/src/lib/keywords.js
   var STOP = new Set(`a about above after again against all almost also am an and any are aren as at be because been before
@@ -185,7 +185,8 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
         chain: primary.chainId,
         address: primary.baseToken.address,
         name: primary.baseToken.name,
-        symbol: primary.baseToken.symbol,
+        // Some tickers carry their own "$" ($WIF); everything that shows one adds it, so it's dropped here.
+        symbol: String(primary.baseToken.symbol || "").trim().replace(/^\$+/, ""),
         image: info.imageUrl || null,
         websites: (info.websites || []).map((w) => w.url).slice(0, 3),
         socials: (info.socials || []).map((s) => ({ type: s.type, url: s.url })).slice(0, 4),
@@ -1328,6 +1329,25 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     }
   };
   var quickBuyUrl = (t) => `https://tryradar.fun/trade?mint=${encodeURIComponent(t.address)}`;
+  var INSTA_SOL = ["0.05", "0.1", "0.25", "0.5", "1"];
+  var INSTA_KEY = "nr:insta-sol";
+  var instaSol = () => {
+    try {
+      const v = localStorage.getItem(INSTA_KEY);
+      return INSTA_SOL.includes(v) ? v : "0.1";
+    } catch {
+      return "0.1";
+    }
+  };
+  var setInstaSol = (v) => {
+    try {
+      localStorage.setItem(INSTA_KEY, v);
+    } catch {
+    }
+  };
+  var instaUrl = (addr, sol) => `https://tryradar.fun/trade?mint=${encodeURIComponent(addr)}&sol=${sol}&insta=1`;
+  var QUICK_MARKETS = /* @__PURE__ */ new Set(["pumpfun", "pumpswap", "raydium"]);
+  var quickBuyable = (t) => t.chain === "solana" && (!t.dexId || QUICK_MARKETS.has(t.dexId));
   function terminals(t) {
     if (t.chain !== "solana") return [];
     const a = t.address;
@@ -1408,6 +1428,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       this.frMsg = /* @__PURE__ */ new Map();
       this.render();
       this.loadFrontrun();
+      this.listenForBuys();
       send("settings").then((s) => {
         this.refreshSec = s.refreshSec || 10;
       }).catch(() => {
@@ -1868,7 +1889,14 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       const fr = this.frontrun?.connected && t.chain === "solana";
       const frOpen = fr && this.expanded.has(`fr:${t.address}`);
       const buyBtn = fr ? `<button class="fr-buy${frOpen ? " on" : ""}" data-fr-buy="${t.address}" aria-expanded="${frOpen}" title="Buy with your Frontrun wallet">${I.bolt}Frontrun</button>` : "";
-      const quick = t.chain === "solana" ? `<a class="radar-buy" href="${esc2(quickBuyUrl(t))}" target="_blank" rel="noopener noreferrer" title="Buy with your own wallet on Radar">Buy on Radar</a>` : "";
+      const sol = instaSol();
+      const instaOpen = this.expanded.has(`ib:${t.address}`);
+      const quick = quickBuyable(t) ? `<div class="insta">
+        <button type="button" class="radar-buy" data-insta="${t.address}" title="Buy ${sol} SOL with your own wallet, in a small window over this page">Insta buy \xB7 ${sol} SOL</button>
+        <button type="button" class="insta-more" data-insta-menu="${t.address}" aria-expanded="${instaOpen}" title="Change the amount">${I.chevron}</button>
+        ${instaOpen ? `<div class="insta-menu">${INSTA_SOL.map((v) => `<button type="button" data-insta-sol="${v}" data-addr="${t.address}"${v === sol ? ' class="on"' : ""}>${v}</button>`).join("")}
+          <a href="${esc2(quickBuyUrl(t))}" target="_blank" rel="noopener noreferrer">Full buy page: any amount, slippage \u2197</a></div>` : ""}
+      </div>` : "";
       return `${quick}${buyBtn}${trade}<span class="lc-slot" data-lc="${t.address}">${lcButtonHtml(this.larp.get(t.address)?.lc)}</span>${frOpen ? this.frSheetHtml(t) : ""}`;
     }
     cardHtml(t, pick) {
@@ -2298,6 +2326,25 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
         await this.frBuy(frg.dataset.frGo);
         return;
       }
+      const ib = e.target.closest("[data-insta]");
+      if (ib) {
+        this.instaBuy(ib.dataset.insta);
+        return;
+      }
+      const ibm = e.target.closest("[data-insta-menu]");
+      if (ibm) {
+        const k = `ib:${ibm.dataset.instaMenu}`;
+        this.expanded.has(k) ? this.expanded.delete(k) : this.expanded.add(k);
+        this.renderActions(ibm.dataset.instaMenu);
+        return;
+      }
+      const ibs = e.target.closest("[data-insta-sol]");
+      if (ibs) {
+        setInstaSol(ibs.dataset.instaSol);
+        this.expanded.delete(`ib:${ibs.dataset.addr}`);
+        for (const t of this.cardTokens()) this.renderActions(t.address);
+        return;
+      }
       const reroute2 = e.target.closest("[data-reroute]");
       if (reroute2) {
         await this.rerouteFromPanel(reroute2);
@@ -2398,6 +2445,30 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     // Instant reroute through the one shared check (lib/reroute.js, run by the backend).
     // The post button calls this without candidates; the panel passes the coins it already shows.
     // The post goes through preparePost so the button and the panel share one cached search.
+    // Insta Buy: tryradar.fun/trade as a small window at the right of this one, amount picked. The user's own wallet
+    // still approves the buy there; the window reports back (see listenForBuys) and closes when Solana confirms it.
+    instaBuy(addr) {
+      const t = this.tokens.get(addr);
+      const w = 440;
+      const h = 780;
+      const left = Math.max(0, (window.screenX || 0) + (window.outerWidth || w) - w - 32);
+      const top = Math.max(0, (window.screenY || 0) + 72);
+      const win = window.open(instaUrl(addr, instaSol()), "radar-insta", `popup=yes,width=${w},height=${h},left=${left},top=${top}`);
+      if (!win) {
+        window.open(quickBuyUrl({ address: addr }), "_blank", "noopener");
+        this.toast("Pop-ups are blocked here, so the buy page opened in a tab", 3200);
+        return;
+      }
+      win.focus?.();
+      this.toast(`Approve the ${instaSol()} SOL buy${t?.symbol ? ` of $${String(t.symbol).trim()}` : ""} in your wallet`, 3200);
+    }
+    listenForBuys() {
+      window.addEventListener("message", (e) => {
+        if (e.origin !== "https://tryradar.fun" || e.data?.type !== "radar:bought") return;
+        const symbol = String(e.data.symbol || "").replace(/[^\w$./-]/g, "").slice(0, 20);
+        this.toast(`Bought ${symbol ? `$${symbol}` : "it"} \xB7 confirmed on Solana`, 4200);
+      });
+    }
     async route(post, candidates = null) {
       const p = await this.preparePost(post);
       return send("reroute", { post: p, candidates });
@@ -2814,6 +2885,18 @@ svg { display: block; }\r
 /* Quick Buy: opens tryradar.fun/trade for the coin */\r
 .radar-buy { flex: 1 1 100%; display: flex; align-items: center; justify-content: center; height: 34px; border-radius: 10px; background: var(--text); color: var(--bg); font: 800 11.5px var(--mono); letter-spacing: 0.08em; text-transform: uppercase; text-decoration: none; border: 1px solid var(--text); transition: transform 0.15s, opacity 0.15s; }\r
 .radar-buy:hover { transform: translateY(-1px); opacity: 0.92; }\r
+/* Insta Buy: the white buy button, \u25BE for the amount and the full buy page. */\r
+.insta { flex: 1 1 100%; display: flex; flex-wrap: wrap; }\r
+.insta .radar-buy { flex: 1; min-width: 0; border-radius: 10px 0 0 10px; }\r
+.insta-more { flex: none; width: 34px; height: 34px; display: grid; place-items: center; border-radius: 0 10px 10px 0; background: var(--text); color: var(--bg); border: 1px solid var(--text); border-left-color: color-mix(in srgb, var(--bg) 25%, var(--text)); }\r
+.insta-more svg { width: 12px; height: 12px; transition: transform 0.2s; }\r
+.insta-more[aria-expanded="true"] svg { transform: rotate(180deg); }\r
+.insta-menu { flex: 1 1 100%; margin-top: 4px; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; padding: 4px; border-radius: 12px; background: var(--card-2); border: 1px solid var(--line); }\r
+.insta-menu button { height: 30px; border-radius: 8px; border: 1px solid transparent; color: var(--muted); font: 700 11.5px var(--mono); }\r
+.insta-menu button:hover { color: var(--text); border-color: var(--line-2); }\r
+.insta-menu button.on { background: var(--text); color: var(--bg); }\r
+.insta-menu a { grid-column: 1 / -1; height: 28px; display: flex; align-items: center; justify-content: center; font: 600 11.5px var(--font); color: var(--muted); text-decoration: none; }\r
+.insta-menu a:hover { color: var(--text); }\r
 /* Frontrun buy */\r
 .fr-buy { height: 32px; display: inline-flex; align-items: center; gap: 6px; padding: 0 12px; border-radius: 10px; font: 800 12px var(--font); color: var(--text); background: var(--card-2); border: 1px solid var(--line-2); transition: transform 0.15s, opacity 0.15s; }\r
 .fr-buy:hover { transform: translateY(-1px); }\r
