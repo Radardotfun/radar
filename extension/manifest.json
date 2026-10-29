@@ -1,0 +1,67 @@
+{
+  "manifest_version": 3,
+  "name": "Radar",
+  "short_name": "Radar",
+  "version": "1.7.13",
+  "description": "See the coins behind any post on X and instantly reroute to the biggest match that passes available on-chain safety checks.",
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_title": "Radar",
+    "default_popup": "src/popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png"
+    }
+  },
+  "background": {
+    "service_worker": "src/background.js",
+    "type": "module"
+  },
+  "permissions": [
+    "storage",
+    "declarativeNetRequestWithHostAccess"
+  ],
+  "optional_host_permissions": [
+    "https://solana.frontrun.pro/*"
+  ],
+  "host_permissions": [
+    "https://api.dexscreener.com/*",
+    "https://cdn.dexscreener.com/*",
+    "https://dd.dexscreener.com/*",
+    "https://api.rugcheck.xyz/*",
+    "https://api.mainnet-beta.solana.com/*",
+    "https://narrative-radar.millenia-portfolio.workers.dev/*",
+    "https://cdn.syndication.twimg.com/*",
+    "https://video.twimg.com/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://x.com/*",
+        "https://twitter.com/*",
+        "https://pro.x.com/*"
+      ],
+      "js": [
+        "src/content/content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "src/ui/*"
+      ],
+      "matches": [
+        "https://x.com/*",
+        "https://twitter.com/*",
+        "https://pro.x.com/*"
+      ]
+    }
+  ]
+}

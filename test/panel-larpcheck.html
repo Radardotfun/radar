@@ -1,0 +1,37 @@
+<!doctype html>
+<!-- Manual check of the Larpcheck lines in the real panel: the live backend finds the coins, and
+     the larpcheck request is answered with Larpcheck's documented example verdict (BONK gets it,
+     every other coin is "not checked yet"). Serve the repo root (python -m http.server) and open
+     /test/panel-larpcheck.html. ?theme=light|dim|dark, ?live for real Larpcheck answers -->
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Panel: Larpcheck</title>
+<style>html,body{margin:0;height:100%;background:#000}#root{width:400px;height:100vh;margin:0 auto}</style></head>
+<body><div id="root"></div>
+<script type="module">
+import { makeHandlers, DEFAULTS } from '../extension/src/lib/handlers.js';
+import { useBackend, mountInline } from '../extension/src/ui/radar.js';
+
+const BONK = 'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263';
+const mem = new Map();
+const h = makeHandlers({
+  settings: async () => DEFAULTS,
+  store: { get: async (k) => mem.get(k) ?? null, set: async (k, v) => { mem.set(k, v); } },
+  openWindow: (url) => window.open(url),
+  rpcUrl: async () => null,
+  ready: Promise.resolve(),
+});
+// ?live: real Larpcheck answers through the deployed Worker instead of the example below.
+if (!new URLSearchParams(location.search).has('live')) h.larpcheck = async ({ address }) => (address === BONK ? {
+  checked: true, page: `https://larpcheck.app/coin/${address}`, url: 'https://larpcheck.app/c/aB3dE5gH7j',
+  verdict: 'LIKELY LARP', score: 22, total: 31, created: '2026-10-18T09:12:40.000Z',
+  headline: "The team's 'live product' is a landing page with no app behind it.", call: 'No product yet; insiders hold 31%.',
+  stamps: [{ id: 'story', word: 'LIKELY LARP', score: 22 }, { id: 'coin', word: 'RIGGED', score: 40 }],
+} : { checked: false, page: `https://larpcheck.app/coin/${address}`, running: false });
+useBackend(h, { css: '../extension/src/ui/radar.css' });
+
+const theme = new URLSearchParams(location.search).get('theme') || 'dark';
+document.body.style.background = theme === 'light' ? '#fff' : theme === 'dim' ? '#15202b' : '#000';
+const radar = await mountInline(document.getElementById('root'), theme);
+window.radar = radar;
+radar.scan({ post: { text: `the og solana dog is still here $BONK ${BONK}`, author: 'test', url: 'https://x.com/test/status/1' }, source: { kind: '@test', label: 'Larpcheck panel check' } });
+</script></body></html>

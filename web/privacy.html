@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Privacy · Radar</title>
+  <meta name="description" content="What the Radar extension reads, where it sends it, and what it keeps." />
+  <meta name="theme-color" content="#000000" />
+  <link rel="icon" href="/icons/icon32.png" sizes="32x32" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&family=Geist+Mono:wght@500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/app.css" />
+</head>
+<body>
+  <header class="nav">
+    <a class="logo" href="/" aria-label="Radar home">
+      <img class="wordmark" src="/icons/radar-wordmark.png" width="795" height="227" alt="radar" />
+    </a>
+  </header>
+
+  <main class="doc">
+    <p class="eyebrow">Privacy policy · Updated October 29, 2026</p>
+    <h1>Privacy</h1>
+    <p class="lede">Radar has no accounts, no ads and no tracking. A post only leaves your device when you ask the radar to read it.</p>
+
+    <h2>What it reads</h2>
+    <p>When you tap the radar on a post on X (or search from the toolbar button), the extension reads that post: its text, the author's handle and name, the handles it replies to, the post it replies to or quotes, link previews, and its images or video. It does not read anything else on the page, your messages, your account or your browsing history.</p>
+
+    <p>Posts on screen that contain a token contract address also have that address looked up on DexScreener, to show the coin's ticker, market cap and age under the post. Only the address is sent, not the post.</p>
+
+    <h2>Where it goes</h2>
+    <ul>
+      <li><b>Our server</b> (narrative-radar.millenia-portfolio.workers.dev, on Cloudflare) receives that post to work out its narrative. It passes the post to an AI model to do this: Anthropic's Claude, or as a backup Groq, Cerebras, Google Gemini, OpenRouter, Mistral or Cloudflare Workers AI. Videos are transcribed by Cloudflare Workers AI.</li>
+      <li><b>Larp check:</b> for the post you scan, our server also reads the public X profile of the author and of the coin's linked account (through FxTwitter), looks up the registration date of the coin's website and of links in the post (RDAP), and opens those links to see where they lead. Nothing about you is included.</li>
+      <li><b>Market data services</b> receive coin names, tickers and contract addresses, never your post: DexScreener (prices and pools), RugCheck (token audits), Larpcheck (larpcheck.app, its published verdicts on a coin, looked up by our server with the contract address only) and the Solana network (launch and holder data).</li>
+    </ul>
+    <p>Results for a post are cached on our server for a few minutes (video transcripts for up to 24 hours) so a repeat scan is instant. Your IP address is used only to limit how many scans one person can run. Cloudflare, which hosts the server, keeps standard request logs for a few days. Nothing is sold, and nothing is shared for advertising.</p>
+
+    <h2>What it stores on your device</h2>
+    <p>Whether you've seen the first-run tip, and a cache of on-chain launch data so bundle checks are faster next time, in your browser's extension storage. If you connect Frontrun, your Frontrun API key is kept there too, on this device only, and is sent only to solana.frontrun.pro. Removing the extension deletes all of it.</p>
+
+    <h2>Quick Buy</h2>
+    <p>Buy on Radar opens tryradar.fun/trade with the coin's contract address. When you press buy, the page sends that address, your wallet's public address, the amount and your slippage to PumpPortal, which builds the transaction. Radar simulates it and passes it to your wallet, which shows it and signs it only if you approve. The signed buy goes to Solana through Radar's RPC relay. Radar never asks for your seed phrase or private key, never holds your SOL, and does not store your wallet address. PumpPortal charges 0.5% per buy; see its <a href="https://pumpportal.fun/fees/" target="_blank" rel="noopener">fees</a> and <a href="https://pumpportal.fun/legal/" target="_blank" rel="noopener">terms</a>.</p>
+    <p>If you connect Frontrun instead, buys go from your Frontrun wallet: Radar sends the order to Frontrun with your key, and Frontrun holds that wallet and signs. Frontrun's own terms and fees apply.</p>
+
+    <h2>Links it opens</h2>
+    <p>Buttons for Axiom, Padre, Fomo, GMGN, DexScreener, Solscan, RugCheck, Larpcheck and Bubblemaps open those sites with the coin's address. What happens there is governed by their own policies.</p>
+
+    <h2>Contact</h2>
+    <p>Questions or removal requests: use the support tab on the extension's store page.</p>
+  </main>
+
+  <footer class="site-foot">
+    <span>Radar</span>
+    <span>Not financial advice. Memecoins are extremely risky.</span>
+  </footer>
+</body>
+</html>

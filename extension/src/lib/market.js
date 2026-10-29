@@ -1,0 +1,263 @@
+// Live market data from DexScreener + picking the three narrative coins.
+import { norm } from './keywords.js';
+
+const DS = 'https://api.dexscreener.com';
+const QUOTES = new Set([
+  'So11111111111111111111111111111111111111112', // wSOL
+  'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', // USDC
+  'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB', // USDT
+]);
+// Launchpad curves: the pair opens in the same tx the token is born.
+export const LAUNCHPADS = new Set(['pumpfun', 'launchlab', 'meteoradbc', 'moonshot', 'boop', 'heaven', 'believe', 'bags', 'moonit', 'jupstudio']);
+
+async function getJson(url) {
+  for (let i = 0; i < 4; i++) {
+    const res = await fetch(url, { signal: AbortSignal.timeout(8_000) });
+    if (res.status === 429) { await new Promise((r) => setTimeout(r, 1500 * 2 ** i)); continue; }
+    if (!res.ok) throw new Error(`DexScreener ${res.status}`);
+    return res.json();
+  }
+  throw new Error('DexScreener rate limited');
+}
+
+export async function searchPairs(query) {
+  const j = await getJson(`${DS}/latest/dex/search?q=${encodeURIComponent(query)}`);
+  return j.pairs || [];
+}
+
+// All pairs for up to 30 token addresses on one chain.
+export async function pairsForTokens(chain, addresses) {
+  const out = [];
+  for (let i = 0; i < addresses.length; i += 30) {
+    const chunk = addresses.slice(i, i + 30);
+    const j = await getJson(`${DS}/tokens/v1/${chain}/${chunk.join(',')}`);
+    if (Array.isArray(j)) out.push(...j);
+  }
+  return out;
+}
+
+// Every pool of one token (tokens/v1 only returns a single pool per token).
+export async function allPairs(chain, address) {
+  const j = await getJson(`${DS}/token-pairs/v1/${chain}/${address}`);
+  return Array.isArray(j) ? j : [];
+}
+
+export async function allPairsMany(refs, concurrency = 6) {
+  const out = [];
+  let i = 0;
+  const worker = async () => {
+    while (i < refs.length) {
+      const { chain, address } = refs[i++];
+      out.push(...(await allPairs(chain, address).catch(() => [])));
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(concurrency, refs.length) }, worker));
+  return out;
+}
+
+const n = (x) => (Number.isFinite(+x) ? +x : 0);
+
+// Liquidity you could actually sell into: 2x the SOL/USDC/USDT side of each pool.
+// One-sided / self-paired pools report huge "liquidity" with almost nothing behind it.
+function realLiquidity(p) {
+  if (!QUOTES.has(p.quoteToken?.address)) return 0;
+  const quoteUsd = n(p.liquidity?.quote) * (n(p.priceNative) ? n(p.priceUsd) / n(p.priceNative) : 0);
+  return Math.min(n(p.liquidity?.usd), 2 * quoteUsd);
+}
+
+// Collapse every pair of a token into one live token summary.
+export function aggregate(pairs) {
+  const byToken = new Map();
+  for (const p of pairs) {
+    if (!p?.baseToken?.address || QUOTES.has(p.baseToken.address)) continue;
+    const key = `${p.chainId}:${p.baseToken.address}`;
+    if (!byToken.has(key)) byToken.set(key, []);
+    const list = byToken.get(key);
+    if (!list.some((q) => q.pairAddress === p.pairAddress)) list.push(p);
+  }
+  const tokens = [];
+  for (const list of byToken.values()) {
+    const primary = [...list].sort((a, b) =>
+      n(b.liquidity?.usd) - n(a.liquidity?.usd) || n(b.volume?.h24) - n(a.volume?.h24))[0];
+    const dated = list.filter((p) => p.pairCreatedAt).sort((a, b) => a.pairCreatedAt - b.pairCreatedAt);
+    const first = dated[0];
+    const info = list.find((p) => p.info?.imageUrl)?.info || primary.info || {};
+    const sum = (f) => list.reduce((s, p) => s + n(f(p)), 0);
+    const liquidity = sum(realLiquidity);
+    const reportedLiquidity = sum((p) => p.liquidity?.usd);
+    const marketCap = n(primary.marketCap) || n(primary.fdv);
+    const onCurve = LAUNCHPADS.has(primary.dexId);
+    tokens.push({
+      chain: primary.chainId,
+      address: primary.baseToken.address,
+      name: primary.baseToken.name,
+      symbol: primary.baseToken.symbol,
+      image: info.imageUrl || null,
+      websites: (info.websites || []).map((w) => w.url).slice(0, 3),
+      socials: (info.socials || []).map((s) => ({ type: s.type, url: s.url })).slice(0, 4),
+      priceUsd: n(primary.priceUsd),
+      marketCap,
+      fdv: n(primary.fdv),
+      liquidity,
+      reportedLiquidity,
+      volume: { m5: sum((p) => p.volume?.m5), h1: sum((p) => p.volume?.h1), h6: sum((p) => p.volume?.h6), h24: sum((p) => p.volume?.h24) },
+      txns: {
+        h1: { buys: sum((p) => p.txns?.h1?.buys), sells: sum((p) => p.txns?.h1?.sells) },
+        h24: { buys: sum((p) => p.txns?.h24?.buys), sells: sum((p) => p.txns?.h24?.sells) },
+      },
+      priceChange: primary.priceChange || {},
+      createdAt: first?.pairCreatedAt || null,
+      launchDex: first?.dexId || primary.dexId,
+      launchPair: first?.pairAddress || null,
+      pair: primary.pairAddress,
+      dexId: primary.dexId,
+      onCurve,
+      pairAddresses: list.map((p) => p.pairAddress),
+      url: primary.url,
+      links: [...new Set(list.flatMap((p) => [...(p.info?.websites || []), ...(p.info?.socials || [])].map((x) => x.url)).filter(Boolean))],
+      boosts: n(primary.boosts?.active),
+      // MC with almost nothing behind it (or a curve with zero trades) is not a real cap.
+      mcapBacked: onCurve ? n(primary.volume?.h24) > 0 : liquidity >= 1000 && marketCap / Math.max(liquidity, 1) < 150,
+      updatedAt: Date.now(),
+    });
+  }
+  return tokens;
+}
+
+// How strongly a token's name/symbol ties to the narrative keywords.
+export function relevance(token, keywords) {
+  const sym = norm(token.symbol || '');
+  const name = norm(token.name || '');
+  const words = new Set(`${token.name} ${token.symbol}`.split(/[^A-Za-z0-9À-ɏ]+/).map(norm).filter(Boolean));
+  let score = 0;
+  const matched = [];
+  keywords.forEach((kw, i) => {
+    const k = norm(kw);
+    if (k.length < 2) return;
+    const w = 1 / (1 + i * 0.25); // earlier keywords matter more
+    let hit = 0;
+    if (sym === k || name === k) hit = 4;
+    else if (words.has(k)) hit = 2.5;
+    // Short words ("pop", "ai") only match whole words, never inside other names.
+    else if (k.length >= 5 && (sym.includes(k) || name.includes(k))) hit = 2;
+    else if (kw.includes(' ')) {
+      const parts = kw.split(/\s+/).map(norm).filter((p) => p.length >= 3);
+      if (parts.length && parts.every((p) => name.includes(p) || sym.includes(p))) hit = 3;
+    }
+    if (hit) { score += hit * w; matched.push(kw); }
+  });
+  return { score, matched };
+}
+
+// Not memecoins: tokenized stocks, wrapped/bridged assets, stables. Also caught: a big "market cap"
+// with almost no real liquidity behind it, which is what bridged majors look like on Solana.
+const NON_MEME = /\b(prestocks?|xstocks?|tokenized|securities|backed|wrapped|wormhole|bridged|portal|ondo|stablecoin|usd coin|tether)\b/i;
+const MAJOR_NAMES = new Set('bitcoin ethereum zcash solana hyperliquid xrp ripple bnb cardano chainlink sui aptos near tron litecoin monero avalanche polkadot toncoin dogecoin stellar cosmos arbitrum optimism polygon'.split(' '));
+const MAJOR_TICKERS = new Set('BTC ETH ZEC SOL HYPE XRP BNB ADA LINK SUI APT NEAR TRX LTC XMR AVAX DOT TON XLM ATOM ARB OP POL'.split(' '));
+export function isMemecoin(t) {
+  if (NON_MEME.test(`${t.name} ${t.symbol}`)) return false;
+  if (/^(usdc|usdt|usds|pyusd|dai|weth|wbtc|cbbtc|wsol|msol|jitosol)$/i.test(t.symbol)) return false;
+  if (!t.mcapBacked && !t.onCurve && t.marketCap > 50_000_000) return false;
+  // Bridged majors (e.g. "Zcash $ZEC" on Solana) aren't memecoins about anything.
+  const majorName = MAJOR_NAMES.has(String(t.name).toLowerCase().trim());
+  const majorTicker = MAJOR_TICKERS.has(String(t.symbol).toUpperCase());
+  if ((majorName && majorTicker) || (t.marketCap > 10_000_000 && (majorName || majorTicker))) return false;
+  return true;
+}
+
+import { alive } from '../ui/holdercheck.js';
+
+export { alive };
+
+/**
+ * Pick the three narrative coins:
+ *   top   — highest real (liquidity-backed) market cap
+ *   og    — earliest launched that's still trading
+ *   mover — strongest live momentum right now
+ */
+export function pickThree(tokens, { cuts = [0.3, 0.15, 0], allowFallback = true } = {}) {
+  // Prefer the coins most tied to the story; widen only if too few are trading.
+  const maxRel = Math.max(0, ...tokens.map((t) => t.relevance || 0));
+  let live = [];
+  let cutUsed = 0;
+  for (const cut of cuts) {
+    cutUsed = cut;
+    live = tokens.filter((t) => (t.relevance || 0) >= maxRel * cut && alive(t));
+    if (live.length >= 3) break;
+  }
+  if (!live.length && allowFallback) live = tokens.filter((t) => t.volume.h24 > 0);
+  const used = new Set();
+  const take = (t, role) => { if (t) used.add(t.address); return t ? { role, token: t } : null; };
+
+  const top = [...live].filter((t) => t.mcapBacked).sort((a, b) => b.marketCap - a.marketCap)[0];
+  const picks = [take(top, 'top')];
+
+  // The OG may trade quietly; a real pool behind it is enough.
+  const exists = (t) => alive(t) || t.liquidity >= 3000;
+  const og = tokens.filter((t) => t.createdAt && !used.has(t.address) && (t.relevance || 0) >= maxRel * cutUsed && exists(t))
+    .sort((a, b) => a.createdAt - b.createdAt)[0];
+  picks.push(take(og, 'og'));
+
+  const momentum = (t) => {
+    const ch = n(t.priceChange.h1 ?? t.priceChange.h6);
+    const flow = Math.log10(10 + t.volume.h1);
+    const buyRatio = (t.txns.h1.buys + 1) / (t.txns.h1.sells + 1);
+    return ch * flow * Math.min(buyRatio, 3);
+  };
+  // The mover has to actually be trading; no pick beats a dead one.
+  const movers = live.filter((t) => !used.has(t.address) && t.volume.h1 >= 1000);
+  const mover = (movers.length ? movers : live.filter((t) => !used.has(t.address) && t.volume.h24 >= 250))
+    .sort((a, b) => momentum(b) - momentum(a) || b.volume.h24 - a.volume.h24)[0];
+  picks.push(take(mover, 'mover'));
+
+  // Tag every role a token would have won so the UI can show "also the OG", etc.
+  const best = {
+    top: [...live].filter((t) => t.mcapBacked).sort((a, b) => b.marketCap - a.marketCap)[0]?.address,
+    og: tokens.filter((t) => t.createdAt && (t.relevance || 0) >= maxRel * cutUsed && exists(t)).sort((a, b) => a.createdAt - b.createdAt)[0]?.address,
+    mover: live.filter((t) => t.volume.h1 >= 1000).sort((a, b) => momentum(b) - momentum(a))[0]?.address,
+  };
+  for (const p of picks) {
+    if (!p) continue;
+    p.alsoTop = p.role !== 'top' && best.top === p.token.address;
+    p.alsoOg = p.role !== 'og' && best.og === p.token.address;
+    p.alsoMover = p.role !== 'mover' && best.mover === p.token.address && momentum(p.token) > 0;
+  }
+
+  const others = tokens
+    .filter((t) => !used.has(t.address))
+    .sort((a, b) => (b.mcapBacked - a.mcapBacked) || b.marketCap - a.marketCap)
+    .slice(0, 12);
+  return { picks: picks.filter(Boolean), others, roleCandidates: tokens, roleCut: cutUsed };
+}
+
+// `deep` tokens get every pool (accurate liquidity / age); the rest use one batched call.
+export async function fullTokens(refs, deep = new Set()) {
+  const deepRefs = refs.filter((r) => deep.has(r.address));
+  const byChain = new Map();
+  for (const { chain, address } of refs) {
+    if (deep.has(address)) continue;
+    if (!byChain.has(chain)) byChain.set(chain, []);
+    byChain.get(chain).push(address);
+  }
+  const [deepPairs, ...rest] = await Promise.all([
+    allPairsMany(deepRefs),
+    ...[...byChain].map(([c, a]) => pairsForTokens(c, a).catch(() => [])),
+  ]);
+  return aggregate([...deepPairs, ...rest.flat()]);
+}
+
+export const SOL_CA = /\b[1-9A-HJ-NP-Za-km-z]{32,44}\b/g;
+export const EVM_CA = /\b0x[a-fA-F0-9]{40}\b/g;
+
+// Contract addresses written in the post itself.
+export async function mentionedTokens(text, chains, search = searchPairs) {
+  const cas = [...new Set([...(text.match(SOL_CA) || []), ...(text.match(EVM_CA) || [])])].slice(0, 3);
+  const found = await Promise.all(cas.map(async (ca) => {
+    const hit = aggregate(await search(ca).catch(() => []))
+      .find((t) => t.address.toLowerCase() === ca.toLowerCase());
+    if (!hit) return null;
+    return aggregate(await allPairsMany([hit]).catch(() => []))
+      .find((t) => t.address.toLowerCase() === ca.toLowerCase() && chains.includes(t.chain)) || null;
+  }));
+  return found.filter(Boolean);
+}

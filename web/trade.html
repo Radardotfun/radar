@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#07050f" />
+  <meta name="description" content="Buy a Solana coin from Radar with your own wallet. Your wallet shows and signs every buy." />
+  <meta name="robots" content="noindex" />
+  <title>Quick Buy · Radar</title>
+  <link rel="icon" href="/icons/icon32.png" sizes="32x32" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&family=Geist+Mono:wght@500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/trade.css?v=1.7.13" />
+  <script defer src="/solana-web3.min.js?v=1.98.4"></script>
+  <script defer src="/quickbuy-guard.js?v=1.7.13"></script>
+  <script defer src="/trade.js?v=1.7.13"></script>
+</head>
+<body>
+  <header class="nav">
+    <a class="brand" href="/" aria-label="Radar home"><img src="/icons/icon32.png" width="28" height="28" alt="" /><span>Radar</span></a>
+    <a class="back" href="/">tryradar.fun</a>
+  </header>
+
+  <main class="trade-page">
+    <p class="eyebrow">Radar Quick Buy · Solana</p>
+    <h1>Buy <span id="coin-name">…</span></h1>
+    <p class="lede">Connect your wallet, pick an amount, then check and approve the buy in your wallet.</p>
+
+    <section class="coin-box" aria-label="Selected token">
+      <div><span class="label">Token</span><b id="coin-symbol">Looking it up…</b><span id="coin-market" class="coin-market"></span></div>
+      <div class="mint"><span class="label">Contract address</span><code id="coin-mint">—</code><button id="copy-mint" type="button">Copy</button></div>
+    </section>
+
+    <section class="swap-box" aria-label="Quick Buy">
+      <div class="wallet-row">
+        <div class="wallet-copy">
+          <span class="label">Wallet</span>
+          <span id="wallet-status" class="wallet-status">Not connected</span>
+        </div>
+        <select id="wallet-choice" aria-label="Choose a Solana wallet" hidden></select>
+        <button id="connect-wallet" class="button secondary" type="button">Connect wallet</button>
+      </div>
+      <div id="wallet-address-row" class="wallet-address-row" hidden>
+        <code id="wallet-address"></code>
+        <button id="copy-wallet" class="text-button" type="button">Copy address</button>
+        <p>Need SOL? Send it to this wallet from your wallet app or an exchange. Radar does not take deposits.</p>
+      </div>
+
+      <div class="field-head">
+        <label for="sol-amount">Buy amount</label>
+        <span>SOL</span>
+      </div>
+      <div class="amount-presets" role="group" aria-label="Quick amount">
+        <button type="button" data-amount="0.1" aria-pressed="true">0.1 SOL</button>
+        <button type="button" data-amount="0.25" aria-pressed="false">0.25 SOL</button>
+        <button type="button" data-amount="0.5" aria-pressed="false">0.5 SOL</button>
+        <button type="button" data-amount="1" aria-pressed="false">1 SOL</button>
+      </div>
+      <div class="number-input">
+        <input id="sol-amount" type="number" inputmode="decimal" min="0.001" max="25" step="0.001" value="0.1" autocomplete="off" aria-label="SOL amount" />
+        <span>SOL</span>
+      </div>
+
+      <div class="field-head slippage-head">
+        <label for="slippage">Max slippage</label>
+        <span>%</span>
+      </div>
+      <div class="number-input short-input">
+        <input id="slippage" type="number" inputmode="decimal" min="0.1" max="50" step="0.1" value="10" autocomplete="off" aria-label="Maximum slippage percentage" />
+        <span>%</span>
+      </div>
+      <p class="field-help">The most the price can move before the buy is refused.</p>
+
+      <div class="fee-box">
+        <b>Fees and checks</b>
+        <p>PumpPortal builds the buy and charges 0.5% of it. Radar adds a 0.0001 SOL priority fee so it lands, and Solana network fees apply. Before your wallet sees it, Radar checks that only your wallet pays, that it uses known swap programs, and that a simulation spends no more than your amount plus fees.</p>
+      </div>
+
+      <button id="buy-button" class="button primary" type="button" disabled>Connect a wallet to buy</button>
+      <p id="page-message" class="message" role="status" aria-live="polite">This buy is sent to Solana mainnet.</p>
+    </section>
+
+    <section id="after-buy" class="after-buy" hidden aria-live="polite">
+      <div class="success-head"><span id="status-dot" class="success-dot"></span><b id="buy-status">Buy sent</b><a id="tx-link" target="_blank" rel="noopener noreferrer" hidden>View on Solscan</a></div>
+      <p id="confirmation-message">Sent to Solana.</p>
+      <h2>Open it in a terminal</h2>
+      <div class="terminal-links">
+        <a id="link-axiom" target="_blank" rel="noopener noreferrer">Axiom</a>
+        <a id="link-padre" target="_blank" rel="noopener noreferrer">Padre</a>
+        <a id="link-fomo" target="_blank" rel="noopener noreferrer">Fomo</a>
+        <a id="link-larpcheck" target="_blank" rel="noopener noreferrer">LarpCheck</a>
+      </div>
+    </section>
+
+    <aside class="wallet-note">
+      <b>Your wallet, your keys</b>
+      <span>Radar never asks for your seed phrase or private key and never holds your SOL. Your wallet shows each buy and only sends it if you approve.</span>
+    </aside>
+    <p class="risk">Memecoins are extremely risky and can go to zero. Radar's checks are not a guarantee against scams or losses. Not financial advice.</p>
+  </main>
+
+  <footer><span>Radar</span><a href="/privacy">Privacy</a><a href="https://pumpportal.fun/fees/" target="_blank" rel="noopener noreferrer">PumpPortal fees</a><a href="https://pumpportal.fun/legal/" target="_blank" rel="noopener noreferrer">PumpPortal terms</a></footer>
+</body>
+</html>

@@ -1,0 +1,13 @@
+import { makeRpc, analyzeLaunch } from '../extension/src/lib/solana.js';
+const mint = process.argv[2];
+const pairs = await (await fetch(`https://api.dexscreener.com/tokens/v1/solana/${mint}`)).json();
+const launchMs = Math.min(...pairs.map(p => p.pairCreatedAt).filter(Boolean));
+console.log(pairs.map(p=>p.dexId+':'+p.pairAddress).join(' '), new Date(launchMs).toISOString());
+const rc = await (await fetch(`https://api.rugcheck.xyz/v1/tokens/${mint}/report`)).json().catch(() => ({}));
+const hintMs = Math.min(launchMs, rc.detectedAt ? Date.parse(rc.detectedAt) : Infinity);
+console.log('hint', new Date(hintMs).toISOString());
+const rpc = makeRpc(process.env.RPC || undefined);
+const t = Date.now();
+const r = await analyzeLaunch(rpc, mint, launchMs, pairs.map(p => p.pairAddress), { maxPages: +(process.env.PAGES || 8), hintMs });
+delete r.cache;
+console.log(JSON.stringify(r, null, 1).slice(0, 2500), '\n', (Date.now() - t) / 1000, 's');

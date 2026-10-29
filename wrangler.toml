@@ -1,0 +1,14 @@
+name = "narrative-radar"
+main = "server/worker.js"
+compatibility_date = "2026-09-01"
+compatibility_flags = ["nodejs_compat"]
+
+[observability]
+enabled = true
+
+[ai]
+binding = "AI"
+
+# Web app (mobile) and the extension download, built by scripts/build-web.mjs.
+[assets]
+directory = "./dist/web"

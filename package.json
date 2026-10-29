@@ -1,0 +1,14 @@
+{
+  "name": "narrative-radar",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "latest"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.10"
+  }
+}

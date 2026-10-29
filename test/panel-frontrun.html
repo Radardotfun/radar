@@ -1,0 +1,47 @@
+<!doctype html>
+<!-- Manual check of the Frontrun buy sheet in the real panel. The live backend finds the coins; the frontrun:* requests
+     are answered by a fake: two dummy wallets, orders checked with the real buyBody() guards, and a made-up signature.
+     Nothing is sent to Frontrun and nothing is traded. Serve the repo root (python -m http.server) and open
+     /test/panel-frontrun.html. ?settings shows the settings view; ?off shows it not connected; ?theme=light|dim|dark -->
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Panel: Frontrun</title>
+<style>html,body{margin:0;height:100%;background:#000}#root{width:400px;height:100vh;margin:0 auto}</style></head>
+<body><div id="root"></div>
+<script type="module">
+import { makeHandlers, DEFAULTS } from '../extension/src/lib/handlers.js';
+import { buyBody } from '../extension/src/lib/frontrun.js';
+import { useBackend, mountInline } from '../extension/src/ui/radar.js';
+
+const q = new URLSearchParams(location.search);
+const BONK = 'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263';
+const mem = new Map();
+const h = makeHandlers({
+  settings: async () => DEFAULTS,
+  store: { get: async (k) => mem.get(k) ?? null, set: async (k, v) => { mem.set(k, v); } },
+  openWindow: (url) => window.open(url),
+  rpcUrl: async () => null,
+  ready: Promise.resolve(),
+});
+const wallets = [
+  { address: '7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU', name: 'main', sol: 1.284 },
+  { address: '9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM', name: 'snipes', sol: 0.42 },
+];
+let connected = !q.has('off');
+window.orders = [];
+h['frontrun:status'] = async () => (connected ? { connected: true, wallets } : { connected: false });
+h['frontrun:disconnect'] = async () => { connected = false; return { connected: false }; };
+h['frontrun:buy'] = async (order) => {
+  const body = buyBody(order); // the real guards: throws on a bad amount or slippage
+  window.orders.push(body);
+  await new Promise((r) => setTimeout(r, 900));
+  return { signature: '5'.repeat(88), confirmed: true, status: 'SUCCESS', wallet: body.walletAddress || wallets[0].address };
+};
+useBackend(h, { css: '../extension/src/ui/radar.css' });
+
+const theme = q.get('theme') || 'dark';
+document.body.style.background = theme === 'light' ? '#fff' : theme === 'dim' ? '#15202b' : '#000';
+const radar = await mountInline(document.getElementById('root'), theme);
+window.radar = radar;
+if (q.has('settings')) { radar.view = 'settings'; radar.renderBody(); }
+else radar.scan({ post: { text: `the og solana dog is still here $BONK ${BONK}`, author: 'test', url: 'https://x.com/test/status/1' }, source: { kind: '@test', label: 'Frontrun buy check' } });
+</script></body></html>
