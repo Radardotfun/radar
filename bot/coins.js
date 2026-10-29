@@ -32,28 +32,39 @@ export function pickNamed(tk, tokens, text) {
     .sort((a, b) => Number(named(b)) - Number(named(a)) || Number(!!b.mcapBacked) - Number(!!a.mcapBacked) || (b.marketCap || 0) - (a.marketCap || 0))[0] || null;
 }
 
-// A copycat of the named coin: the same ticker or name, or a name or ticker built on its ticker ("Hypurr",
-// "popurrcat" for PURR; only tickers of 3+ letters, "VI" is inside too many words).
+// A copycat of the named coin: its ticker (alone or with a number after it, "SI276" for SI) or its name, or a name or
+// ticker built on its ticker ("Hypurr", "popurrcat" for PURR; only tickers of 3+ letters, "VI" is inside too many words).
 function sameCoin(t, n) {
-  if (t.address === n.address || sym(t) === sym(n)) return true;
+  const base = sym(n);
+  if (t.address === n.address || (sym(t).startsWith(base) && /^\d*$/.test(sym(t).slice(base.length)))) return true;
   if (lower(t.name).length >= 3 && lower(t.name) === lower(n.name)) return true;
   const k = sym(n).toLowerCase();
   return k.length >= 3 && `${lower(t.name)} ${sym(t).toLowerCase()}`.includes(k);
 }
 
 // The judge's scale (server/narrative.js): 90+ made for this exact story, 75-89 the central subject's own coin,
-// 60-74 only the same kind of subject. The bot posts in public, so it names only the first two.
-export const ON_STORY = 75;
+// 60-74 only the same kind of subject. The bot posts in public, so it names only coins at 80 and up (78 let "Red Kitten
+// Crew" through for a tiger in a box marked "free kitten").
+export const ON_STORY = 80;
 
 const SOL_CA = /\b[1-9A-HJ-NP-Za-km-z]{32,44}\b/g;
+
+// A post that is a picture with at most a short caption (links and @handles don't count).
+export const picturePost = (post) => (post?.images?.length || 0) > 0 && String(post.text || '').replace(/https?:\/\/\S+|@\w+/g, '').trim().length <= 80;
+
+// The coin to lead with among those launched with the post's own picture as their logo: the biggest market cap that
+// real liquidity backs, else the one trading most.
+const leadOf = (tokens) => [...tokens].sort((a, b) => Number(!!b.mcapBacked) - Number(!!a.mcapBacked) || (b.marketCap || 0) - (a.marketCap || 0) || (b.volume?.h24 || 0) - (a.volume?.h24 || 0))[0] || null;
 
 /**
  * res: the scan (findCoins), post: the tagged post. search(q) -> DexScreener pairs. lookupCa(address) -> the token
  * at that address (or the token of the pool at it), null when it is no token, and throws when DexScreener can't say.
- * -> { named, picks }: the coin the post names (or null) and the three story picks, as pickThree gives them. The
- * named coin competes for the roles too, so Highest MC is never a smaller coin than the post's own.
+ * matchImages(postImages, logoUrls) -> indexes of the logos that show the post's picture.
+ * -> { named, how, picks }: the coin the post names or pictures (or null), how it was found ('post': its CA or ticker;
+ * 'picture': its logo is the post's picture) and the three story picks, as pickThree gives them. That coin competes for
+ * the roles too, so Highest MC is never a smaller coin than the post's own.
  */
-export async function botCoins(res, post, { search, lookupCa, chains = ['solana'] }) {
+export async function botCoins(res, post, { search, lookupCa, matchImages, chains = ['solana'] }) {
   const scanned = [...(res?.roleCandidates || []), ...(res?.picks || []).map((p) => p.token), ...(res?.others || []), res?.techMatch].filter((t) => t?.address);
   const text = [post?.text, post?.quoted, post?.parent].filter(Boolean).join('\n');
   let named = res?.mentioned?.[0] || null;
@@ -77,15 +88,28 @@ export async function botCoins(res, post, { search, lookupCa, chains = ['solana'
       if (named) break;
     }
   }
+  let how = named ? 'post' : null;
+  // A picture post that names no coin: the coins launched with that very picture as their logo, among every coin the
+  // scan searched (judged or not; up to 16 logos).
+  let pictured = [];
+  if (!named && matchImages && picturePost(post)) {
+    const have = new Set();
+    const logos = [...scanned, ...(res?.pool || [])].filter((t) => t?.image && live(t) && !MAJORS.has(sym(t)) && !have.has(t.address) && have.add(t.address)).slice(0, 16);
+    if (logos.length) pictured = (await matchImages(post.images, logos.map((t) => t.image)).catch(() => [])).map((i) => logos[i]).filter(Boolean);
+    named = leadOf(pictured);
+    if (named) how = 'picture';
+  }
   const seen = new Set();
   const story = scanned.filter((t) => {
     if (seen.has(t.address)) return false;
     seen.add(t.address);
     return (t.relevance || 0) >= ON_STORY && !MAJORS.has(sym(t)) && !(named && sameCoin(t, named));
   });
+  // Other coins with the same picture under another name were made for this post too.
+  for (const t of pictured) if (!seen.has(t.address) && !sameCoin(t, named)) { seen.add(t.address); story.push({ ...t, relevance: 99 }); }
   if (named) story.push({ ...named, relevance: Math.max(100, ...story.map((t) => t.relevance || 0)) });
   // The panel's tiers (narrative.js findCoins) without its last fallback to every judged coin, so Highest MC is the
   // biggest coin on the story itself.
   const { picks } = story.length ? pickThree(story, { cuts: [0.85, 0.7], allowFallback: false }) : { picks: [] };
-  return { named, picks };
+  return { named, how, picks };
 }

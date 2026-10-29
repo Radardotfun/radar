@@ -1,8 +1,9 @@
 // Cloudflare Worker: the hosted narrative engine. Runs 24/7, independent of anyone's laptop.
 //   POST /interpret { post }                         -> { narrative, coinable, terms }
 //   POST /judge     { narrative, post, candidates }  -> { matches: [{ i, score, reason }] }
+//   POST /match     { post, logos }                  -> { same: [i] }: coin logos showing the post's own picture
 //   GET  /larpcheck?address=<CA>                     -> Larpcheck's verdict on the coin (see below)
-import { engine, interpret, judge, storyCheck, transcribe } from './narrative.js';
+import { engine, interpret, judge, storyCheck, transcribe, sameImage, LOGO_HOST } from './narrative.js';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -110,6 +111,12 @@ async function route(kind, request, env, ctx) {
     // Re-checked every few hours at most: a story's evidence doesn't change by the minute.
     const key = await sha256(JSON.stringify(['s', post.url || post.text, post.author, coin?.address || null]));
     return cachedJson(ctx, `s/${key}`, 3 * 3600, () => storyCheck(ai, { post, narrative, coin }), debug);
+  }
+  if (kind === 'match') {
+    const logos = (Array.isArray(body.logos) ? body.logos : []).filter((u) => typeof u === 'string' && LOGO_HOST.test(u)).slice(0, 16);
+    if (!post.images.length || !logos.length) return json(400, { error: 'Nothing to compare' });
+    const key = await sha256(JSON.stringify(['m', post.images, logos]));
+    return cachedJson(ctx, `m/${key}`, 3600, () => sameImage(ai, { images: post.images, logos }), debug);
   }
   const candidates = (Array.isArray(body.candidates) ? body.candidates : []).slice(0, 30).map(cleanCandidate);
   const narrative = clip(body.narrative, 200);
@@ -280,7 +287,7 @@ export default {
         .map((k) => { const n = String(env[`${k}_API_KEY`] || '').split(/[\s,]+/).filter(Boolean).length; return n ? `${k.toLowerCase()} x${n}` : null; }),
       env.AI && 'workers-ai'].filter(Boolean).join(' > ') || 'none',
     });
-    if (request.method === 'POST' && ['/interpret', '/judge', '/transcribe', '/story'].includes(pathname)) {
+    if (request.method === 'POST' && ['/interpret', '/judge', '/transcribe', '/story', '/match'].includes(pathname)) {
       try {
         return await route(pathname.slice(1), request, env, ctx);
       } catch (e) {

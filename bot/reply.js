@@ -1,4 +1,5 @@
-// The Radar bot's reply to a tag: first the coin the post itself names (📌, from bot/coins.js), then the story's three
+// The Radar bot's reply to a tag: first the coin the post itself names (📌) or pictures (🖼, its logo is the post's
+// picture; both from bot/coins.js), then the story's three
 // picks, as the panel picks them (market.js pickThree): the highest market cap, the OG (first launched) and the mover
 // (trading hardest right now). Each carries the number that earned the pick and its full contract address, so a
 // copycat with the same ticker can't pass for it. No checks.
@@ -51,7 +52,7 @@ export function botReply(result, postUrl, now = Date.now(), { full = true, links
   // The roles the named coin won itself ("📌 In the post (Highest MC, OG)") instead of lines repeating it.
   if (named) {
     const won = ROLES.filter(([role]) => picks.find((p) => p.role === role)?.token.address === named.address).map(([, label]) => label.replace(/^\S+ /, ''));
-    add(`📌 In the post${won.length ? ` (${won.join(', ')})` : ''}`, named, usd(named.marketCap));
+    add(`${result.how === 'picture' ? '🖼 Same picture as the post' : '📌 In the post'}${won.length ? ` (${won.join(', ')})` : ''}`, named, usd(named.marketCap));
   }
   for (const [role, label] of ROLES) {
     const t = picks.find((p) => p.role === role)?.token;

@@ -122,6 +122,12 @@ async function lookupCa(ca) {
   return aggregate(pairs).find((t) => t.address === address) || null;
 }
 
+// Which coin logos show the post's own picture (the engine's /match: one AI call comparing up to 16 logos).
+async function matchImages(images, logos) {
+  const r = await fetch(`${API_BASE}/match`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ post: { images }, logos }), signal: AbortSignal.timeout(30_000) });
+  return r.ok ? (await r.json()).same || [] : [];
+}
+
 // One post, as the bot would answer it. Kept 10 minutes, so a post tagged many times is scanned once.
 const scans = new Map();
 async function replyFor(postUrl) {
@@ -139,7 +145,7 @@ async function replyFor(postUrl) {
     // public, so every candidate is judged.
     const scan = await handlers.coins({ post, judge: true });
     if (scan.engineError) throw new Error('Radar could not read this post right now');
-    const res = { ...scan, ...await botCoins(scan, post, { search: searchPairs, lookupCa, chains: DEFAULTS.chains }) };
+    const res = { ...scan, ...await botCoins(scan, post, { search: searchPairs, lookupCa, matchImages, chains: DEFAULTS.chains }) };
     return { text: botReply(res, postUrl) || NO_COINS, short: botReply(res, postUrl, Date.now(), { full: false }) || NO_COINS, links: botReply(res, postUrl, Date.now(), { links: true }) || NO_COINS, story: res.narrative || '' };
   })();
   scans.set(postUrl, { at: Date.now(), p });

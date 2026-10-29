@@ -83,3 +83,27 @@ const again = await botCoins({ mentioned: [], picks: [], roleCandidates: fakes }
 assert.equal(again.named, purr);
 await assert.rejects(botCoins({ mentioned: [], picks: [] }, { text: 'CA 8RNUw4N655VSrZKuhGdywhbSMDTrheguFPfxbpE2NZHQ' }, { search: async () => [], lookupCa: async () => { throw new Error('DexScreener rate limited'); } }), /rate limited/, 'a busy lookup retries the tag');
 console.log('PASS bot: a CA in the post is looked up again when the scan missed it');
+
+// A picture post that names no coin: the coin whose logo is that very picture leads (🖼).
+import { picturePost } from '../bot/coins.js';
+assert.equal(picturePost({ text: 'https://t.co/x @someone', images: ['https://pbs.twimg.com/media/a.jpg'] }), true);
+assert.equal(picturePost({ text: 'a long caption '.repeat(8), images: ['https://pbs.twimg.com/media/a.jpg'] }), false);
+assert.equal(picturePost({ text: '', images: [] }), false);
+const owl = tok('OWLO', 'Owlo', '5h6eVq4SCz7zF9FTQj7t8bvzrHwEntcJLU2WoGmTpump', 41_000, { image: 'https://cdn.dexscreener.com/cms/images/owl', relevance: 0 });
+const owlCopy = tok('OWLO', 'Owlo', '6h6eVq4SCz7zF9FTQj7t8bvzrHwEntcJLU2WoGmTpump', 4_000, { image: 'https://cdn.dexscreener.com/cms/images/owl2', relevance: 0 });
+const otherOwl = tok('HOOT', 'Hoot', '7h6eVq4SCz7zF9FTQj7t8bvzrHwEntcJLU2WoGmTpump', 300_000, { image: 'https://cdn.dexscreener.com/cms/images/hoot', relevance: 0 });
+let asked = null;
+const pic = await botCoins({ mentioned: [], picks: [], roleCandidates: [], pool: [otherOwl, owlCopy, owl] }, { text: '', images: ['https://pbs.twimg.com/media/owl.jpg'] }, {
+  search: async () => [], matchImages: async (images, logos) => { asked = logos; return [1, 2]; },
+});
+assert.deepEqual(asked, [otherOwl.image, owlCopy.image, owl.image], 'every searched coin with a logo is compared');
+assert.equal(pic.named, owl, 'the bigger coin with the same picture leads; a different owl does not count');
+assert.equal(pic.how, 'picture');
+assert.match(botReply(pic, 'x', now), /🖼 Same picture as the post \(Highest MC\): \$OWLO · \$41\.0K\n5h6eVq4SCz7zF9FTQj7t8bvzrHwEntcJLU2WoGmTpump\n/);
+// A post that names its coin needs no picture check.
+const skip = await botCoins({ mentioned: [purr], picks: [] }, { text: '', images: ['https://pbs.twimg.com/media/owl.jpg'] }, { search: async () => [], matchImages: async () => { throw new Error('not called'); } });
+assert.equal(skip.how, 'post');
+console.log('PASS bot: a picture post leads with the coin whose logo is that picture');
+const si276 = tok('SI276', 'Super Inu 276', 'HMYd9tosnUXuNHmq7pXmoePRVBLBBjA3JBfydq6upump', 20_000, { createdAt: Date.parse('2026-01-01') });
+assert.deepEqual((await botCoins({ mentioned: [superInu], picks: [], roleCandidates: [si276] }, { text: '' }, { search: async () => [] })).picks.map((p) => p.token.symbol), ['SI'], 'SI276 is a copy of SI');
+console.log('PASS bot: a ticker with a number added is a copy');

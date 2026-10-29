@@ -322,6 +322,44 @@ const CA = /\b[1-9A-HJ-NP-Za-km-z]{32,44}\b|\b0x[a-fA-F0-9]{40}\b/g;
 const ONE_CA = /^(?:[1-9A-HJ-NP-Za-km-z]{32,44}|0x[a-fA-F0-9]{40})$/;
 const MAJORS = new Set('BTC ETH SOL USDC USDT BNB XRP WBTC WETH WSOL'.split(' '));
 
+// Same picture: deployers launch a coin with the post's own image as its logo, so a coin whose logo is that picture
+// was made for the post.
+const MATCH_SYSTEM = `You compare pictures. The first images come from a post on X. Each image after them is a coin's logo, introduced by its number. List the numbers of the logos that show the same picture as one of the post's images: the same photo, drawing or video frame, even when cropped, resized, slightly recoloured, or with text, a border or a background added. A different picture of the same kind of subject (another cat, another photo of the same person, the same character drawn differently) does not count. Give an empty list when none match.`;
+
+const MATCH_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['same'],
+  properties: { same: { type: 'array', items: { type: 'integer' } } },
+};
+
+// A coin logo, from DexScreener's image host only, at 128 px (about 3 KB) instead of the 800 px it links.
+export const LOGO_HOST = /^https:\/\/(?:cdn|dd)\.dexscreener\.com\//;
+async function logoBlock(url) {
+  if (!LOGO_HOST.test(url)) return null;
+  const small = url.startsWith('https://cdn.dexscreener.com/cms/images/') ? `${url.split('?')[0]}?width=128&height=128&quality=80&format=auto` : url;
+  const res = await fetch(small, { headers: { accept: 'image/jpeg,image/png,image/webp' }, signal: AbortSignal.timeout(6000) }).catch(() => null);
+  if (!res?.ok) return null;
+  const type = (res.headers.get('content-type') || '').split(';')[0];
+  if (!/^image\/(jpeg|png|gif|webp)$/.test(type)) return null;
+  const bytes = new Uint8Array(await res.arrayBuffer());
+  if (bytes.length > 400_000) return null;
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return { type: 'image', source: { type: 'base64', media_type: type, data: btoa(bin) } };
+}
+
+/** { images[] (the post's), logos[] (coin logo urls) } -> { same[] }: indexes of the logos showing the post's picture */
+export async function sameImage(ai, { images, logos }) {
+  const [post, marks] = await Promise.all([imageBlocks(images), Promise.all(logos.map(logoBlock))]);
+  if (!post.length || !marks.some(Boolean)) return { same: [] };
+  const content = [{ type: 'text', text: 'The post\'s images:' }, ...post];
+  marks.forEach((b, i) => { if (b) content.push({ type: 'text', text: `Logo ${i}:` }, b); });
+  content.push({ type: 'text', text: 'Which logo numbers show the same picture as the post?' });
+  const r = await ask(ai, MATCH_SYSTEM, content, MATCH_SCHEMA);
+  return { same: [...new Set((r.same || []).filter((i) => Number.isInteger(i) && marks[i]))], model: r.model };
+}
+
 /** post: { text, quoted, card, author, url, images[] } -> { narrative, coinable, terms[], anchors[], tickers[], cas[] } */
 export async function interpret(ai, post) {
   const imgs = await imageBlocks(post.images);
