@@ -84,6 +84,7 @@ const I = {
   og: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M6 3h12M6 21h12M7 3c0 5 10 6 10 9s-10 4-10 9M17 3c0 5-10 6-10 9"/></svg>',
   gear: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.8-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1.1-1.5 1.7 1.7 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.8 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.1a1.7 1.7 0 001.5-1.1 1.7 1.7 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.8.3H9a1.7 1.7 0 001-1.5V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.8V9a1.7 1.7 0 001.5 1H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z"/></svg>',
   bolt: '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z"/></svg>',
+  bell: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 1112 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 003.4 0"/></svg>',
   pin: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 21s-7-6.2-7-11a7 7 0 1114 0c0 4.8-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></svg>',
   copy: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2.5"/><path d="M5 15V5a2 2 0 012-2h10"/></svg>',
   check: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7"/></svg>',
@@ -224,8 +225,11 @@ class Radar {
     this.frSel = new Map(); // address -> { sol, bps, wallet } for the buy sheet
     this.frBusy = new Set();
     this.frMsg = new Map(); // address -> result line (HTML built from validated values)
+    this.alerts = null; // { watches, feed, unread, notifications } from the background; null where alerts don't exist
+    this.watchBusy = false;
     this.render();
     this.loadFrontrun();
+    this.loadAlerts();
     this.listenForBuys();
     send('settings').then((s) => { this.refreshSec = s.refreshSec || 10; }).catch(() => {});
     document.addEventListener('visibilitychange', () => this.updateLive());
@@ -479,6 +483,8 @@ class Radar {
       else if (b.dataset.act === 'rescan') this.rescan();
       else if (b.dataset.act === 'share') this.share();
       else if (b.dataset.act === 'settings') { this.view = this.view === 'settings' ? 'scan' : 'settings'; this.renderBody(); }
+      else if (b.dataset.act === 'watch') this.watch();
+      else if (b.dataset.act === 'unwatch') this.unwatch(b.dataset.id);
       else if ('story' in b.dataset) {
         this.expanded.has('story') ? this.expanded.delete('story') : this.expanded.add('story');
         this.renderHead();
@@ -505,6 +511,7 @@ class Radar {
         <span class="kbd">↵</span>
       </form>` : ''}
       ${source ? `<div class="source"><b>${esc(source.kind)}</b><span>${esc(source.label)}</span></div>` : ''}
+      ${this.watchHtml()}
       ${this.narrativeHtml()}`;
     // Search lives in the toolbar popup; on X the panel only shows what was scanned.
     this.input = this.headEl.querySelector('input');
@@ -591,7 +598,8 @@ class Radar {
       const trends = (this.trends || []).slice(0, 6);
       this.bodyEl.innerHTML = `<div class="empty"><div class="big">Scan any post on X</div>
         <p>${esc(this.hint || (this.inline ? 'Search a narrative, a ticker or a CA above.' : 'Tap the radar under any post or trend.'))}</p>
-        ${trends.length ? `<div class="trend-list"><span>Trending</span>${trends.map((t) => `<button data-trend="${esc(t)}">${esc(t)}</button>`).join('')}</div>` : ''}</div>`;
+        ${trends.length ? `<div class="trend-list"><span>Trending</span>${trends.map((t) => `<button data-trend="${esc(t)}">${esc(t)}</button>`).join('')}</div>` : ''}</div>
+        ${this.inline && (this.alerts?.watches.length || this.alerts?.feed.length) ? this.alertsHtml() : ''}`;
       return;
     }
     if (!picks.length && !mentioned.length && !techMatch && this.state.mode === 'ai' && this.state.coinable === false) {
@@ -601,7 +609,7 @@ class Radar {
     }
     if (!picks.length && !mentioned.length && !techMatch) {
       this.bodyEl.innerHTML = `<div class="empty"><div class="big">No live coins for this narrative</div>
-        <p>Nothing trading on-chain is about this yet.</p></div>`;
+        <p>Nothing trading on-chain is about this yet.</p>${this.watchHtml({ cta: true })}</div>`;
       return;
     }
     let html = '';
@@ -925,10 +933,95 @@ class Radar {
     }
   }
 
+  /* ----- alerts (extension only) ----- */
+  // The background answers alerts:list only in the extension; on the web and in the userscript it's an unknown request,
+  // and every alert control stays hidden.
+  loadAlerts() {
+    return send('alerts:list')
+      .then((a) => {
+        this.alerts = a;
+        // Opening the toolbar popup counts as seeing the alerts: the badge clears.
+        if (this.inline && a.unread) send('alerts:read').then((b) => { this.alerts = b; }).catch(() => {});
+        this.renderHead();
+        // The popup's home and the settings view both list the alerts.
+        if (this.view === 'settings' || !this.state.ts) this.renderBody();
+      })
+      .catch(() => { this.alerts = null; });
+  }
+
+  watchedPost() {
+    const id = String(this.lastPost?.url || '').match(/\/status\/(\d{5,25})/)?.[1];
+    if (!id || !this.alerts || this.state.source?.kind === 'Search') return null;
+    return { id, watch: this.alerts.watches.find((w) => w.id === id) || null };
+  }
+
+  watchHtml({ cta = false } = {}) {
+    const w = this.watchedPost();
+    if (!w) return '';
+    if (w.watch) {
+      const h = Math.max(1, Math.round((w.watch.until - Date.now()) / 3_600_000));
+      return `<div class="watch on${cta ? ' cta' : ''}">${I.bell}<span>Watching this post · ${h}h left</span><button type="button" data-act="unwatch" data-id="${esc(w.id)}">Stop</button></div>`;
+    }
+    return `<button type="button" class="watch${cta ? ' cta' : ''}" data-act="watch"${this.watchBusy ? ' disabled' : ''}>${I.bell}<span>${this.watchBusy ? 'Setting up the alert…' : 'Alert me when a coin launches off this post'}</span></button>`;
+  }
+
+  async watch() {
+    if (this.watchBusy || !this.lastPost) return;
+    this.watchBusy = true;
+    this.renderHead();
+    if (!this.state.picks?.length) this.renderBody();
+    try {
+      this.alerts = await send('alerts:watch', { post: this.lastPost });
+      this.toast(`Watching for 24h. Radar pings you when a coin launches off it${this.alerts.notifications ? '' : '. Turn on desktop alerts in the toolbar popup'}`, 3600);
+    } catch (err) {
+      this.toast(err.message, 3600);
+    }
+    this.watchBusy = false;
+    this.renderHead();
+    if (!this.state.picks?.length || this.view === 'settings') this.renderBody();
+  }
+
+  async unwatch(id) {
+    try { this.alerts = await send('alerts:stop', { id }); } catch (err) { this.toast(err.message, 3000); }
+    this.renderHead();
+    if (!this.state.picks?.length || this.view === 'settings') this.renderBody();
+  }
+
+  // Desktop notifications need the optional permission, which only the toolbar popup can ask for (inside the click).
+  async allowNotifications() {
+    const api = globalThis.browser ?? globalThis.chrome;
+    let granted = false;
+    try { granted = await api.permissions.request({ permissions: ['notifications'] }); } catch { /* refused */ }
+    this.toast(granted ? 'Desktop alerts on' : 'Desktop alerts stay off. Alerts still show on X and on the toolbar icon', 3000);
+    await this.loadAlerts();
+  }
+
+  alertsHtml() {
+    const a = this.alerts;
+    if (!a) return '';
+    const left = (w) => `${Math.max(1, Math.round((w.until - Date.now()) / 3_600_000))}h left`;
+    const watches = a.watches.map((w) => `<div class="al-w"><div><b>${w.author ? `@${esc(w.author)}` : 'Post'}</b><span>${esc(w.label)}</span></div>
+      <em>${left(w)}</em><button type="button" data-act="unwatch" data-id="${esc(w.id)}">Stop</button></div>`).join('');
+    const hits = a.feed.slice(0, 5).map((f) => {
+      const c = f.coin;
+      const larp = f.larp ? `${f.larp.by === 'Larpcheck' ? 'Larpcheck' : 'Larp check'} ${esc(f.larp.word)}${f.larp.score != null ? ` ${esc(f.larp.score)}` : ''}` : '';
+      const link = f.buy || f.chart;
+      return `<a class="al-hit" href="${esc(link)}" target="_blank" rel="noopener noreferrer"><b>$${esc(String(c.symbol || '').trim())}</b>
+        <span>${esc([CHAIN_LABEL[c.chain] || c.chain, usd(c.marketCap), age(f.at)].filter(Boolean).join(' · '))}</span>${larp ? `<em>${larp}</em>` : ''}</a>`;
+    }).join('');
+    return `<section class="settings">
+      <div class="set-head"><h3>Alerts</h3>${a.watches.length ? `<span class="verdict ok">${a.watches.length} WATCHING</span>` : ''}</div>
+      <p>Tap the bell under a post in the Radar panel. For the next 24 hours Radar checks every minute for a coin launched off it, runs the larp check, and pings you with a buy button.</p>
+      ${watches ? `<div class="al-list">${watches}</div>` : ''}
+      ${hits ? `<div class="section-label"><span>Latest alerts</span></div><div class="al-list">${hits}</div>` : ''}
+      ${a.notifications ? '<p class="fine">Desktop alerts are on.</p>' : '<button class="fr-btn" data-alerts-notify>Turn on desktop alerts</button><p class="fine">Without them, alerts show on any open X tab and as a number on the Radar icon.</p>'}
+    </section>`;
+  }
+
   settingsHtml() {
     const f = this.frontrun || {};
     const wallets = (f.wallets || []).map((w) => `<div class="fr-w"><b>${esc(w.name || 'Wallet')}</b><span>${short(w.address)}</span><em>~${w.sol.toFixed(3)} SOL</em></div>`).join('');
-    return `<section class="settings">
+    return `${this.alertsHtml()}<section class="settings">
       <div class="set-head"><h3>Frontrun</h3>${f.connected ? '<span class="verdict ok">CONNECTED</span>' : ''}</div>
       <p>Buy the coins Radar finds with your Frontrun wallet. Frontrun holds the wallet and signs. Radar sends an order only after you press Buy on a coin card.</p>
       ${f.connected
@@ -1110,6 +1203,10 @@ class Radar {
 
   async onBodyClick(e) {
     if (e.target.closest('[data-act-back]')) { this.view = 'scan'; this.renderBody(); return; }
+    if (e.target.closest('[data-act="watch"]')) { await this.watch(); return; }
+    const stop = e.target.closest('[data-act="unwatch"]');
+    if (stop) { await this.unwatch(stop.dataset.id); return; }
+    if (e.target.closest('[data-alerts-notify]')) { await this.allowNotifications(); return; }
     if (e.target.closest('[data-fr-connect]')) { await this.frConnect(); return; }
     if (e.target.closest('[data-fr-disconnect]')) { await this.frDisconnect(); return; }
     const frb = e.target.closest('[data-fr-buy]');

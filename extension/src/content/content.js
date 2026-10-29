@@ -43,7 +43,30 @@
       border:1px solid rgba(255,255,255,.16);box-shadow:0 12px 40px rgba(0,0,0,.4);font:600 13px/1.2 TwitterChirp,-apple-system,"Segoe UI",system-ui,sans-serif;white-space:nowrap;animation:nr-in .35s cubic-bezier(.2,.8,.2,1)}
     .nr-hint::after{content:"";position:absolute;top:100%;right:17px;border:6px solid transparent;border-top-color:#000}
     .nr-hint button{all:unset;cursor:pointer;padding:6px 10px;border-radius:999px;background:#fff;color:#000;font-weight:700;font-size:12px}
-    @keyframes nr-in{from{opacity:0;transform:translateY(6px)}}`;
+    @keyframes nr-in{from{opacity:0;transform:translateY(6px)}}
+    .nr-alerts{position:fixed;right:24px;bottom:210px;z-index:2147483647;display:flex;flex-direction:column;gap:10px;width:330px;max-width:calc(100vw - 32px)}
+    @media (max-width:700px){.nr-alerts{right:16px;bottom:calc(210px + env(safe-area-inset-bottom))}}
+    .nr-alert{position:relative;padding:14px 14px 12px;border-radius:16px;background:#000;color:#fff;border:1px solid rgba(167,139,250,.45);box-shadow:0 16px 48px rgba(0,0,0,.45);
+      font:500 13px/1.4 TwitterChirp,-apple-system,"Segoe UI",system-ui,sans-serif;animation:nr-in .35s cubic-bezier(.2,.8,.2,1)}
+    .nr-alert-top{display:flex;align-items:center;gap:8px;color:#a78bfa;font:700 11px/1 ui-monospace,"SF Mono",Consolas,monospace;letter-spacing:.08em;text-transform:uppercase}
+    .nr-alert-top svg{width:14px;height:14px}
+    .nr-alert-top span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .nr-alert-x{all:unset;cursor:pointer;width:24px;height:24px;display:grid;place-items:center;border-radius:999px;color:#8b939e;font-size:16px;line-height:1}
+    .nr-alert-x:hover{background:rgba(255,255,255,.1);color:#fff}
+    .nr-alert-coin{margin-top:10px;display:flex;align-items:baseline;gap:8px;min-width:0}
+    .nr-alert-coin b{font-size:20px;font-weight:800;letter-spacing:-.01em}
+    .nr-alert-coin span{color:#8b939e;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .nr-alert-meta{margin-top:2px;color:#c9ced6;font-variant-numeric:tabular-nums}
+    .nr-alert-checks{margin-top:10px;display:grid;gap:4px;padding:8px 10px;border-radius:10px;background:#111418;border:1px solid rgba(255,255,255,.07);font-size:12px}
+    .nr-alert-checks div{display:flex;gap:7px;align-items:center}
+    .nr-alert-checks i{width:7px;height:7px;border-radius:50%;flex:none;background:#8b939e}
+    .nr-alert-checks i.ok{background:#3ddc84}.nr-alert-checks i.risk{background:#ff5c6c}.nr-alert-checks i.mid{background:#ffb547}
+    .nr-alert-acts{margin-top:12px;display:grid;grid-template-columns:1fr 1fr;gap:6px}
+    .nr-alert-acts button{all:unset;cursor:pointer;height:34px;padding:0 12px;border-radius:10px;display:inline-flex;align-items:center;justify-content:center;font:700 12.5px/1 TwitterChirp,-apple-system,"Segoe UI",system-ui,sans-serif;white-space:nowrap;
+      border:1px solid rgba(255,255,255,.16);color:#fff;transition:background .15s}
+    .nr-alert-acts button:hover{background:rgba(255,255,255,.1)}
+    .nr-alert-acts button.buy{grid-column:1/-1;background:#fff;color:#000;border-color:#fff}
+    .nr-alert-acts button.buy:hover{background:#e7e9ea}`;
   document.documentElement.appendChild(css);
 
   const textOf = (el) => (el?.innerText || '').trim();
@@ -308,6 +331,61 @@
   // The tip waits for a radar button that's actually on screen.
   addEventListener('scroll', () => { if (hint.state === 'show' && !hint.el?.isConnected) decorateSoon(); }, { passive: true });
   decorate();
+
+  // Alerts (extension only): the background adds a coin launched off a watched post to the alert feed in storage;
+  // every open X tab shows it as a card until it's closed. Only alerts made after the tab opened show.
+  if (!globalThis.__nrHost && ext?.storage?.onChanged) {
+    let shownAt = Date.now();
+    let stack = null;
+    const BELL = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 1112 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 003.4 0"/></svg>';
+    const CHAIN = { solana: 'Solana', robinhood: 'Robinhood Chain', base: 'Base', bsc: 'BNB Chain' };
+    const toneOf = (w) => (['LIKELY LARP', 'LARP'].includes(w) ? 'risk' : ['REAL', 'LIKELY REAL'].includes(w) ? 'ok' : 'mid');
+    // The card's Insta Buy uses the amount picked on the panel's cards (0.1 SOL at first), like the panel itself.
+    const instaSol = () => { try { const v = localStorage.getItem('nr:insta-sol'); return ['0.05', '0.1', '0.25', '0.5', '1'].includes(v) ? v : '0.1'; } catch { return '0.1'; } };
+    const safeOpen = (url, ...rest) => { if (/^https:\/\/(tryradar\.fun|app\.uniswap\.org|dexscreener\.com)\//.test(url)) window.open(url, ...rest); };
+    function showAlert(item) {
+      const c = item.coin;
+      if (!stack?.isConnected) { stack = document.createElement('div'); stack.className = 'nr-alerts'; }
+      document.documentElement.appendChild(stack);
+      while (stack.childElementCount >= 3) stack.firstElementChild.remove();
+      const quick = /^https:\/\/tryradar\.fun\/trade\?/.test(item.buy || '');
+      const sol = instaSol();
+      const larp = item.larp ? `<div><i class="${toneOf(item.larp.word)}"></i>${item.larp.by === 'Larpcheck' ? 'Larpcheck' : 'Larp check'}: <b>${esc(item.larp.word)}${item.larp.score != null ? ` ${esc(item.larp.score)}` : ''}</b></div>` : '<div><i></i>Larp check: not ready yet</div>';
+      const holders = item.holders ? `<div><i class="${item.holders.ok ? 'ok' : 'risk'}"></i>${esc(item.holders.text)}</div>` : '';
+      const card = document.createElement('div');
+      card.className = 'nr-alert';
+      card.setAttribute('role', 'alert');
+      card.innerHTML = `<div class="nr-alert-top">${BELL}<span>New coin off ${item.watch.author ? `@${esc(item.watch.author)}'s` : 'a watched'} post</span><button type="button" class="nr-alert-x" data-x aria-label="Close">×</button></div>
+        <div class="nr-alert-coin"><b>$${esc(String(c.symbol || '').trim())}</b><span>${esc(c.name || '')}</span></div>
+        <div class="nr-alert-meta">${esc([CHAIN[c.chain] || c.chain, c.marketCap ? `${usd(c.marketCap)} MC` : '', c.createdAt ? `launched ${ageOf(c.createdAt)} ago` : ''].filter(Boolean).join(' · '))}</div>
+        <div class="nr-alert-checks">${larp}${holders}</div>
+        <div class="nr-alert-acts">
+          ${item.buy ? `<button type="button" class="buy" data-buy>${quick ? `Insta buy · ${sol} SOL` : 'Trade on Uniswap'}</button>` : ''}
+          <button type="button" data-open>Open in Radar</button><button type="button" data-chart>Chart</button>
+        </div>`;
+      card.addEventListener('click', (e) => {
+        const b = e.target.closest('button');
+        if (!b) return;
+        e.preventDefault();
+        e.stopPropagation();
+        if ('x' in b.dataset) { card.remove(); return; }
+        if ('buy' in b.dataset) {
+          // Opened inside the click, or the browser blocks the window. The buy page still asks the wallet to approve.
+          if (quick) safeOpen(`${item.buy}&sol=${sol}&insta=1`, 'radar-insta', 'popup=yes,width=440,height=780');
+          else safeOpen(item.buy, '_blank', 'noopener');
+        } else if ('chart' in b.dataset) safeOpen(item.chart, '_blank', 'noopener');
+        else if ('open' in b.dataset) { card.remove(); launch({ post: { text: item.watch.url }, source: { kind: 'Alert', label: `$${String(c.symbol || '').trim()} launched off this post` } }); }
+      }, true);
+      stack.appendChild(card);
+    }
+    ext.storage.onChanged.addListener((changes, area) => {
+      if (area !== 'local' || !changes.alerts) return;
+      const fresh = (changes.alerts.newValue?.feed || []).filter((f) => f.at > shownAt);
+      if (!fresh.length) return;
+      shownAt = Math.max(...fresh.map((f) => f.at));
+      for (const item of fresh.slice(0, 3).reverse()) showAlert(item);
+    });
+  }
 
   // Popup "open on page" requests.
   if (!globalThis.__nrHost) ext.runtime.onMessage.addListener((msg) => {

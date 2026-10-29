@@ -1,8 +1,8 @@
 // The Radar bot's reply to a tag: first the coin the post itself names (📌) or pictures (🖼, its logo is the post's
 // picture; both from bot/coins.js), then the story's three
 // picks, as the panel picks them (market.js pickThree): the highest market cap, the OG (first launched) and the mover
-// (trading hardest right now). Each carries the number that earned the pick and its full contract address, so a
-// copycat with the same ticker can't pass for it. No checks.
+// (trading hardest right now). Each carries the number that earned the pick, its chain when that isn't Solana, and its
+// full contract address, so a copycat with the same ticker can't pass for it. No checks.
 // With three addresses a reply runs past 280 characters, which @radardotfunn's Premium allows.
 
 const SITE = 'https://tryradar.fun';
@@ -11,6 +11,8 @@ const ROLES = [
   ['og', '🥇 OG'],
   ['mover', '🔥 Mover'],
 ];
+// A 0x contract doesn't say which chain it's on, so coins off Solana name theirs.
+const CHAIN_TAG = { robinhood: 'Robinhood', base: 'Base', bsc: 'BNB' };
 
 const usd = (n) => (!Number.isFinite(n) || n <= 0 ? '' : n >= 1e9 ? `$${(n / 1e9).toFixed(2)}B` : n >= 1e6 ? `$${(n / 1e6).toFixed(2)}M` : n >= 1e3 ? `$${(n / 1e3).toFixed(1)}K` : `$${Math.round(n)}`);
 
@@ -44,7 +46,7 @@ export function botReply(result, postUrl, now = Date.now(), { full = true, links
     // X refuses a post with more than one cashtag ("Posts are limited to a maximum of one cashtag"), so only the
     // first coin gets its $.
     // The full contract on its own line, so it copies with one long-press.
-    const head = `${label}: ${lines.length ? '' : '$'}${ticker(t.symbol)}${stat ? ` · ${stat}` : ''}`;
+    const head = `${label}: ${lines.length ? '' : '$'}${ticker(t.symbol)}${stat ? ` · ${stat}` : ''}${CHAIN_TAG[t.chain] ? ` · ${CHAIN_TAG[t.chain]}` : ''}`;
     if (links) lines.push(head, `https://dexscreener.com/${String(t.chain || 'solana').replace(/[^a-z]/g, '')}/${contract(t.address)}`, '');
     else if (full) lines.push(head, contract(t.address), '');
     else lines.push(`${head} · ${shortCa(t.address)}`);

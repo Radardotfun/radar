@@ -54,6 +54,7 @@ export const ON_STORY = 80;
 
 const SOL_CA = /\b[1-9A-HJ-NP-Za-km-z]{32,44}\b/g;
 const EVM_CA = /\b0x[a-fA-F0-9]{40}\b/;
+const EVM_CAS = /\b0x[a-fA-F0-9]{40}\b/g;
 
 // The story's main runner: the biggest liquidity-backed coin the judge kept at all (60+) whose ticker or name is a name
 // the post itself uses. The judge sometimes rates it only "the same subject": a $9.7M GTA VI trading $24M a day got 62
@@ -89,13 +90,14 @@ export async function botCoins(res, post, { search, lookupCa, matchImages, chain
   // The scan's CA lookup gives up when DexScreener is busy, and a guess from the ticker then names a copycat. An
   // address in the post is looked up again here; if DexScreener still can't answer, the tag is retried later.
   if (!named && lookupCa) {
-    for (const ca of [...new Set(text.match(SOL_CA) || [])].slice(0, 3)) {
+    for (const ca of [...new Set([...(text.match(SOL_CA) || []), ...(text.match(EVM_CAS) || [])])].slice(0, 3)) {
       named = await lookupCa(ca);
+      if (named && !chains.includes(named.chain)) named = null;
       if (named) break;
     }
   }
-  // A 0x address in the post: its coin lives on an EVM chain the bot doesn't scan, so its ticker must not be matched to
-  // a Solana coin ($INU with a BNB address named a Solana "inu"); Solana coins under that ticker are copies.
+  // A 0x address that isn't on a chain the bot scans (Ethereum, Arbitrum…): its ticker must not be matched to a coin
+  // here ($INU with a 0x address had named a Solana "inu"); coins under that ticker on the scanned chains are copies.
   const typed = cashtags(text);
   const elsewhere = !named && EVM_CA.test(text) ? new Set(typed) : new Set();
   if (!named && !elsewhere.size) {

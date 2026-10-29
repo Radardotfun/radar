@@ -1,5 +1,7 @@
 import { makeHandlers, API_BASE, DEFAULTS } from './lib/handlers.js';
 import { listWallets, buy, KEY_RE, FRONTRUN_ORIGIN } from './lib/frontrun.js';
+import { newWatch, checkWatch, buyUrl, chartUrl, MAX_WATCHES } from './lib/alerts.js';
+import { reportBlock } from './ui/holdercheck.js';
 
 export { API_BASE, DEFAULTS };
 
@@ -103,6 +105,164 @@ handlers['frontrun:buy'] = async ({ mint, sol, slippageBps, wallet }, sender) =>
   frWallets.at = 0; // balances changed
   return r;
 };
+
+// ---------- Alerts: a ping when a watched post spawns a coin ----------
+// The user watches a post from the panel. A one-minute alarm checks every watch (lib/alerts.js); a new coin gets
+// the larp check (Larpcheck's verdict when they have one, else Radar's) and, on Solana, the holder check, then shows
+// as the toolbar badge, as a card on any open X tab (content.js) and, if the user turned them on in the toolbar popup,
+// as a desktop notification with a buy button.
+const ALERTS = 'alerts'; // { watches, feed, unread }
+const ALARM = 'radar-alerts';
+const loadAlerts = async () => ({ watches: [], feed: [], unread: 0, ...((await ext.storage.local.get(ALERTS))[ALERTS] || {}) });
+const saveAlerts = (a) => ext.storage.local.set({ [ALERTS]: a });
+// Reads and writes of the alert state go one at a time, so a check and a click never overwrite each other.
+let alertQueue = Promise.resolve();
+const withAlerts = (fn) => {
+  const run = alertQueue.catch(() => {}).then(async () => {
+    const a = await loadAlerts();
+    const out = await fn(a);
+    await saveAlerts(a);
+    return out;
+  });
+  alertQueue = run;
+  return run;
+};
+const publicWatch = (w) => ({ id: w.id, url: w.url, author: w.author, label: w.label, narrative: w.narrative, since: w.since, until: w.until });
+const canNotify = () => ext.permissions.contains({ permissions: ['notifications'] }).catch(() => false);
+const showBadge = (n) => {
+  ext.action.setBadgeText({ text: n ? String(Math.min(n, 99)) : '' }).catch(() => {});
+  if (n) ext.action.setBadgeBackgroundColor({ color: '#7c5cff' }).catch(() => {});
+};
+const alertList = async (a) => ({ watches: a.watches.filter((w) => w.until > Date.now()).map(publicWatch), feed: a.feed.slice(0, 20), unread: a.unread, notifications: await canNotify() });
+
+handlers['alerts:list'] = async () => alertList(await loadAlerts());
+handlers['alerts:watch'] = async ({ post }, sender) => {
+  if (!fromPopup(sender) && !fromX(sender)) throw new Error('Watch posts from the Radar panel');
+  const read = await handlers.read({ post });
+  if (read.engineError) throw new Error(`Radar couldn't read this post right now (${read.engineError})`);
+  const w = newWatch(post, read);
+  // The first check notes the coins already there, so only new ones ping.
+  const first = await checkWatch(w, { chains: (await settings()).chains }).catch(() => null);
+  if (first) Object.assign(w, { seen: first.seen, primed: true });
+  const list = await withAlerts(async (a) => {
+    a.watches = a.watches.filter((x) => x.until > Date.now() && x.id !== w.id);
+    if (a.watches.length >= MAX_WATCHES) throw new Error(`Radar watches up to ${MAX_WATCHES} posts at once. Stop one in the toolbar popup first.`);
+    a.watches.push(w);
+    return alertList(a);
+  });
+  await ext.alarms.create(ALARM, { periodInMinutes: 1 });
+  return list;
+};
+handlers['alerts:stop'] = async ({ id }) => withAlerts(async (a) => {
+  a.watches = a.watches.filter((w) => w.id !== String(id) && w.until > Date.now());
+  if (!a.watches.length) await ext.alarms.clear(ALARM);
+  return alertList(a);
+});
+handlers['alerts:read'] = async () => withAlerts(async (a) => { a.unread = 0; showBadge(0); return alertList(a); });
+
+// The larp check for a new coin: Larpcheck's verdict when they've checked it (credited, never reworded), else Radar's.
+async function alertLarp(w, coin, tie) {
+  const lc = await handlers.larpcheck({ address: coin.address }).catch(() => null);
+  if (lc?.checked) return { by: 'Larpcheck', word: lc.verdict, score: lc.score ?? null, url: lc.url || lc.page || null };
+  const s = await handlers.story({
+    post: w.post,
+    narrative: w.narrative,
+    coin: { name: coin.name, symbol: coin.symbol, address: coin.address, createdAt: coin.createdAt, socials: coin.socials, websites: coin.websites, fromPost: tie === 'post', mentioned: false },
+  }).catch(() => null);
+  return s?.word ? { by: 'Radar', word: s.word, score: s.score ?? null, call: s.call || '' } : null;
+}
+// The holder check (Solana only): RugCheck's holders and flags, as one line.
+async function alertHolders(coin) {
+  if (coin.chain !== 'solana') return null;
+  const report = await handlers.safety({ mint: coin.address, pairs: coin.pairAddresses || [] }).catch(() => null);
+  if (!report) return null;
+  const why = reportBlock(report);
+  return { ok: !why, holders: report.holders ?? null, text: why ? `Holder check: ${why}` : `Real holders · ${Number(report.holders).toLocaleString('en-US')}` };
+}
+
+const usdShort = (n) => (!(n > 0) ? '' : n >= 1e6 ? `$${(n / 1e6).toFixed(2)}M` : n >= 1e3 ? `$${(n / 1e3).toFixed(1)}K` : `$${Math.round(n)}`);
+const CHAIN_NAME = { solana: 'Solana', robinhood: 'Robinhood Chain', base: 'Base', bsc: 'BNB Chain' };
+async function notify(item) {
+  if (!ext.notifications || !(await canNotify())) return;
+  const c = item.coin;
+  const line = [CHAIN_NAME[c.chain] || c.chain, usdShort(c.marketCap) && `${usdShort(c.marketCap)} MC`].filter(Boolean).join(' · ');
+  const larp = item.larp && `${item.larp.by === 'Larpcheck' ? 'Larpcheck' : 'Larp check'}: ${item.larp.word}${item.larp.score != null ? ` ${item.larp.score}` : ''}`;
+  const opts = {
+    type: 'basic',
+    iconUrl: ext.runtime.getURL('icons/icon128.png'),
+    title: `New coin off ${item.watch.author ? `@${item.watch.author}'s` : 'a watched'} post: $${String(c.symbol || '').slice(0, 14)}`,
+    message: [line, [larp, item.holders?.text].filter(Boolean).join(' · ')].filter(Boolean).join('\n'),
+    priority: 2,
+    buttons: [{ title: item.buy ? (c.chain === 'solana' ? 'Buy on Radar' : 'Trade on Uniswap') : 'Open the chart' }, { title: 'Open the post' }],
+  };
+  // Firefox has no notification buttons: there a click opens the buy page.
+  try { await ext.notifications.create(item.id, opts); } catch { delete opts.buttons; await ext.notifications.create(item.id, opts).catch(() => {}); }
+}
+// The notifications API exists only once the user has allowed it, so its listeners are added then too.
+let notifyWired = false;
+function wireNotifications() {
+  if (notifyWired || !ext.notifications) return;
+  notifyWired = true;
+  const open = async (id, which) => {
+    const item = (await loadAlerts()).feed.find((f) => f.id === id);
+    if (!item) return;
+    const url = which === 'post' ? item.watch.url : item.buy || item.chart;
+    if (/^https:\/\/(tryradar\.fun|app\.uniswap\.org|dexscreener\.com|x\.com)\//.test(url)) ext.tabs.create({ url });
+    ext.notifications.clear(id).catch(() => {});
+  };
+  ext.notifications.onClicked.addListener((id) => open(id, 'buy'));
+  ext.notifications.onButtonClicked?.addListener((id, i) => open(id, i === 0 ? 'buy' : 'post'));
+}
+wireNotifications();
+ext.permissions.onAdded?.addListener(() => wireNotifications());
+
+// One pass over every watch. Searches and checks run outside the queue; only the bookkeeping waits in it.
+let checking = false;
+async function runAlertChecks() {
+  if (checking) return;
+  checking = true;
+  try {
+    const live = (await loadAlerts()).watches.filter((w) => w.until > Date.now());
+    if (!live.length) {
+      await withAlerts(async (a) => { a.watches = []; });
+      await ext.alarms.clear(ALARM);
+      return;
+    }
+    const { chains } = await settings();
+    const results = [];
+    for (const w of live) {
+      const r = await checkWatch(w, { chains }).catch(() => null);
+      if (!r) continue;
+      const items = [];
+      for (const h of r.hits) {
+        const [larp, holders] = await Promise.all([alertLarp(w, h.coin, h.tie), alertHolders(h.coin)]);
+        items.push({ id: `${w.id}:${h.coin.address}`, at: Date.now(), watch: publicWatch(w), coin: h.coin, tie: h.tie, larp, holders, buy: buyUrl(h.coin), chart: chartUrl(h.coin) });
+      }
+      results.push({ id: w.id, seen: r.seen, items });
+    }
+    const fresh = await withAlerts(async (a) => {
+      const added = [];
+      for (const r of results) {
+        const w = a.watches.find((x) => x.id === r.id);
+        if (!w) continue; // stopped while it was being checked
+        w.seen = [...new Set([...(w.seen || []), ...r.seen])].slice(-400);
+        w.primed = true;
+        for (const item of r.items) if (!a.feed.some((f) => f.id === item.id)) added.push(item);
+      }
+      a.watches = a.watches.filter((w) => w.until > Date.now());
+      a.feed = [...added, ...a.feed].slice(0, 30);
+      a.unread += added.length;
+      if (added.length) showBadge(a.unread);
+      return added;
+    });
+    for (const item of fresh) await notify(item);
+  } finally {
+    checking = false;
+  }
+}
+ext.alarms.onAlarm.addListener((alarm) => { if (alarm.name === ALARM) runAlertChecks(); });
+// The badge lives in memory only: put it back when the worker starts again.
+loadAlerts().then((a) => showBadge(a.unread)).catch(() => {});
 
 ext.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   const fn = handlers[msg?.type];

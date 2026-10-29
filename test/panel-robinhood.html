@@ -26,5 +26,7 @@ const theme = new URLSearchParams(location.search).get('theme') || 'dark';
 document.body.style.background = theme === 'light' ? '#fff' : theme === 'dim' ? '#15202b' : '#000';
 const radar = await mountInline(document.getElementById('root'), theme);
 window.radar = radar;
-radar.scan({ post: { text: `Artificial Inu is the biggest memecoin on Robinhood Chain right now ${AI_INU}`, author: 'test', url: 'https://x.com/test/status/1' }, source: { kind: '@test', label: 'Robinhood panel check' } });
+// ?text= scans that text instead (no contract in it: the cards are the story's picks).
+const text = new URLSearchParams(location.search).get('text') || `Artificial Inu is the biggest memecoin on Robinhood Chain right now ${AI_INU}`;
+radar.scan({ post: { text, author: 'test', url: 'https://x.com/test/status/1' }, source: { kind: '@test', label: 'Robinhood panel check' } });
 </script></body></html>

@@ -117,6 +117,22 @@ const evm = await botCoins({ mentioned: [], picks: [], roleCandidates: [solInu] 
 assert.equal(evm.named, null);
 assert.deepEqual(evm.picks, [], 'Solana coins under an EVM coin\'s ticker are copies');
 console.log('PASS bot: an EVM contract in the post is never matched to a Solana coin by ticker');
+// A 0x contract on a chain the bot scans (BNB Chain here) names its coin, and the reply says which chain.
+const bscInu = tok('INU', 'Inu Coin', '0x63ee32ac3077d1fbd8a77ebba2a6ed4b8e96f0a1', 1_200_000, { chain: 'bsc' });
+const evmChains = ['solana', 'robinhood', 'base', 'bsc'];
+const onBsc = await botCoins({ mentioned: [], picks: [], roleCandidates: [solInu] }, { text: 'vote for $INU 0x63ee32ac3077d1fbd8a77ebba2a6ed4b8e96f0a1' },
+  { search: async () => [pair(solInu)], lookupCa: async () => bscInu, chains: evmChains });
+assert.equal(onBsc.named?.chain, 'bsc');
+assert.ok(!onBsc.picks.some((p) => p.token.address === solInu.address), 'the Solana INU is a copy of the BNB one');
+const bscReply = botReply({ ...onBsc }, 'https://x.com/a/status/1', Date.parse('2026-10-29T22:00:00Z'), { links: true });
+assert.match(bscReply, /📌 In the post \(Highest MC\): \$INU · \$1\.20M · BNB\n/);
+assert.match(bscReply, /https:\/\/dexscreener\.com\/bsc\/0x63ee32ac3077d1fbd8a77ebba2a6ed4b8e96f0a1/);
+// On a chain the bot doesn't scan (Ethereum), the coin isn't named and copies of its ticker stay out.
+const onEth = await botCoins({ mentioned: [], picks: [], roleCandidates: [solInu] }, { text: 'vote for $INU 0x63ee32ac3077d1fbd8a77ebba2a6ed4b8e96f0a1' },
+  { search: async () => [pair(solInu)], lookupCa: async () => ({ ...bscInu, chain: 'ethereum' }), chains: evmChains });
+assert.equal(onEth.named, null);
+assert.deepEqual(onEth.picks, []);
+console.log('PASS bot: a 0x contract on Base, BNB or Robinhood names its coin with the chain; on other chains nothing is named');
 
 // The story's main runner counts even when the judge rates it low: a $9.7M GTA VI at 62 beside an $836K "GTA memes" at 85.
 const gtaMemes = tok('GTA', 'GTA memes', 'GtaMemes111111111111111111111111111111pump', 836_000, { relevance: 85 });

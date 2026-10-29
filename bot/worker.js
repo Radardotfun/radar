@@ -75,8 +75,8 @@ async function dexFetch(input, init = {}) {
 }
 
 const mem = new Map();
-// The bot answers for Solana only, whatever chains the panel scans.
-const SETTINGS = { ...DEFAULTS, chains: ['solana'] };
+// The bot answers for Solana, Robinhood Chain, Base and BNB Chain (what people asked for), whatever the panel scans.
+const SETTINGS = { ...DEFAULTS, chains: ['solana', 'robinhood', 'base', 'bsc'] };
 const handlers = makeHandlers({
   settings: async () => SETTINGS,
   store: { get: async (k) => mem.get(k), set: async (k, v) => mem.set(k, v) },
@@ -112,6 +112,14 @@ async function xApi(env, method, url, body) {
 // A Solana address written in a post: the token at it, or the token of the pool at it (a dexscreener.com/solana/<pool>
 // link), or null when it is neither (a wallet). A busy DexScreener throws, and the tag is retried.
 async function lookupCa(ca) {
+  // A 0x address: DexScreener's search finds it on whichever chain it lives (the token, or one of its pools).
+  if (/^0x/i.test(ca)) {
+    const key = ca.toLowerCase();
+    const hit = aggregate(await searchPairs(ca)).find((t) => SETTINGS.chains.includes(t.chain)
+      && (t.address.toLowerCase() === key || t.pairAddresses.some((p) => p.toLowerCase() === key)));
+    if (!hit) return null;
+    return aggregate(await allPairs(hit.chain, hit.address)).find((t) => t.address === hit.address) || hit;
+  }
   let address = ca;
   let pairs = await allPairs('solana', ca);
   if (!pairs.length) {

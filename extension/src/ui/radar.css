@@ -409,6 +409,31 @@ svg { display: block; }
 .fr-fine { font: 500 10.5px var(--font); color: var(--faint); }
 /* settings (toolbar popup) */
 .settings { display: grid; gap: 12px; padding: 6px 4px; }
+/* Alerts: the bell under a post, the empty state's call to action, and the popup's list. */
+.watch { margin-top: 10px; width: 100%; display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--line-2); border-radius: 10px;
+  background: transparent; color: var(--muted); font: 600 12px/1.2 var(--font); text-align: left; cursor: pointer; transition: color .15s, border-color .15s, background .15s; }
+.watch:hover:not(:disabled) { color: var(--text); border-color: color-mix(in srgb, var(--text) 30%, transparent); background: var(--card-2); }
+.watch:disabled { cursor: progress; opacity: .7; }
+.watch svg { flex: none; }
+.watch.on { color: var(--text); cursor: default; border-color: color-mix(in srgb, var(--violet) 55%, transparent); background: color-mix(in srgb, var(--violet) 8%, transparent); }
+.watch.on svg { color: var(--violet); }
+.watch.on span { flex: 1; min-width: 0; }
+.watch.on button { border: 1px solid var(--line-2); border-radius: 7px; padding: 4px 9px; background: transparent; color: var(--muted); font: 600 11px var(--font); cursor: pointer; }
+.watch.on button:hover { color: var(--text); background: var(--card-2); }
+.watch.cta { width: auto; display: inline-flex; margin: 16px auto 0; padding: 10px 14px; border: 0; background: var(--accent); color: var(--accent-ink); }
+.watch.cta:hover:not(:disabled) { background: var(--accent); color: var(--accent-ink); filter: brightness(1.06); }
+.watch.on.cta { background: color-mix(in srgb, var(--violet) 8%, transparent); color: var(--text); border: 1px solid color-mix(in srgb, var(--violet) 55%, transparent); }
+.al-list { display: grid; gap: 6px; }
+.al-w, .al-hit { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 10px; background: var(--card-2); border: 1px solid var(--line); font: 600 12px var(--font); color: var(--text); text-decoration: none; min-width: 0; }
+.al-w > div { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.al-w > div span, .al-hit span { color: var(--muted); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.al-w em { font: 600 11px var(--mono); font-style: normal; color: var(--faint); white-space: nowrap; }
+.al-w button { border: 1px solid var(--line-2); border-radius: 7px; padding: 4px 9px; background: transparent; color: var(--muted); font: 600 11px var(--font); cursor: pointer; }
+.al-w button:hover { color: var(--text); }
+.al-hit:hover { border-color: var(--line-2); }
+.al-hit span { flex: 1; }
+.al-hit em { font: 700 10.5px var(--mono); font-style: normal; color: var(--muted); white-space: nowrap; }
+.empty + .settings { margin-top: 4px; }
 .settings p { margin: 0; font: 500 12.5px/1.45 var(--font); color: var(--muted); }
 .settings p.fine { font-size: 11px; color: var(--faint); }
 .set-head { display: flex; align-items: center; justify-content: space-between; }

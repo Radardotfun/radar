@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Radar
 // @namespace    https://tryradar.fun
-// @version      1.7.15
+// @version      1.7.16
 // @description  See the coins behind any post on X and instantly reroute to the biggest match that passes available on-chain safety checks.
 // @homepageURL  https://tryradar.fun
 // @supportURL   https://tryradar.fun
@@ -31,7 +31,7 @@
 // @downloadURL  https://tryradar.fun/radar.user.js
 // ==/UserScript==
 
-// Radar 1.7.15: built from the extension source at https://tryradar.fun. Not financial advice.
+// Radar 1.7.16: built from the extension source at https://tryradar.fun. Not financial advice.
 (() => {
   var __defProp = Object.defineProperty;
   var __export = (target, all) => {
@@ -206,9 +206,16 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     // (SPY, NVDA…) also pair memecoins, but copies of them exist, so they don't count as real liquidity.
     "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73",
     "0x0000000000000000000000000000000000000000",
-    "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168"
+    "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",
+    // Base: WETH and USDC (native ETH is the zero address above). BNB Chain: WBNB, USDT, USDC, BUSD.
+    "0x4200000000000000000000000000000000000006",
+    "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+    "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c",
+    "0x55d398326f99059fF775485246999027B3197955",
+    "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d",
+    "0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56"
   ].map(quoteKey));
-  var LAUNCHPADS = /* @__PURE__ */ new Set(["pumpfun", "launchlab", "meteoradbc", "moonshot", "boop", "heaven", "believe", "bags", "moonit", "jupstudio", "flapsh"]);
+  var LAUNCHPADS = /* @__PURE__ */ new Set(["pumpfun", "launchlab", "meteoradbc", "moonshot", "boop", "heaven", "believe", "bags", "moonit", "jupstudio", "flapsh", "fourmeme"]);
   async function getJson(url) {
     for (let i = 0; i < 4; i++) {
       const res = await gmFetch(url, { signal: AbortSignal.timeout(8e3) });
@@ -338,7 +345,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     });
     return { score, matched };
   }
-  var NON_MEME = /\b(prestocks?|xstocks?|tokenized|securities|backed|wrapped|wormhole|bridged|portal|ondo|stablecoin|usd coin|tether|robinhood token|global dollar)\b/i;
+  var NON_MEME = /\b(prestocks?|xstocks?|tokenized|securities|backed|wrapped|wormhole|bridged|binance-peg|portal|ondo|stablecoin|usd coin|tether|robinhood token|global dollar)\b/i;
   var MAJOR_NAMES = new Set("bitcoin ethereum zcash solana hyperliquid xrp ripple bnb cardano chainlink sui aptos near tron litecoin monero avalanche polkadot toncoin dogecoin stellar cosmos arbitrum optimism polygon".split(" "));
   var MAJOR_TICKERS = new Set("BTC ETH ZEC SOL HYPE XRP BNB ADA LINK SUI APT NEAR TRX LTC XMR AVAX DOT TON XLM ATOM ARB OP POL".split(" "));
   function isMemecoin(t) {
@@ -1405,6 +1412,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     og: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M6 3h12M6 21h12M7 3c0 5 10 6 10 9s-10 4-10 9M17 3c0 5-10 6-10 9"/></svg>',
     gear: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.8-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1.1-1.5 1.7 1.7 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.8 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.1a1.7 1.7 0 001.5-1.1 1.7 1.7 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.8.3H9a1.7 1.7 0 001-1.5V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.8V9a1.7 1.7 0 001.5 1H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z"/></svg>',
     bolt: '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z"/></svg>',
+    bell: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 1112 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 003.4 0"/></svg>',
     pin: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 21s-7-6.2-7-11a7 7 0 1114 0c0 4.8-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></svg>',
     copy: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2.5"/><path d="M5 15V5a2 2 0 012-2h10"/></svg>',
     check: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7"/></svg>',
@@ -1549,8 +1557,11 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       this.frSel = /* @__PURE__ */ new Map();
       this.frBusy = /* @__PURE__ */ new Set();
       this.frMsg = /* @__PURE__ */ new Map();
+      this.alerts = null;
+      this.watchBusy = false;
       this.render();
       this.loadFrontrun();
+      this.loadAlerts();
       this.listenForBuys();
       send("settings").then((s) => {
         this.refreshSec = s.refreshSec || 10;
@@ -1805,7 +1816,9 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
         else if (b.dataset.act === "settings") {
           this.view = this.view === "settings" ? "scan" : "settings";
           this.renderBody();
-        } else if ("story" in b.dataset) {
+        } else if (b.dataset.act === "watch") this.watch();
+        else if (b.dataset.act === "unwatch") this.unwatch(b.dataset.id);
+        else if ("story" in b.dataset) {
           this.expanded.has("story") ? this.expanded.delete("story") : this.expanded.add("story");
           this.renderHead();
         }
@@ -1832,6 +1845,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
         <span class="kbd">\u21B5</span>
       </form>` : ""}
       ${source ? `<div class="source"><b>${esc2(source.kind)}</b><span>${esc2(source.label)}</span></div>` : ""}
+      ${this.watchHtml()}
       ${this.narrativeHtml()}`;
       this.input = this.headEl.querySelector("input");
       this.headEl.querySelector("form")?.addEventListener("submit", (e) => {
@@ -1913,7 +1927,8 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
         const trends = (this.trends || []).slice(0, 6);
         this.bodyEl.innerHTML = `<div class="empty"><div class="big">Scan any post on X</div>
         <p>${esc2(this.hint || (this.inline ? "Search a narrative, a ticker or a CA above." : "Tap the radar under any post or trend."))}</p>
-        ${trends.length ? `<div class="trend-list"><span>Trending</span>${trends.map((t) => `<button data-trend="${esc2(t)}">${esc2(t)}</button>`).join("")}</div>` : ""}</div>`;
+        ${trends.length ? `<div class="trend-list"><span>Trending</span>${trends.map((t) => `<button data-trend="${esc2(t)}">${esc2(t)}</button>`).join("")}</div>` : ""}</div>
+        ${this.inline && (this.alerts?.watches.length || this.alerts?.feed.length) ? this.alertsHtml() : ""}`;
         return;
       }
       if (!picks.length && !mentioned.length && !techMatch && this.state.mode === "ai" && this.state.coinable === false) {
@@ -1923,7 +1938,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       }
       if (!picks.length && !mentioned.length && !techMatch) {
         this.bodyEl.innerHTML = `<div class="empty"><div class="big">No live coins for this narrative</div>
-        <p>Nothing trading on-chain is about this yet.</p></div>`;
+        <p>Nothing trading on-chain is about this yet.</p>${this.watchHtml({ cta: true })}</div>`;
         return;
       }
       let html = "";
@@ -2228,10 +2243,96 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
         this.renderActions(addr);
       }
     }
+    /* ----- alerts (extension only) ----- */
+    // The background answers alerts:list only in the extension; on the web and in the userscript it's an unknown request,
+    // and every alert control stays hidden.
+    loadAlerts() {
+      return send("alerts:list").then((a) => {
+        this.alerts = a;
+        if (this.inline && a.unread) send("alerts:read").then((b) => {
+          this.alerts = b;
+        }).catch(() => {
+        });
+        this.renderHead();
+        if (this.view === "settings" || !this.state.ts) this.renderBody();
+      }).catch(() => {
+        this.alerts = null;
+      });
+    }
+    watchedPost() {
+      const id = String(this.lastPost?.url || "").match(/\/status\/(\d{5,25})/)?.[1];
+      if (!id || !this.alerts || this.state.source?.kind === "Search") return null;
+      return { id, watch: this.alerts.watches.find((w) => w.id === id) || null };
+    }
+    watchHtml({ cta = false } = {}) {
+      const w = this.watchedPost();
+      if (!w) return "";
+      if (w.watch) {
+        const h = Math.max(1, Math.round((w.watch.until - Date.now()) / 36e5));
+        return `<div class="watch on${cta ? " cta" : ""}">${I.bell}<span>Watching this post \xB7 ${h}h left</span><button type="button" data-act="unwatch" data-id="${esc2(w.id)}">Stop</button></div>`;
+      }
+      return `<button type="button" class="watch${cta ? " cta" : ""}" data-act="watch"${this.watchBusy ? " disabled" : ""}>${I.bell}<span>${this.watchBusy ? "Setting up the alert\u2026" : "Alert me when a coin launches off this post"}</span></button>`;
+    }
+    async watch() {
+      if (this.watchBusy || !this.lastPost) return;
+      this.watchBusy = true;
+      this.renderHead();
+      if (!this.state.picks?.length) this.renderBody();
+      try {
+        this.alerts = await send("alerts:watch", { post: this.lastPost });
+        this.toast(`Watching for 24h. Radar pings you when a coin launches off it${this.alerts.notifications ? "" : ". Turn on desktop alerts in the toolbar popup"}`, 3600);
+      } catch (err) {
+        this.toast(err.message, 3600);
+      }
+      this.watchBusy = false;
+      this.renderHead();
+      if (!this.state.picks?.length || this.view === "settings") this.renderBody();
+    }
+    async unwatch(id) {
+      try {
+        this.alerts = await send("alerts:stop", { id });
+      } catch (err) {
+        this.toast(err.message, 3e3);
+      }
+      this.renderHead();
+      if (!this.state.picks?.length || this.view === "settings") this.renderBody();
+    }
+    // Desktop notifications need the optional permission, which only the toolbar popup can ask for (inside the click).
+    async allowNotifications() {
+      const api = globalThis.browser ?? globalThis.chrome;
+      let granted = false;
+      try {
+        granted = await api.permissions.request({ permissions: ["notifications"] });
+      } catch {
+      }
+      this.toast(granted ? "Desktop alerts on" : "Desktop alerts stay off. Alerts still show on X and on the toolbar icon", 3e3);
+      await this.loadAlerts();
+    }
+    alertsHtml() {
+      const a = this.alerts;
+      if (!a) return "";
+      const left = (w) => `${Math.max(1, Math.round((w.until - Date.now()) / 36e5))}h left`;
+      const watches = a.watches.map((w) => `<div class="al-w"><div><b>${w.author ? `@${esc2(w.author)}` : "Post"}</b><span>${esc2(w.label)}</span></div>
+      <em>${left(w)}</em><button type="button" data-act="unwatch" data-id="${esc2(w.id)}">Stop</button></div>`).join("");
+      const hits = a.feed.slice(0, 5).map((f) => {
+        const c = f.coin;
+        const larp = f.larp ? `${f.larp.by === "Larpcheck" ? "Larpcheck" : "Larp check"} ${esc2(f.larp.word)}${f.larp.score != null ? ` ${esc2(f.larp.score)}` : ""}` : "";
+        const link = f.buy || f.chart;
+        return `<a class="al-hit" href="${esc2(link)}" target="_blank" rel="noopener noreferrer"><b>$${esc2(String(c.symbol || "").trim())}</b>
+        <span>${esc2([CHAIN_LABEL[c.chain] || c.chain, usd(c.marketCap), age(f.at)].filter(Boolean).join(" \xB7 "))}</span>${larp ? `<em>${larp}</em>` : ""}</a>`;
+      }).join("");
+      return `<section class="settings">
+      <div class="set-head"><h3>Alerts</h3>${a.watches.length ? `<span class="verdict ok">${a.watches.length} WATCHING</span>` : ""}</div>
+      <p>Tap the bell under a post in the Radar panel. For the next 24 hours Radar checks every minute for a coin launched off it, runs the larp check, and pings you with a buy button.</p>
+      ${watches ? `<div class="al-list">${watches}</div>` : ""}
+      ${hits ? `<div class="section-label"><span>Latest alerts</span></div><div class="al-list">${hits}</div>` : ""}
+      ${a.notifications ? '<p class="fine">Desktop alerts are on.</p>' : '<button class="fr-btn" data-alerts-notify>Turn on desktop alerts</button><p class="fine">Without them, alerts show on any open X tab and as a number on the Radar icon.</p>'}
+    </section>`;
+    }
     settingsHtml() {
       const f = this.frontrun || {};
       const wallets = (f.wallets || []).map((w) => `<div class="fr-w"><b>${esc2(w.name || "Wallet")}</b><span>${short(w.address)}</span><em>~${w.sol.toFixed(3)} SOL</em></div>`).join("");
-      return `<section class="settings">
+      return `${this.alertsHtml()}<section class="settings">
       <div class="set-head"><h3>Frontrun</h3>${f.connected ? '<span class="verdict ok">CONNECTED</span>' : ""}</div>
       <p>Buy the coins Radar finds with your Frontrun wallet. Frontrun holds the wallet and signs. Radar sends an order only after you press Buy on a coin card.</p>
       ${f.connected ? `<div class="fr-wallets">${wallets || '<div class="fr-w"><span>No Frontrun wallets yet. Create one on frontrun.pro.</span></div>'}</div>
@@ -2421,6 +2522,19 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       if (e.target.closest("[data-act-back]")) {
         this.view = "scan";
         this.renderBody();
+        return;
+      }
+      if (e.target.closest('[data-act="watch"]')) {
+        await this.watch();
+        return;
+      }
+      const stop = e.target.closest('[data-act="unwatch"]');
+      if (stop) {
+        await this.unwatch(stop.dataset.id);
+        return;
+      }
+      if (e.target.closest("[data-alerts-notify]")) {
+        await this.allowNotifications();
         return;
       }
       if (e.target.closest("[data-fr-connect]")) {
@@ -3069,6 +3183,31 @@ svg { display: block; }\r
 .fr-fine { font: 500 10.5px var(--font); color: var(--faint); }\r
 /* settings (toolbar popup) */\r
 .settings { display: grid; gap: 12px; padding: 6px 4px; }\r
+/* Alerts: the bell under a post, the empty state's call to action, and the popup's list. */\r
+.watch { margin-top: 10px; width: 100%; display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--line-2); border-radius: 10px;\r
+  background: transparent; color: var(--muted); font: 600 12px/1.2 var(--font); text-align: left; cursor: pointer; transition: color .15s, border-color .15s, background .15s; }\r
+.watch:hover:not(:disabled) { color: var(--text); border-color: color-mix(in srgb, var(--text) 30%, transparent); background: var(--card-2); }\r
+.watch:disabled { cursor: progress; opacity: .7; }\r
+.watch svg { flex: none; }\r
+.watch.on { color: var(--text); cursor: default; border-color: color-mix(in srgb, var(--violet) 55%, transparent); background: color-mix(in srgb, var(--violet) 8%, transparent); }\r
+.watch.on svg { color: var(--violet); }\r
+.watch.on span { flex: 1; min-width: 0; }\r
+.watch.on button { border: 1px solid var(--line-2); border-radius: 7px; padding: 4px 9px; background: transparent; color: var(--muted); font: 600 11px var(--font); cursor: pointer; }\r
+.watch.on button:hover { color: var(--text); background: var(--card-2); }\r
+.watch.cta { width: auto; display: inline-flex; margin: 16px auto 0; padding: 10px 14px; border: 0; background: var(--accent); color: var(--accent-ink); }\r
+.watch.cta:hover:not(:disabled) { background: var(--accent); color: var(--accent-ink); filter: brightness(1.06); }\r
+.watch.on.cta { background: color-mix(in srgb, var(--violet) 8%, transparent); color: var(--text); border: 1px solid color-mix(in srgb, var(--violet) 55%, transparent); }\r
+.al-list { display: grid; gap: 6px; }\r
+.al-w, .al-hit { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 10px; background: var(--card-2); border: 1px solid var(--line); font: 600 12px var(--font); color: var(--text); text-decoration: none; min-width: 0; }\r
+.al-w > div { flex: 1; min-width: 0; display: grid; gap: 2px; }\r
+.al-w > div span, .al-hit span { color: var(--muted); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }\r
+.al-w em { font: 600 11px var(--mono); font-style: normal; color: var(--faint); white-space: nowrap; }\r
+.al-w button { border: 1px solid var(--line-2); border-radius: 7px; padding: 4px 9px; background: transparent; color: var(--muted); font: 600 11px var(--font); cursor: pointer; }\r
+.al-w button:hover { color: var(--text); }\r
+.al-hit:hover { border-color: var(--line-2); }\r
+.al-hit span { flex: 1; }\r
+.al-hit em { font: 700 10.5px var(--mono); font-style: normal; color: var(--muted); white-space: nowrap; }\r
+.empty + .settings { margin-top: 4px; }\r
 .settings p { margin: 0; font: 500 12.5px/1.45 var(--font); color: var(--muted); }\r
 .settings p.fine { font-size: 11px; color: var(--faint); }\r
 .set-head { display: flex; align-items: center; justify-content: space-between; }\r
@@ -3429,7 +3568,30 @@ svg { display: block; }\r
       border:1px solid rgba(255,255,255,.16);box-shadow:0 12px 40px rgba(0,0,0,.4);font:600 13px/1.2 TwitterChirp,-apple-system,"Segoe UI",system-ui,sans-serif;white-space:nowrap;animation:nr-in .35s cubic-bezier(.2,.8,.2,1)}
     .nr-hint::after{content:"";position:absolute;top:100%;right:17px;border:6px solid transparent;border-top-color:#000}
     .nr-hint button{all:unset;cursor:pointer;padding:6px 10px;border-radius:999px;background:#fff;color:#000;font-weight:700;font-size:12px}
-    @keyframes nr-in{from{opacity:0;transform:translateY(6px)}}`;
+    @keyframes nr-in{from{opacity:0;transform:translateY(6px)}}
+    .nr-alerts{position:fixed;right:24px;bottom:210px;z-index:2147483647;display:flex;flex-direction:column;gap:10px;width:330px;max-width:calc(100vw - 32px)}
+    @media (max-width:700px){.nr-alerts{right:16px;bottom:calc(210px + env(safe-area-inset-bottom))}}
+    .nr-alert{position:relative;padding:14px 14px 12px;border-radius:16px;background:#000;color:#fff;border:1px solid rgba(167,139,250,.45);box-shadow:0 16px 48px rgba(0,0,0,.45);
+      font:500 13px/1.4 TwitterChirp,-apple-system,"Segoe UI",system-ui,sans-serif;animation:nr-in .35s cubic-bezier(.2,.8,.2,1)}
+    .nr-alert-top{display:flex;align-items:center;gap:8px;color:#a78bfa;font:700 11px/1 ui-monospace,"SF Mono",Consolas,monospace;letter-spacing:.08em;text-transform:uppercase}
+    .nr-alert-top svg{width:14px;height:14px}
+    .nr-alert-top span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .nr-alert-x{all:unset;cursor:pointer;width:24px;height:24px;display:grid;place-items:center;border-radius:999px;color:#8b939e;font-size:16px;line-height:1}
+    .nr-alert-x:hover{background:rgba(255,255,255,.1);color:#fff}
+    .nr-alert-coin{margin-top:10px;display:flex;align-items:baseline;gap:8px;min-width:0}
+    .nr-alert-coin b{font-size:20px;font-weight:800;letter-spacing:-.01em}
+    .nr-alert-coin span{color:#8b939e;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .nr-alert-meta{margin-top:2px;color:#c9ced6;font-variant-numeric:tabular-nums}
+    .nr-alert-checks{margin-top:10px;display:grid;gap:4px;padding:8px 10px;border-radius:10px;background:#111418;border:1px solid rgba(255,255,255,.07);font-size:12px}
+    .nr-alert-checks div{display:flex;gap:7px;align-items:center}
+    .nr-alert-checks i{width:7px;height:7px;border-radius:50%;flex:none;background:#8b939e}
+    .nr-alert-checks i.ok{background:#3ddc84}.nr-alert-checks i.risk{background:#ff5c6c}.nr-alert-checks i.mid{background:#ffb547}
+    .nr-alert-acts{margin-top:12px;display:grid;grid-template-columns:1fr 1fr;gap:6px}
+    .nr-alert-acts button{all:unset;cursor:pointer;height:34px;padding:0 12px;border-radius:10px;display:inline-flex;align-items:center;justify-content:center;font:700 12.5px/1 TwitterChirp,-apple-system,"Segoe UI",system-ui,sans-serif;white-space:nowrap;
+      border:1px solid rgba(255,255,255,.16);color:#fff;transition:background .15s}
+    .nr-alert-acts button:hover{background:rgba(255,255,255,.1)}
+    .nr-alert-acts button.buy{grid-column:1/-1;background:#fff;color:#000;border-color:#fff}
+    .nr-alert-acts button.buy:hover{background:#e7e9ea}`;
     document.documentElement.appendChild(css);
     const textOf = (el) => (el?.innerText || "").trim();
     const send2 = (msg) => host.send(msg).then((r) => r?.ok ? r.data : Promise.reject(new Error(r?.error || "No response")));
@@ -3709,6 +3871,74 @@ svg { display: block; }\r
       if (hint.state === "show" && !hint.el?.isConnected) decorateSoon();
     }, { passive: true });
     decorate();
+    if (!globalThis.__nrHost && ext2?.storage?.onChanged) {
+      let showAlert = function(item) {
+        const c = item.coin;
+        if (!stack?.isConnected) {
+          stack = document.createElement("div");
+          stack.className = "nr-alerts";
+        }
+        document.documentElement.appendChild(stack);
+        while (stack.childElementCount >= 3) stack.firstElementChild.remove();
+        const quick = /^https:\/\/tryradar\.fun\/trade\?/.test(item.buy || "");
+        const sol = instaSol2();
+        const larp = item.larp ? `<div><i class="${toneOf(item.larp.word)}"></i>${item.larp.by === "Larpcheck" ? "Larpcheck" : "Larp check"}: <b>${esc3(item.larp.word)}${item.larp.score != null ? ` ${esc3(item.larp.score)}` : ""}</b></div>` : "<div><i></i>Larp check: not ready yet</div>";
+        const holders = item.holders ? `<div><i class="${item.holders.ok ? "ok" : "risk"}"></i>${esc3(item.holders.text)}</div>` : "";
+        const card = document.createElement("div");
+        card.className = "nr-alert";
+        card.setAttribute("role", "alert");
+        card.innerHTML = `<div class="nr-alert-top">${BELL}<span>New coin off ${item.watch.author ? `@${esc3(item.watch.author)}'s` : "a watched"} post</span><button type="button" class="nr-alert-x" data-x aria-label="Close">\xD7</button></div>
+        <div class="nr-alert-coin"><b>$${esc3(String(c.symbol || "").trim())}</b><span>${esc3(c.name || "")}</span></div>
+        <div class="nr-alert-meta">${esc3([CHAIN[c.chain] || c.chain, c.marketCap ? `${usd2(c.marketCap)} MC` : "", c.createdAt ? `launched ${ageOf(c.createdAt)} ago` : ""].filter(Boolean).join(" \xB7 "))}</div>
+        <div class="nr-alert-checks">${larp}${holders}</div>
+        <div class="nr-alert-acts">
+          ${item.buy ? `<button type="button" class="buy" data-buy>${quick ? `Insta buy \xB7 ${sol} SOL` : "Trade on Uniswap"}</button>` : ""}
+          <button type="button" data-open>Open in Radar</button><button type="button" data-chart>Chart</button>
+        </div>`;
+        card.addEventListener("click", (e) => {
+          const b = e.target.closest("button");
+          if (!b) return;
+          e.preventDefault();
+          e.stopPropagation();
+          if ("x" in b.dataset) {
+            card.remove();
+            return;
+          }
+          if ("buy" in b.dataset) {
+            if (quick) safeOpen(`${item.buy}&sol=${sol}&insta=1`, "radar-insta", "popup=yes,width=440,height=780");
+            else safeOpen(item.buy, "_blank", "noopener");
+          } else if ("chart" in b.dataset) safeOpen(item.chart, "_blank", "noopener");
+          else if ("open" in b.dataset) {
+            card.remove();
+            launch({ post: { text: item.watch.url }, source: { kind: "Alert", label: `$${String(c.symbol || "").trim()} launched off this post` } });
+          }
+        }, true);
+        stack.appendChild(card);
+      };
+      let shownAt = Date.now();
+      let stack = null;
+      const BELL = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 1112 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 003.4 0"/></svg>';
+      const CHAIN = { solana: "Solana", robinhood: "Robinhood Chain", base: "Base", bsc: "BNB Chain" };
+      const toneOf = (w) => ["LIKELY LARP", "LARP"].includes(w) ? "risk" : ["REAL", "LIKELY REAL"].includes(w) ? "ok" : "mid";
+      const instaSol2 = () => {
+        try {
+          const v = localStorage.getItem("nr:insta-sol");
+          return ["0.05", "0.1", "0.25", "0.5", "1"].includes(v) ? v : "0.1";
+        } catch {
+          return "0.1";
+        }
+      };
+      const safeOpen = (url, ...rest) => {
+        if (/^https:\/\/(tryradar\.fun|app\.uniswap\.org|dexscreener\.com)\//.test(url)) window.open(url, ...rest);
+      };
+      ext2.storage.onChanged.addListener((changes, area) => {
+        if (area !== "local" || !changes.alerts) return;
+        const fresh = (changes.alerts.newValue?.feed || []).filter((f) => f.at > shownAt);
+        if (!fresh.length) return;
+        shownAt = Math.max(...fresh.map((f) => f.at));
+        for (const item of fresh.slice(0, 3).reverse()) showAlert(item);
+      });
+    }
     if (!globalThis.__nrHost) ext2.runtime.onMessage.addListener((msg) => {
       if (msg?.type === "open-radar") launch({ post: { text: msg.text || "" }, keywords: msg.keywords, source: msg.source });
     });

@@ -13,9 +13,17 @@ const QUOTES = new Set([
   '0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73',
   '0x0000000000000000000000000000000000000000',
   '0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168',
+  // Base: WETH and USDC (native ETH is the zero address above). BNB Chain: WBNB, USDT, USDC, BUSD.
+  '0x4200000000000000000000000000000000000006',
+  '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+  '0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c',
+  '0x55d398326f99059fF775485246999027B3197955',
+  '0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d',
+  '0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56',
 ].map(quoteKey));
-// Launchpad curves: the pair opens in the same tx the token is born (flapsh: flap.sh, on Robinhood Chain).
-export const LAUNCHPADS = new Set(['pumpfun', 'launchlab', 'meteoradbc', 'moonshot', 'boop', 'heaven', 'believe', 'bags', 'moonit', 'jupstudio', 'flapsh']);
+// Launchpad curves: the pair opens in the same tx the token is born (flapsh: flap.sh on Robinhood Chain and BNB
+// Chain; fourmeme: four.meme on BNB Chain).
+export const LAUNCHPADS = new Set(['pumpfun', 'launchlab', 'meteoradbc', 'moonshot', 'boop', 'heaven', 'believe', 'bags', 'moonit', 'jupstudio', 'flapsh', 'fourmeme']);
 
 async function getJson(url) {
   for (let i = 0; i < 4; i++) {
@@ -160,7 +168,7 @@ export function relevance(token, keywords) {
 // Not memecoins: tokenized stocks (Robinhood Chain's are named "Tesla • Robinhood Token", and so are their copies),
 // wrapped/bridged assets, stables. Also caught: a big "market cap" with almost no real liquidity behind it, which is
 // what bridged majors look like on Solana.
-const NON_MEME = /\b(prestocks?|xstocks?|tokenized|securities|backed|wrapped|wormhole|bridged|portal|ondo|stablecoin|usd coin|tether|robinhood token|global dollar)\b/i;
+const NON_MEME = /\b(prestocks?|xstocks?|tokenized|securities|backed|wrapped|wormhole|bridged|binance-peg|portal|ondo|stablecoin|usd coin|tether|robinhood token|global dollar)\b/i;
 const MAJOR_NAMES = new Set('bitcoin ethereum zcash solana hyperliquid xrp ripple bnb cardano chainlink sui aptos near tron litecoin monero avalanche polkadot toncoin dogecoin stellar cosmos arbitrum optimism polygon'.split(' '));
 const MAJOR_TICKERS = new Set('BTC ETH ZEC SOL HYPE XRP BNB ADA LINK SUI APT NEAR TRX LTC XMR AVAX DOT TON XLM ATOM ARB OP POL'.split(' '));
 export function isMemecoin(t) {
