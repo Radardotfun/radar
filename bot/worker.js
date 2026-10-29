@@ -111,6 +111,12 @@ async function replyFor(postUrl) {
   if (hit && Date.now() - hit.at < 600_000) return hit.p;
   const p = (async () => {
     const { post } = await handlers.tweet({ url: postUrl });
+    // A tag under one of @radardotfunn's own posts (people trying the bot under its announcement): no scan of our
+    // own words, just how to use it.
+    if (String(post.author || '').toLowerCase() === 'radardotfunn') {
+      const tip = `Tag me under a news post, a meme or any post with a story, and I'll reply with the coins behind it (${new Date().toISOString().slice(11, 16)} UTC).`;
+      return { text: tip, short: tip, links: tip, story: 'our own post' };
+    }
     const res = await handlers.coins({ post });
     if (res.engineError) throw new Error('Radar could not read this post right now');
     return { text: botReply(res, postUrl) || NO_COINS, short: botReply(res, postUrl, Date.now(), { full: false }) || NO_COINS, links: botReply(res, postUrl, Date.now(), { links: true }) || NO_COINS, story: res.narrative || '' };
