@@ -8,7 +8,9 @@ import { pickReroute, marketBlock, reportBlock, rejectionLine } from './reroute.
 
 // Hosted narrative engine (Cloudflare Worker). Runs 24/7; nobody needs a key.
 export const API_BASE = 'https://narrative-radar.millenia-portfolio.workers.dev';
-export const DEFAULTS = { rpcUrl: '', chains: ['solana'], refreshSec: 10 };
+// Chains the scan looks on. Robinhood Chain (an Ethereum L2 with its own memecoins, DexScreener id "robinhood") is
+// scanned next to Solana; the on-chain checks and Quick Buy stay Solana only.
+export const DEFAULTS = { rpcUrl: '', chains: ['solana', 'robinhood'], refreshSec: 10 };
 
 /**
  * host: {
@@ -58,10 +60,14 @@ export function makeHandlers(host) {
     return forgetIfFailed(key, cached(key, 300_000, () => readPost(post, s.chains, { apiBase: API_BASE, cached })));
   }
 
-  async function coins({ post }) {
+  // `judge: true` has the AI judge every candidate even when the read gave anchor words (the X bot posts in public).
+  async function coins({ post, judge = false }) {
     const s = await host.settings();
-    const key = `co:${postKey(post, s.chains)}`;
-    return forgetIfFailed(key, cached(key, 120_000, async () => findCoins(await read({ post }), s.chains, { apiBase: API_BASE, cached })));
+    const key = `co:${judge ? 'j:' : ''}${postKey(post, s.chains)}`;
+    return forgetIfFailed(key, cached(key, 120_000, async () => {
+      const r = await read({ post });
+      return findCoins(judge ? { ...r, judge: true } : r, s.chains, { apiBase: API_BASE, cached });
+    }));
   }
 
   // Story check: is the post's story real, and is the coin tied to it? Read on our server (it looks

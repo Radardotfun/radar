@@ -114,12 +114,15 @@ const ROLE = {
 };
 
 /* ---------------- links ---------------- */
+const CHAIN_LABEL = { solana: 'SOL', robinhood: 'Robinhood' };
+// Chains Bubblemaps maps (its own names for them); a coin on any other chain gets no Bubblemaps button.
+const BUBBLE_CHAIN = { solana: 'solana', base: 'base', bsc: 'bsc', ethereum: 'eth' };
 // Kept short: the chart and GMGN (Bubblemaps sits next to them). RugCheck's score is already in the audit.
 function links(t) {
   const a = t.address;
   if (t.chain === 'solana') return [['Chart', t.url || `https://dexscreener.com/solana/${a}`], ['GMGN', `https://gmgn.ai/sol/token/${a}`]];
   const g = { base: 'base', bsc: 'bsc', ethereum: 'eth' }[t.chain];
-  const scan = { base: 'https://basescan.org/token/', bsc: 'https://bscscan.com/token/', ethereum: 'https://etherscan.io/token/' }[t.chain];
+  const scan = { base: 'https://basescan.org/token/', bsc: 'https://bscscan.com/token/', ethereum: 'https://etherscan.io/token/', robinhood: 'https://robinhoodchain.blockscout.com/token/' }[t.chain];
   return [['Chart', t.url], g ? ['GMGN', `https://gmgn.ai/${g}/token/${a}`] : ['Explorer', scan ? scan + a : t.url]];
 }
 
@@ -144,8 +147,10 @@ const QUICK_MARKETS = new Set(['pumpfun', 'pumpswap', 'raydium']);
 const quickBuyable = (t) => t.chain === 'solana' && (!t.dexId || QUICK_MARKETS.has(t.dexId));
 
 function terminals(t) {
-  if (t.chain !== 'solana') return [];
   const a = t.address;
+  // Robinhood Chain's memecoins trade on Uniswap (its URL name for the chain is "robinhood").
+  if (t.chain === 'robinhood') return [{ id: 'uniswap', name: 'Uniswap', url: `https://app.uniswap.org/swap?chain=robinhood&outputCurrency=${a}` }];
+  if (t.chain !== 'solana') return [];
   return [
     { id: 'axiom', name: 'Axiom', url: `https://axiom.trade/meme/${t.pair || a}?chain=sol` },
     { id: 'padre', name: 'Padre', url: `https://trade.padre.gg/trade/solana/${a}` },
@@ -677,7 +682,7 @@ class Radar {
     const trade = pick ? `<div class="trade">
         <a class="term" href="${esc(pick.url)}" target="_blank" rel="noopener noreferrer" data-term="${pick.name}" data-ca="${t.address}" title="Copy CA and open on ${pick.name}">
           <img alt="" src="${TERMINAL_ICONS[pick.id]}"><span>Trade on ${pick.name}</span></a>
-        <button class="term-more" data-term-menu="${t.address}" aria-expanded="${menu}" title="Other terminals">${I.chevron}</button>
+        ${terms.length > 1 ? `<button class="term-more" data-term-menu="${t.address}" aria-expanded="${menu}" title="Other terminals">${I.chevron}</button>` : ''}
         ${menu ? `<div class="term-menu">${terms.filter((x) => x !== pick).map((x) => `
           <a href="${esc(x.url)}" target="_blank" rel="noopener noreferrer" data-term="${x.name}" data-term-pick="${x.id}" data-ca="${t.address}">
             <img alt="" src="${TERMINAL_ICONS[x.id]}">${x.name}</a>`).join('')}</div>` : ''}
@@ -724,7 +729,7 @@ class Radar {
             <div class="sub">
               <span class="sym">$${esc(t.symbol)}</span>
               <button class="ca-btn" data-copy="${t.address}" title="Copy contract address">${short(t.address)} ${I.copy}</button>
-              <span class="chain">${esc(t.chain === 'solana' ? 'SOL' : t.chain)}</span>
+              <span class="chain">${esc(CHAIN_LABEL[t.chain] || t.chain)}</span>
             </div>
           </div>
         </div>
@@ -755,7 +760,7 @@ class Radar {
               <h4>Launch audit <em data-k="audit-src">${t.chain === 'solana' ? 'on-chain' : ''}</em></h4>
               <div class="rows" data-k="audit"></div>
             </section>
-            <div class="links">${links(t).map(([l, u]) => `<a href="${esc(u)}" target="_blank" rel="noopener noreferrer">${l}</a>`).join('')}<button data-bubble="${t.address}" data-chain="${t.chain}">Bubblemaps</button></div>
+            <div class="links">${links(t).map(([l, u]) => `<a href="${esc(u)}" target="_blank" rel="noopener noreferrer">${l}</a>`).join('')}${BUBBLE_CHAIN[t.chain] ? `<button data-bubble="${t.address}" data-chain="${t.chain}">Bubblemaps</button>` : ''}</div>
           </div>
         </div>
       </article>`;
@@ -1191,7 +1196,7 @@ class Radar {
     }
     const bub = e.target.closest('[data-bubble]');
     if (bub) {
-      const chain = { solana: 'solana', base: 'base', bsc: 'bsc', ethereum: 'eth' }[bub.dataset.chain] || 'solana';
+      const chain = BUBBLE_CHAIN[bub.dataset.chain] || 'solana';
       send('openWindow', { url: `https://v2.bubblemaps.io/map?address=${bub.dataset.bubble}&chain=${chain}` })
         .catch((err) => this.toast(err.message));
       return;

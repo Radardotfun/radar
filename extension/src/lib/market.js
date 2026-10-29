@@ -2,13 +2,20 @@
 import { norm } from './keywords.js';
 
 const DS = 'https://api.dexscreener.com';
+// EVM addresses come back checksummed or not, so they're compared in lowercase; Solana's base58 is case-sensitive.
+const quoteKey = (a) => (/^0x/i.test(a || '') ? a.toLowerCase() : a);
 const QUOTES = new Set([
   'So11111111111111111111111111111111111111112', // wSOL
   'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', // USDC
   'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB', // USDT
-]);
-// Launchpad curves: the pair opens in the same tx the token is born.
-export const LAUNCHPADS = new Set(['pumpfun', 'launchlab', 'meteoradbc', 'moonshot', 'boop', 'heaven', 'believe', 'bags', 'moonit', 'jupstudio']);
+  // Robinhood Chain: WETH, native ETH (Uniswap v4 pools) and USDG, the dollar its pools trade against. Its stock tokens
+  // (SPY, NVDA…) also pair memecoins, but copies of them exist, so they don't count as real liquidity.
+  '0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73',
+  '0x0000000000000000000000000000000000000000',
+  '0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168',
+].map(quoteKey));
+// Launchpad curves: the pair opens in the same tx the token is born (flapsh: flap.sh, on Robinhood Chain).
+export const LAUNCHPADS = new Set(['pumpfun', 'launchlab', 'meteoradbc', 'moonshot', 'boop', 'heaven', 'believe', 'bags', 'moonit', 'jupstudio', 'flapsh']);
 
 async function getJson(url) {
   for (let i = 0; i < 4; i++) {
@@ -60,7 +67,7 @@ const n = (x) => (Number.isFinite(+x) ? +x : 0);
 // Liquidity you could actually sell into: 2x the SOL/USDC/USDT side of each pool.
 // One-sided / self-paired pools report huge "liquidity" with almost nothing behind it.
 function realLiquidity(p) {
-  if (!QUOTES.has(p.quoteToken?.address)) return 0;
+  if (!QUOTES.has(quoteKey(p.quoteToken?.address))) return 0;
   const quoteUsd = n(p.liquidity?.quote) * (n(p.priceNative) ? n(p.priceUsd) / n(p.priceNative) : 0);
   return Math.min(n(p.liquidity?.usd), 2 * quoteUsd);
 }
@@ -69,7 +76,7 @@ function realLiquidity(p) {
 export function aggregate(pairs) {
   const byToken = new Map();
   for (const p of pairs) {
-    if (!p?.baseToken?.address || QUOTES.has(p.baseToken.address)) continue;
+    if (!p?.baseToken?.address || QUOTES.has(quoteKey(p.baseToken.address))) continue;
     const key = `${p.chainId}:${p.baseToken.address}`;
     if (!byToken.has(key)) byToken.set(key, []);
     const list = byToken.get(key);
@@ -150,14 +157,15 @@ export function relevance(token, keywords) {
   return { score, matched };
 }
 
-// Not memecoins: tokenized stocks, wrapped/bridged assets, stables. Also caught: a big "market cap"
-// with almost no real liquidity behind it, which is what bridged majors look like on Solana.
-const NON_MEME = /\b(prestocks?|xstocks?|tokenized|securities|backed|wrapped|wormhole|bridged|portal|ondo|stablecoin|usd coin|tether)\b/i;
+// Not memecoins: tokenized stocks (Robinhood Chain's are named "Tesla • Robinhood Token", and so are their copies),
+// wrapped/bridged assets, stables. Also caught: a big "market cap" with almost no real liquidity behind it, which is
+// what bridged majors look like on Solana.
+const NON_MEME = /\b(prestocks?|xstocks?|tokenized|securities|backed|wrapped|wormhole|bridged|portal|ondo|stablecoin|usd coin|tether|robinhood token|global dollar)\b/i;
 const MAJOR_NAMES = new Set('bitcoin ethereum zcash solana hyperliquid xrp ripple bnb cardano chainlink sui aptos near tron litecoin monero avalanche polkadot toncoin dogecoin stellar cosmos arbitrum optimism polygon'.split(' '));
 const MAJOR_TICKERS = new Set('BTC ETH ZEC SOL HYPE XRP BNB ADA LINK SUI APT NEAR TRX LTC XMR AVAX DOT TON XLM ATOM ARB OP POL'.split(' '));
 export function isMemecoin(t) {
   if (NON_MEME.test(`${t.name} ${t.symbol}`)) return false;
-  if (/^(usdc|usdt|usds|pyusd|dai|weth|wbtc|cbbtc|wsol|msol|jitosol)$/i.test(t.symbol)) return false;
+  if (/^(usdc|usdt|usds|usdg|pyusd|dai|weth|wbtc|cbbtc|wsol|msol|jitosol)$/i.test(t.symbol)) return false;
   if (!t.mcapBacked && !t.onCurve && t.marketCap > 50_000_000) return false;
   // Bridged majors (e.g. "Zcash $ZEC" on Solana) aren't memecoins about anything.
   const majorName = MAJOR_NAMES.has(String(t.name).toLowerCase().trim());
@@ -250,15 +258,17 @@ export async function fullTokens(refs, deep = new Set()) {
 export const SOL_CA = /\b[1-9A-HJ-NP-Za-km-z]{32,44}\b/g;
 export const EVM_CA = /\b0x[a-fA-F0-9]{40}\b/g;
 
-// Contract addresses written in the post itself.
+// Contract addresses written in the post itself. A chart link (dexscreener.com/solana/<pool>) carries the pool's
+// address, not the token's: it counts as that pool's token.
 export async function mentionedTokens(text, chains, search = searchPairs) {
   const cas = [...new Set([...(text.match(SOL_CA) || []), ...(text.match(EVM_CA) || [])])].slice(0, 3);
   const found = await Promise.all(cas.map(async (ca) => {
+    const key = ca.toLowerCase();
     const hit = aggregate(await search(ca).catch(() => []))
-      .find((t) => t.address.toLowerCase() === ca.toLowerCase());
+      .find((t) => t.address.toLowerCase() === key || t.pairAddresses?.some((p) => p.toLowerCase() === key));
     if (!hit) return null;
     return aggregate(await allPairsMany([hit]).catch(() => []))
-      .find((t) => t.address.toLowerCase() === ca.toLowerCase() && chains.includes(t.chain)) || null;
+      .find((t) => t.address === hit.address && chains.includes(t.chain)) || null;
   }));
-  return found.filter(Boolean);
+  return [...new Map(found.filter(Boolean).map((t) => [t.address, t])).values()];
 }

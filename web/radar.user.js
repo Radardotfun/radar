@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Radar
 // @namespace    https://tryradar.fun
-// @version      1.7.14
+// @version      1.7.15
 // @description  See the coins behind any post on X and instantly reroute to the biggest match that passes available on-chain safety checks.
 // @homepageURL  https://tryradar.fun
 // @supportURL   https://tryradar.fun
@@ -31,7 +31,7 @@
 // @downloadURL  https://tryradar.fun/radar.user.js
 // ==/UserScript==
 
-// Radar 1.7.14: built from the extension source at https://tryradar.fun. Not financial advice.
+// Radar 1.7.15: built from the extension source at https://tryradar.fun. Not financial advice.
 (() => {
   var __defProp = Object.defineProperty;
   var __export = (target, all) => {
@@ -194,15 +194,21 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
 
   // extension/src/lib/market.js
   var DS = "https://api.dexscreener.com";
-  var QUOTES = /* @__PURE__ */ new Set([
+  var quoteKey = (a) => /^0x/i.test(a || "") ? a.toLowerCase() : a;
+  var QUOTES = new Set([
     "So11111111111111111111111111111111111111112",
     // wSOL
     "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
     // USDC
-    "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB"
+    "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
     // USDT
-  ]);
-  var LAUNCHPADS = /* @__PURE__ */ new Set(["pumpfun", "launchlab", "meteoradbc", "moonshot", "boop", "heaven", "believe", "bags", "moonit", "jupstudio"]);
+    // Robinhood Chain: WETH, native ETH (Uniswap v4 pools) and USDG, the dollar its pools trade against. Its stock tokens
+    // (SPY, NVDA…) also pair memecoins, but copies of them exist, so they don't count as real liquidity.
+    "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73",
+    "0x0000000000000000000000000000000000000000",
+    "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168"
+  ].map(quoteKey));
+  var LAUNCHPADS = /* @__PURE__ */ new Set(["pumpfun", "launchlab", "meteoradbc", "moonshot", "boop", "heaven", "believe", "bags", "moonit", "jupstudio", "flapsh"]);
   async function getJson(url) {
     for (let i = 0; i < 4; i++) {
       const res = await gmFetch(url, { signal: AbortSignal.timeout(8e3) });
@@ -246,14 +252,14 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
   }
   var n = (x) => Number.isFinite(+x) ? +x : 0;
   function realLiquidity(p) {
-    if (!QUOTES.has(p.quoteToken?.address)) return 0;
+    if (!QUOTES.has(quoteKey(p.quoteToken?.address))) return 0;
     const quoteUsd = n(p.liquidity?.quote) * (n(p.priceNative) ? n(p.priceUsd) / n(p.priceNative) : 0);
     return Math.min(n(p.liquidity?.usd), 2 * quoteUsd);
   }
   function aggregate(pairs) {
     const byToken = /* @__PURE__ */ new Map();
     for (const p of pairs) {
-      if (!p?.baseToken?.address || QUOTES.has(p.baseToken.address)) continue;
+      if (!p?.baseToken?.address || QUOTES.has(quoteKey(p.baseToken.address))) continue;
       const key = `${p.chainId}:${p.baseToken.address}`;
       if (!byToken.has(key)) byToken.set(key, []);
       const list = byToken.get(key);
@@ -332,12 +338,12 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     });
     return { score, matched };
   }
-  var NON_MEME = /\b(prestocks?|xstocks?|tokenized|securities|backed|wrapped|wormhole|bridged|portal|ondo|stablecoin|usd coin|tether)\b/i;
+  var NON_MEME = /\b(prestocks?|xstocks?|tokenized|securities|backed|wrapped|wormhole|bridged|portal|ondo|stablecoin|usd coin|tether|robinhood token|global dollar)\b/i;
   var MAJOR_NAMES = new Set("bitcoin ethereum zcash solana hyperliquid xrp ripple bnb cardano chainlink sui aptos near tron litecoin monero avalanche polkadot toncoin dogecoin stellar cosmos arbitrum optimism polygon".split(" "));
   var MAJOR_TICKERS = new Set("BTC ETH ZEC SOL HYPE XRP BNB ADA LINK SUI APT NEAR TRX LTC XMR AVAX DOT TON XLM ATOM ARB OP POL".split(" "));
   function isMemecoin(t) {
     if (NON_MEME.test(`${t.name} ${t.symbol}`)) return false;
-    if (/^(usdc|usdt|usds|pyusd|dai|weth|wbtc|cbbtc|wsol|msol|jitosol)$/i.test(t.symbol)) return false;
+    if (/^(usdc|usdt|usds|usdg|pyusd|dai|weth|wbtc|cbbtc|wsol|msol|jitosol)$/i.test(t.symbol)) return false;
     if (!t.mcapBacked && !t.onCurve && t.marketCap > 5e7) return false;
     const majorName = MAJOR_NAMES.has(String(t.name).toLowerCase().trim());
     const majorTicker = MAJOR_TICKERS.has(String(t.symbol).toUpperCase());
@@ -406,11 +412,12 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
   async function mentionedTokens(text, chains, search = searchPairs) {
     const cas = [.../* @__PURE__ */ new Set([...text.match(SOL_CA) || [], ...text.match(EVM_CA) || []])].slice(0, 3);
     const found = await Promise.all(cas.map(async (ca) => {
-      const hit = aggregate(await search(ca).catch(() => [])).find((t) => t.address.toLowerCase() === ca.toLowerCase());
+      const key = ca.toLowerCase();
+      const hit = aggregate(await search(ca).catch(() => [])).find((t) => t.address.toLowerCase() === key || t.pairAddresses?.some((p) => p.toLowerCase() === key));
       if (!hit) return null;
-      return aggregate(await allPairsMany([hit]).catch(() => [])).find((t) => t.address.toLowerCase() === ca.toLowerCase() && chains.includes(t.chain)) || null;
+      return aggregate(await allPairsMany([hit]).catch(() => [])).find((t) => t.address === hit.address && chains.includes(t.chain)) || null;
     }));
-    return found.filter(Boolean);
+    return [...new Map(found.filter(Boolean).map((t) => [t.address, t])).values()];
   }
 
   // extension/src/lib/rugcheck.js
@@ -509,9 +516,14 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
 [Coin in this post: ${named}]` } : full }, 35e3);
     } catch (e) {
       if (!mentioned.length) throw e;
-      return { narrative: "", engineError: e.message, coinable: true, terms: [], anchors: [], judge: false, mentioned, post: full };
+      return { narrative: "", engineError: e.message, coinable: true, terms: [], anchors: [], judge: false, mentioned, tickers: [], post: full };
     }
-    return { narrative: read.narrative, coinable: read.coinable, terms: read.terms || [], anchors: read.anchors || [], judge: read.judge !== false && !read.anchors?.length, mentioned, post: full };
+    const seen = new Set(mentioned.map((t) => t.address.toLowerCase()));
+    const fromImages = (read.cas || []).filter((a) => !seen.has(a.toLowerCase()));
+    if (fromImages.length) {
+      mentioned.push(...await mentionedTokens(fromImages.join(" "), chains, (q) => cached(`q:${q}`, 2e4, () => searchPairs(q))).catch(() => []));
+    }
+    return { narrative: read.narrative, coinable: read.coinable, terms: read.terms || [], anchors: read.anchors || [], judge: read.judge !== false && !read.anchors?.length, mentioned, tickers: read.tickers || [], post: full };
   }
   function anchorHits(t, anchors) {
     const name = norm(t.name || "");
@@ -542,13 +554,13 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     const best = matches.filter((m) => m.anchorIndex === firstAnchor).sort((a, b) => b.score - a.score || Number(Boolean(b.token.mcapBacked)) - Number(Boolean(a.token.mcapBacked)) || (b.token.marketCap || 0) - (a.token.marketCap || 0))[0];
     return { ...best.token, techAnchor: anchors[firstAnchor] };
   }
-  async function findCoins({ narrative, coinable, terms, anchors = [], judge = true, mentioned, post, engineError }, chains, { apiBase, cached = passthrough }) {
+  async function findCoins({ narrative, coinable, terms, anchors = [], judge = true, mentioned, tickers = [], post, engineError }, chains, { apiBase, cached = passthrough }) {
     const t0 = Date.now();
     const timing = {};
     const lap = (k) => {
       timing[k] = Date.now() - t0;
     };
-    const base = { mode: "ai", narrative, coinable, mentioned, engineError, ts: Date.now(), timing, techMatch: null };
+    const base = { mode: "ai", narrative, coinable, mentioned, tickers, anchors, terms, engineError, ts: Date.now(), timing, techMatch: null };
     if (!terms.length) return { ...base, picks: [], others: [], techMatch: findTechMatch([], mentioned, anchors, /* @__PURE__ */ new Map(), narrative, post) };
     const statusId = post.url?.match(/status\/(\d+)/)?.[1] || null;
     let failed = 0;
@@ -589,7 +601,8 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       scores = new Map(verdicts.flat().filter((m) => m.t).map((m) => [m.t.address, { score: m.score, reason: "" }]));
     }
     for (const { t } of candidates) if (t.fromPost) scores.set(t.address, { score: 99, reason: "Launched with this post as its link" });
-    if (!scores.size) return { ...base, picks: [], others: [], techMatch: findTechMatch([], mentioned, anchors, scores, narrative, post) };
+    const pool = candidates.map((c) => c.t);
+    if (!scores.size) return { ...base, picks: [], others: [], pool, techMatch: findTechMatch([], mentioned, anchors, scores, narrative, post) };
     const refs = candidates.map((c) => c.t).filter((t) => scores.has(t.address));
     const fromPost = new Set(refs.filter((t) => t.fromPost).map((t) => t.address));
     let tokens = await Promise.race([
@@ -607,7 +620,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     const { picks, others, roleCandidates, roleCut } = pickThree(tokens, { cuts: [0.85, 0.7, 0] });
     const techMatch = findTechMatch(tokens, mentioned, anchors, scores, narrative, post);
     const remaining = techMatch ? others.filter((t) => t.address !== techMatch.address) : others;
-    return { ...base, picks, others: remaining, roleCandidates, roleCut, techMatch };
+    return { ...base, picks, others: remaining, roleCandidates, roleCut, techMatch, pool };
   }
 
   // extension/src/lib/slot-calendar.js
@@ -986,7 +999,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
 
   // extension/src/lib/handlers.js
   var API_BASE = "https://narrative-radar.millenia-portfolio.workers.dev";
-  var DEFAULTS = { rpcUrl: "", chains: ["solana"], refreshSec: 10 };
+  var DEFAULTS = { rpcUrl: "", chains: ["solana", "robinhood"], refreshSec: 10 };
   function makeHandlers(host) {
     let rpcState = { url: null, rpc: null };
     function rpcFor(url) {
@@ -1015,10 +1028,13 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       const key = `rd:${postKey(post, s.chains)}`;
       return forgetIfFailed(key, cached(key, 3e5, () => readPost(post, s.chains, { apiBase: API_BASE, cached })));
     }
-    async function coins({ post }) {
+    async function coins({ post, judge = false }) {
       const s = await host.settings();
-      const key = `co:${postKey(post, s.chains)}`;
-      return forgetIfFailed(key, cached(key, 12e4, async () => findCoins(await read({ post }), s.chains, { apiBase: API_BASE, cached })));
+      const key = `co:${judge ? "j:" : ""}${postKey(post, s.chains)}`;
+      return forgetIfFailed(key, cached(key, 12e4, async () => {
+        const r = await read({ post });
+        return findCoins(judge ? { ...r, judge: true } : r, s.chains, { apiBase: API_BASE, cached });
+      }));
     }
     async function story({ post, narrative, coin }) {
       return cached(`st:${post.url || post.text}:${coin?.address || ""}`, 6e5, async () => {
@@ -1191,7 +1207,8 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     axiom: "data:image/png;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wCEAAkGBwgHBgkIBwgKCgkLDRYPDQwMDRsUFRAWIB0iIiAdHx8kKDQsJCYxJx8fLT0tMTU3Ojo6Iys/RD84QzQ5OjcBCgoKDQwNGg8PGjclHyU3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3N//AABEIAEAAQAMBIgACEQEDEQH/xAAcAAABBQEBAQAAAAAAAAAAAAAEAAEDBQcGAgj/xAA1EAABAwMBAgsIAgMAAAAAAAABAAIDBAUREiExBgcVMlFSVXGRlNETQVRhgZKhohcjFBYi/8QAFwEBAQEBAAAAAAAAAAAAAAAAAAIBA//EABkRAQEBAAMAAAAAAAAAAAAAAAARAQISIf/aAAwDAQACEQMRAD8AzfUnDkPrT61bBIelrQ+tWXB21z32801ugyDK7L39Rg5zvoPzhawLrS1onhDbJ7HeKm3VG0xO/wCHddh5rvqPzlV2tBNqTZUOtLWsag1J9SjBXoIPeVtXFXwbNrshuVUzFZcGhzQRtjh3tHeecfp0LIbO6gjudLJd45ZaFjw6aKEAukA26dpAwTgH5ZWvfy3YDutt1HyDItn7quOzaPPGrwbNzsoulKzNXb2kvAG2SHe4d7ed3aulYvlbV/LVgG+23Qj3gsi2/usgu5oX3OpfaY5oqF8hdBHMAHRtO3TsJGAcgfLCctu0B6k2pMV4JUiIPUjXkkBoLnE4AAySegIASFd1xXWT/PuL7tUR66ehP9bcZ1ze77d/eQme7B2Nn4vrRHbKcXeOWSuLNU2idzQ1x26Rjo3ZRw4B8GvhqjzLlbGSUnJY/PcUvaS9R/gV264mqn/Q+DXw1R5lyBvXF9aX2yo5HimZXNZqh1zFwcRt04PTuXR+0l6j/ApxLKCCGP8AAp1wr5/c/aQQQRvBGCFGXrreNGycn3Jt1poyymrnH2jcY0Tbz92/xXDmRcN82KQZRdNdbjSxCKlr6qGMHIZFM5o8AUGkpaseXrx2tX+Zf6pcvXjtav8AMv8AVVySUWPL147Wr/Mv9UuXrx2tX+Zf6quSSgyputwq4vZVVfVTR5zolmc4eBKEymSQf//Z",
     padre: "data:image/png;base64,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",
     fomo: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAMAAACdt4HsAAAAclBMVEULCR/q7f8AAADv8v/x9P/s7/+bnaygobAAAA4AABgAABYAAAcAAAsAAAQAABIEABuVl6eHiJldXm3R0+USESelp7jh5PdjZHTCxNZ2d4geHTBwcYC7vc9HR1g5OUmNjp9PUF8uLj9+f4+xs8T2+f8nJjmcbNgjAAACIklEQVRYhe1W3XqCMAyVJAXkx6pAAUVgyN7/FSfCSgqV3e/jXIbkNCdNEw6HHTt2/GccI3jBl6b1FL6M4enPaBlDXZ6z7FzeYPYOAK4XN/MuVwC5EX04QNokRIRIJKp2cj7C46kG48uq3DT6HB6EjSLhjBCIWTgwwFeFqK2kcvgUH9eJDh+dC5ASOoGOYe0+MEAuePgAegJk/cIq+qtVBZS0jHecvqxoZRROaqkk5JZ4x0GbkbK1iODxLvMIHSSQYzardQqnznM1iskVC5fhnGgGuvurFHyYccZJ6w04Kk2Az49X+S7HdBQ13E2mataQbBHIG01KJVd6us73IVS8QRB1oyeatYYnMoKNftaeWAc2YSNBuEXgiNHJqHRQs4berEHQ9rZKhxfWkqLYIIDz6EmdkSZULAO0tOJKK12N8RPxl7b4ZkB+TyfRg9fQz7kCSyvPnneyEYDHFWw1otZKLU8TFFdgcC8U6IY1Hsyx7lkC1SoB9pIev1rR5Q+pY31MX8dlfOf9wtX9JpTrzWAKzDf2RnTp11PDnCazGS1NJKWyTC5hHWeYSMsVhmW/jqeywHW8ullvAJ7L4StEDt/Oas4nqf0GpV8YDIKSOj74D3NTCPKi5QVoBsiM/dVEw0kh21UCKWm3Viu0lRjXKiZNOlU6CC/JtFadKoft7X6C23uxdzXE80EhtMNib+7HP8LHSgxNt5QZDL8W8fKHY8eOHf8MP1gLHMr/NURSAAAAAElFTkSuQmCC",
-    larpcheck: "data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20viewBox=%220%200%2064%2064%22%3E%3Crect%20width=%2264%22%20height=%2264%22%20rx=%2213%22%20fill=%22%23f5c518%22/%3E%3Cg%20transform=%22rotate(-8%2032%2032)%22%20fill=%22%2315171a%22%3E%3Cpath%20fill-rule=%22evenodd%22%20d=%22M14.5%2014h35a4.5%204.5%200%200%201%204.5%204.5v27a4.5%204.5%200%200%201-4.5%204.5h-35a4.5%204.5%200%200%201-4.5-4.5v-27a4.5%204.5%200%200%201%204.5-4.5zm1%205.5v25h33v-25z%22/%3E%3Cpath%20d=%22M20.5%2022.5h7.5v12.5h13v7.5H20.5z%22/%3E%3C/g%3E%3C/svg%3E"
+    larpcheck: "data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20viewBox=%220%200%2064%2064%22%3E%3Crect%20width=%2264%22%20height=%2264%22%20rx=%2213%22%20fill=%22%23f5c518%22/%3E%3Cg%20transform=%22rotate(-8%2032%2032)%22%20fill=%22%2315171a%22%3E%3Cpath%20fill-rule=%22evenodd%22%20d=%22M14.5%2014h35a4.5%204.5%200%200%201%204.5%204.5v27a4.5%204.5%200%200%201-4.5%204.5h-35a4.5%204.5%200%200%201-4.5-4.5v-27a4.5%204.5%200%200%201%204.5-4.5zm1%205.5v25h33v-25z%22/%3E%3Cpath%20d=%22M20.5%2022.5h7.5v12.5h13v7.5H20.5z%22/%3E%3C/g%3E%3C/svg%3E",
+    uniswap: "data:image/png;base64,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"
   };
 
   // extension/src/ui/coincheck.js
@@ -1410,11 +1427,13 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     ca: { label: "MENTIONED CA", icon: I.pin },
     more: { label: "MATCH", icon: I.pin }
   };
+  var CHAIN_LABEL = { solana: "SOL", robinhood: "Robinhood" };
+  var BUBBLE_CHAIN = { solana: "solana", base: "base", bsc: "bsc", ethereum: "eth" };
   function links(t) {
     const a = t.address;
     if (t.chain === "solana") return [["Chart", t.url || `https://dexscreener.com/solana/${a}`], ["GMGN", `https://gmgn.ai/sol/token/${a}`]];
     const g = { base: "base", bsc: "bsc", ethereum: "eth" }[t.chain];
-    const scan = { base: "https://basescan.org/token/", bsc: "https://bscscan.com/token/", ethereum: "https://etherscan.io/token/" }[t.chain];
+    const scan = { base: "https://basescan.org/token/", bsc: "https://bscscan.com/token/", ethereum: "https://etherscan.io/token/", robinhood: "https://robinhoodchain.blockscout.com/token/" }[t.chain];
     return [["Chart", t.url], g ? ["GMGN", `https://gmgn.ai/${g}/token/${a}`] : ["Explorer", scan ? scan + a : t.url]];
   }
   var TERM_KEY = "nr:terminal";
@@ -1452,8 +1471,9 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
   var QUICK_MARKETS = /* @__PURE__ */ new Set(["pumpfun", "pumpswap", "raydium"]);
   var quickBuyable = (t) => t.chain === "solana" && (!t.dexId || QUICK_MARKETS.has(t.dexId));
   function terminals(t) {
-    if (t.chain !== "solana") return [];
     const a = t.address;
+    if (t.chain === "robinhood") return [{ id: "uniswap", name: "Uniswap", url: `https://app.uniswap.org/swap?chain=robinhood&outputCurrency=${a}` }];
+    if (t.chain !== "solana") return [];
     return [
       { id: "axiom", name: "Axiom", url: `https://axiom.trade/meme/${t.pair || a}?chain=sol` },
       { id: "padre", name: "Padre", url: `https://trade.padre.gg/trade/solana/${a}` },
@@ -1984,7 +2004,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       const trade = pick ? `<div class="trade">
         <a class="term" href="${esc2(pick.url)}" target="_blank" rel="noopener noreferrer" data-term="${pick.name}" data-ca="${t.address}" title="Copy CA and open on ${pick.name}">
           <img alt="" src="${TERMINAL_ICONS[pick.id]}"><span>Trade on ${pick.name}</span></a>
-        <button class="term-more" data-term-menu="${t.address}" aria-expanded="${menu}" title="Other terminals">${I.chevron}</button>
+        ${terms.length > 1 ? `<button class="term-more" data-term-menu="${t.address}" aria-expanded="${menu}" title="Other terminals">${I.chevron}</button>` : ""}
         ${menu ? `<div class="term-menu">${terms.filter((x) => x !== pick).map((x) => `
           <a href="${esc2(x.url)}" target="_blank" rel="noopener noreferrer" data-term="${x.name}" data-term-pick="${x.id}" data-ca="${t.address}">
             <img alt="" src="${TERMINAL_ICONS[x.id]}">${x.name}</a>`).join("")}</div>` : ""}
@@ -2030,7 +2050,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
             <div class="sub">
               <span class="sym">$${esc2(t.symbol)}</span>
               <button class="ca-btn" data-copy="${t.address}" title="Copy contract address">${short(t.address)} ${I.copy}</button>
-              <span class="chain">${esc2(t.chain === "solana" ? "SOL" : t.chain)}</span>
+              <span class="chain">${esc2(CHAIN_LABEL[t.chain] || t.chain)}</span>
             </div>
           </div>
         </div>
@@ -2061,7 +2081,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
               <h4>Launch audit <em data-k="audit-src">${t.chain === "solana" ? "on-chain" : ""}</em></h4>
               <div class="rows" data-k="audit"></div>
             </section>
-            <div class="links">${links(t).map(([l, u]) => `<a href="${esc2(u)}" target="_blank" rel="noopener noreferrer">${l}</a>`).join("")}<button data-bubble="${t.address}" data-chain="${t.chain}">Bubblemaps</button></div>
+            <div class="links">${links(t).map(([l, u]) => `<a href="${esc2(u)}" target="_blank" rel="noopener noreferrer">${l}</a>`).join("")}${BUBBLE_CHAIN[t.chain] ? `<button data-bubble="${t.address}" data-chain="${t.chain}">Bubblemaps</button>` : ""}</div>
           </div>
         </div>
       </article>`;
@@ -2515,7 +2535,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       }
       const bub = e.target.closest("[data-bubble]");
       if (bub) {
-        const chain = { solana: "solana", base: "base", bsc: "bsc", ethereum: "eth" }[bub.dataset.chain] || "solana";
+        const chain = BUBBLE_CHAIN[bub.dataset.chain] || "solana";
         send("openWindow", { url: `https://v2.bubblemaps.io/map?address=${bub.dataset.bubble}&chain=${chain}` }).catch((err) => this.toast(err.message));
         return;
       }

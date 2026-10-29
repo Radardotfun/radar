@@ -63,9 +63,16 @@ export async function readPost(post, chains, { apiBase, cached = passthrough }) 
   } catch (e) {
     // No AI right now: a coin whose CA is written in the post still shows, it needs no reading.
     if (!mentioned.length) throw e;
-    return { narrative: '', engineError: e.message, coinable: true, terms: [], anchors: [], judge: false, mentioned, post: full };
+    return { narrative: '', engineError: e.message, coinable: true, terms: [], anchors: [], judge: false, mentioned, tickers: [], post: full };
   }
-  return { narrative: read.narrative, coinable: read.coinable, terms: read.terms || [], anchors: read.anchors || [], judge: read.judge !== false && !read.anchors?.length, mentioned, post: full };
+  // A contract address shown only in an image (the engine reads it off) counts as written in the post, once
+  // DexScreener confirms it is a real token: a misread address matches nothing and is dropped.
+  const seen = new Set(mentioned.map((t) => t.address.toLowerCase()));
+  const fromImages = (read.cas || []).filter((a) => !seen.has(a.toLowerCase()));
+  if (fromImages.length) {
+    mentioned.push(...await mentionedTokens(fromImages.join(' '), chains, (q) => cached(`q:${q}`, 20_000, () => searchPairs(q))).catch(() => []));
+  }
+  return { narrative: read.narrative, coinable: read.coinable, terms: read.terms || [], anchors: read.anchors || [], judge: read.judge !== false && !read.anchors?.length, mentioned, tickers: read.tickers || [], post: full };
 }
 
 /** Stage 2: which on-chain coins are really about it? */
@@ -108,11 +115,11 @@ function findTechMatch(tokens, mentioned, anchors, scores, narrative, post) {
   return { ...best.token, techAnchor: anchors[firstAnchor] };
 }
 
-export async function findCoins({ narrative, coinable, terms, anchors = [], judge = true, mentioned, post, engineError }, chains, { apiBase, cached = passthrough }) {
+export async function findCoins({ narrative, coinable, terms, anchors = [], judge = true, mentioned, tickers = [], post, engineError }, chains, { apiBase, cached = passthrough }) {
   const t0 = Date.now();
   const timing = {};
   const lap = (k) => { timing[k] = Date.now() - t0; };
-  const base = { mode: 'ai', narrative, coinable, mentioned, engineError, ts: Date.now(), timing, techMatch: null };
+  const base = { mode: 'ai', narrative, coinable, mentioned, tickers, anchors, terms, engineError, ts: Date.now(), timing, techMatch: null };
   if (!terms.length) return { ...base, picks: [], others: [], techMatch: findTechMatch([], mentioned, anchors, new Map(), narrative, post) };
 
   const statusId = post.url?.match(/status\/(\d+)/)?.[1] || null;
@@ -160,7 +167,9 @@ export async function findCoins({ narrative, coinable, terms, anchors = [], judg
     scores = new Map(verdicts.flat().filter((m) => m.t).map((m) => [m.t.address, { score: m.score, reason: '' }]));
   }
   for (const { t } of candidates) if (t.fromPost) scores.set(t.address, { score: 99, reason: 'Launched with this post as its link' });
-  if (!scores.size) return { ...base, picks: [], others: [], techMatch: findTechMatch([], mentioned, anchors, scores, narrative, post) };
+  // `pool`: every candidate searched, judged or not (the X bot compares their logos with the post's picture).
+  const pool = candidates.map((c) => c.t);
+  if (!scores.size) return { ...base, picks: [], others: [], pool, techMatch: findTechMatch([], mentioned, anchors, scores, narrative, post) };
 
   // Accurate liquidity, age and volume across every pool of the (few) matched tokens.
   const refs = candidates.map((c) => c.t).filter((t) => scores.has(t.address));
@@ -177,7 +186,7 @@ export async function findCoins({ narrative, coinable, terms, anchors = [], judg
   const { picks, others, roleCandidates, roleCut } = pickThree(tokens, { cuts: [0.85, 0.7, 0] });
   const techMatch = findTechMatch(tokens, mentioned, anchors, scores, narrative, post);
   const remaining = techMatch ? others.filter((t) => t.address !== techMatch.address) : others;
-  return { ...base, picks, others: remaining, roleCandidates, roleCut, techMatch };
+  return { ...base, picks, others: remaining, roleCandidates, roleCut, techMatch, pool };
 }
 
 export async function aiScan(post, chains, opts) {

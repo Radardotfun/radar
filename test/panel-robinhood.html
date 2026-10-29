@@ -1,0 +1,30 @@
+<!doctype html>
+<!-- Manual check of Robinhood Chain coins in the real panel, on the live backend: a post naming Artificial Inu by its
+     Robinhood contract should show a Robinhood card (chain label, Trade on Uniswap, Explorer link, no Bubblemaps, no
+     Insta Buy, "Solana only for now" checks). Serve the repo root (python -m http.server) and open
+     /test/panel-robinhood.html. ?theme=light|dim|dark -->
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Panel: Robinhood Chain</title>
+<style>html,body{margin:0;height:100%;background:#000}#root{width:400px;height:100vh;margin:0 auto}</style></head>
+<body><div id="root"></div>
+<script type="module">
+import { makeHandlers, DEFAULTS } from '../extension/src/lib/handlers.js';
+import { useBackend, mountInline } from '../extension/src/ui/radar.js';
+
+const AI_INU = '0x2E8c31162b855A2ffa90F6F8634643Ad6F111e18';
+const mem = new Map();
+const h = makeHandlers({
+  settings: async () => DEFAULTS,
+  store: { get: async (k) => mem.get(k) ?? null, set: async (k, v) => { mem.set(k, v); } },
+  openWindow: (url) => window.open(url),
+  rpcUrl: async () => null,
+  ready: Promise.resolve(),
+});
+useBackend(h, { css: '../extension/src/ui/radar.css' });
+
+const theme = new URLSearchParams(location.search).get('theme') || 'dark';
+document.body.style.background = theme === 'light' ? '#fff' : theme === 'dim' ? '#15202b' : '#000';
+const radar = await mountInline(document.getElementById('root'), theme);
+window.radar = radar;
+radar.scan({ post: { text: `Artificial Inu is the biggest memecoin on Robinhood Chain right now ${AI_INU}`, author: 'test', url: 'https://x.com/test/status/1' }, source: { kind: '@test', label: 'Robinhood panel check' } });
+</script></body></html>
