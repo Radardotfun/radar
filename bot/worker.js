@@ -47,6 +47,9 @@ let dexActive = 0;
 let dexLast = 0;
 let dexCoolUntil = 0;
 const dexWaiting = [];
+// Each DexScreener URL's last answer this run: one still at 429 or 503 at the end is a lookup the scan went without.
+const dexLastStatus = new Map();
+const dexLost = () => [...dexLastStatus.values()].filter((st) => st === 429 || st === 503).length;
 async function dexSlot() {
   if (dexActive >= 2) await new Promise((r) => dexWaiting.push(r));
   dexActive += 1;
@@ -59,7 +62,8 @@ function dexDone() {
   dexWaiting.shift()?.();
 }
 async function dexFetch(input, init = {}) {
-  if (dexBudget <= 0) return new Response('{}', { status: 503, headers: { 'content-type': 'application/json' } });
+  const url = String(input?.url || input);
+  if (dexBudget <= 0) { dexLastStatus.set(url, 503); return new Response('{}', { status: 503, headers: { 'content-type': 'application/json' } }); }
   dexBudget -= 1;
   // The caller's 8 s timeout would also count the time waiting for a slot here and cancel the lookup; the request
   // itself gets its own 10 s instead.
@@ -68,6 +72,7 @@ async function dexFetch(input, init = {}) {
   try {
     const res = await realFetch(input, { ...rest, signal: AbortSignal.timeout(10_000) });
     if (res.status === 429) { dexCoolUntil = Date.now() + 2500; calls.retries = (calls.retries || 0) + 1; }
+    dexLastStatus.set(url, res.status);
     return res;
   } finally {
     dexDone();
@@ -77,14 +82,15 @@ async function dexFetch(input, init = {}) {
 const mem = new Map();
 // The bot answers for Solana, Robinhood Chain, Base and BNB Chain (what people asked for), whatever the panel scans.
 const SETTINGS = { ...DEFAULTS, chains: ['solana', 'robinhood', 'base', 'bsc'] };
-const handlers = makeHandlers({
+const HOST = {
   settings: async () => SETTINGS,
   store: { get: async (k) => mem.get(k), set: async (k, v) => mem.set(k, v) },
   openWindow: () => {},
   rpcUrl: async () => null,
   ready: Promise.resolve(),
   inlineImages: false,
-});
+};
+const handlers = makeHandlers(HOST);
 
 const json = (status, body) => new Response(JSON.stringify(body, null, 1), { status, headers: { 'content-type': 'application/json' } });
 // Trimmed: a pasted key often carries a space or a line break, and X then refuses the signature (401).
@@ -141,11 +147,14 @@ async function matchImages(images, logos) {
 // One post, as the bot would answer it. Kept 10 minutes, so a post tagged many times is scanned once.
 const scans = new Map();
 // known: the verdicts this post got on earlier tags ({ address: score }), which win over a new judge call.
-async function replyFor(postUrl, known = null) {
-  const hit = scans.get(postUrl);
+// fresh: a retry, after DexScreener left lookups unanswered: nothing cached in this run is reused (the server's own
+// caches of the AI's answers still are).
+async function replyFor(postUrl, known = null, fresh = false) {
+  const hit = !fresh && scans.get(postUrl);
   if (hit && Date.now() - hit.at < 600_000) return hit.p;
+  const h = fresh ? makeHandlers(HOST) : handlers;
   const p = (async () => {
-    const { post } = await handlers.tweet({ url: postUrl });
+    const { post } = await h.tweet({ url: postUrl });
     // A tag under one of @radardotfunn's own posts (people trying the bot under its announcement): no scan of our
     // own words, just how to use it.
     if (String(post.author || '').toLowerCase() === 'radardotfunn') {
@@ -154,9 +163,9 @@ async function replyFor(postUrl, known = null) {
     }
     // The panel skips the AI judge when the read gives anchor words (any coin naming one counts); the bot posts in
     // public, so every candidate is judged.
-    const fresh = await handlers.coins({ post, judge: true });
-    if (fresh.engineError) throw new Error('Radar could not read this post right now');
-    const { scan, scores } = withMemory(fresh, known);
+    const found = await h.coins({ post, judge: true });
+    if (found.engineError) throw new Error('Radar could not read this post right now');
+    const { scan, scores } = withMemory(found, known);
     const res = { ...scan, ...await botCoins(scan, post, { search: searchPairs, lookupCa, matchImages, chains: SETTINGS.chains }) };
     return { text: botReply(res, postUrl) || NO_COINS, short: botReply(res, postUrl, Date.now(), { full: false }) || NO_COINS, links: botReply(res, postUrl, Date.now(), { links: true }) || NO_COINS, story: res.narrative || '', scores };
   })();
@@ -230,7 +239,7 @@ async function poll(env) {
   await Promise.all(done.filter((e) => !e.skip).map((entry) => env.SELF.fetch('https://radar-bot/handle', {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-bot-token': env.BOT_TOKEN },
-    body: JSON.stringify({ mention: entry.mention, target: entry.target, live, scores: s.judged?.[entry.target]?.s || null }),
+    body: JSON.stringify({ mention: entry.mention, target: entry.target, live, tries: entry.tries || 0, scores: s.judged?.[entry.target]?.s || null }),
   }).then((r) => r.json()).then((r) => Object.assign(entry, r)).catch((e) => { entry.error = String(e.message || e).slice(0, 200); })));
 
   for (const e of done) if (e.reply || e.dry) s.sent += 1;
@@ -251,10 +260,19 @@ async function poll(env) {
 }
 
 // One tag: scan the post it's about, then reply (or, in dry mode, only say what the reply would be).
-async function handle(env, { mention, target, live, scores: known = null }) {
+async function handle(env, { mention, target, live, scores: known = null, tries = 0 }) {
   dexBudget = DEX_BUDGET;
-  const { text, short, links, story, scores } = await replyFor(`https://x.com/i/status/${target}`, known);
-  const out = { story, chars: xLength(text), text, scores };
+  dexLastStatus.clear();
+  const postUrl = `https://x.com/i/status/${target}`;
+  const { text, short, links, story, scores } = await replyFor(postUrl, known, tries > 0);
+  // DexScreener left lookups unanswered: the coins may be missing the big one. Try again next minute (a new run,
+  // a fresh budget), with this scan dropped from the cache; from the third try on, post what there is.
+  const lost = dexLost();
+  if (lost && tries < 2) {
+    scans.delete(postUrl);
+    throw new Error(`DexScreener rate-limited ${lost} lookup${lost === 1 ? '' : 's'}, trying again next minute`);
+  }
+  const out = { story, chars: xLength(text), text, scores, ...(lost ? { lost } : {}) };
   if (!live) return { ...out, dry: true };
   const post = (t) => xApi(env, 'POST', `${X}/tweets`, { text: t, reply: { in_reply_to_tweet_id: mention } });
   // The keys were authorised on 29 Oct 2026 around 17:05 UTC, and X refuses crypto addresses as text for a week:
