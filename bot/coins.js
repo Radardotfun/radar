@@ -24,10 +24,13 @@ export function cashtags(text) {
 }
 
 // The coin a ticker means: exact ticker, live; its name written in the post first, then the biggest market cap that
-// real liquidity backs (a "$GTA6" showing $21B with nothing in its pool is not the big one).
+// real liquidity backs (a "$GTA6" showing $21B with nothing in its pool is not the big one). The name counts as
+// whole words outside cashtags: in "$DACITY $DACITYCOIN" the second is another ticker, and it made a $4.5K coin named
+// "DacityCoin" beat the $7.6M Dacity Coin.
+const plain = (s) => ` ${lower(s).replace(/\$[\p{L}\p{N}_]+/gu, ' ').replace(/[^\p{L}\p{N}]+/gu, ' ').trim()} `;
 export function pickNamed(tk, tokens, text) {
-  const words = lower(text);
-  const named = (t) => lower(t.name).length >= 3 && lower(t.name) !== lower(tk) && words.includes(lower(t.name));
+  const words = plain(text);
+  const named = (t) => { const n = plain(t.name).trim(); return n.length >= 3 && n !== lower(tk) && words.includes(` ${n} `); };
   return tokens.filter((t) => t?.address && sym(t) === tk && live(t) && (t.mcapBacked || alive(t)))
     .sort((a, b) => Number(named(b)) - Number(named(a)) || Number(!!b.mcapBacked) - Number(!!a.mcapBacked) || (b.marketCap || 0) - (a.marketCap || 0))[0] || null;
 }

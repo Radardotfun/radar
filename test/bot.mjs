@@ -64,6 +64,10 @@ const superInu = tok('SI', 'Super Inu', 'DEW9dSN6QpWyNthphCpMmAbZP1Q4cEKR9xQXAri
 const superAi = tok('SI', 'Super Intelligence', '9aqmJjCnnMQv42TXLk921ceUkN35nea2QP969n1caqjj', 470_000);
 assert.equal(pickNamed('SI', [superAi, superInu], 'whales are buying $SI'), superInu, 'the biggest coin with the ticker');
 assert.equal(pickNamed('SI', [superAi, superInu], '$SI, Super Intelligence is back'), superAi, 'its name in the post wins');
+const dacity = tok('Dacity', 'Dacity Coin', 'nxPqDacity1111111111111111111111111111pump', 7_660_000);
+const dacityTiny = tok('Dacity', 'DacityCoin', '2GjQDacity2222222222222222222222222222pump', 4_500);
+assert.equal(pickNamed('DACITY', [dacityTiny, dacity], 'Top GTA 6 memes: $DACITY $VICE $JASON $DACITYCOIN $GTA'), dacity, 'another cashtag is not the name written in the post');
+assert.equal(pickNamed('DACITY', [dacity, dacityTiny], '$DACITY, the DacityCoin of Vice City'), dacityTiny, 'the name as a word still wins');
 const purr = tok('PURR', 'Hypurr', '8RNUw4N655VSrZKuhGdywhbSMDTrheguFPfxbpE2NZHQ', 3_800_000);
 const fakes = [tok('PURR', 'Hypurr', 'FakePurr1111111111111111111111111111111pump', 26_000), tok('Hypurr', 'Hypurr', 'FakePurr2222222222222222222222222222222pump', 197_000), tok('HYPE', 'Hype', '98sMhvDwXj1RQi5c5Mndm3vPe9cBqPrbLaufMXFNMh5g', 105_000), tok('HCAT', 'Hyperliquid Cat', 'HCat33333333333333333333333333333333333pump', 90_000, { createdAt: Date.parse('2026-09-01') }), tok('KITTY', 'Red Kitten Crew', 'Kitty4444444444444444444444444444444444pump', 900_000, { relevance: 70 })];
 const scan = { mentioned: [purr], picks: [], roleCandidates: fakes };
