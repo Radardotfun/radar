@@ -68,6 +68,29 @@ export function runnerOf(tokens, words) {
     .sort((a, b) => (b.marketCap || 0) - (a.marketCap || 0))[0] || null;
 }
 
+// The judge is a sampled model call (no temperature control on the judge's model), and DexScreener's search results
+// shift between scans, so two tags of the same post could get different coins. The bot keeps each post's verdicts:
+// a coin judged before keeps its first score, a coin judged before but missing from this scan's verdicts comes back
+// from the candidate pool, and only coins never seen get a fresh verdict.
+// -> { scan: the scan with remembered scores applied, scores: { address: score } to keep for next time }
+export function withMemory(scan, known = null) {
+  const memo = known && typeof known === 'object' ? known : {};
+  const seen = new Map();
+  for (const t of [...(scan?.roleCandidates || []), ...(scan?.picks || []).map((p) => p.token), ...(scan?.others || []), scan?.techMatch, ...(scan?.pool || [])]) {
+    if (t?.address && !seen.has(t.address)) seen.set(t.address, t);
+  }
+  const judged = new Set([...(scan?.roleCandidates || []), ...(scan?.picks || []).map((p) => p.token), ...(scan?.others || []), scan?.techMatch].filter((t) => t?.address).map((t) => t.address));
+  const scored = [...seen.values()]
+    .map((t) => (Number.isFinite(memo[t.address]) ? { ...t, relevance: memo[t.address] } : judged.has(t.address) ? t : null))
+    .filter((t) => t && (t.relevance || 0) >= 60);
+  const scores = { ...memo };
+  for (const t of scored) if (!Number.isFinite(scores[t.address])) scores[t.address] = t.relevance;
+  // The 40 best are plenty for one post.
+  const kept = Object.fromEntries(Object.entries(scores).sort((a, b) => b[1] - a[1]).slice(0, 40));
+  const techMatch = scan?.techMatch?.address && Number.isFinite(memo[scan.techMatch.address]) ? { ...scan.techMatch, relevance: memo[scan.techMatch.address] } : scan?.techMatch || null;
+  return { scan: { ...scan, roleCandidates: scored, picks: [], others: [], techMatch }, scores: kept };
+}
+
 // A post that is a picture with at most a short caption (links and @handles don't count).
 export const picturePost = (post) => (post?.images?.length || 0) > 0 && String(post.text || '').replace(/https?:\/\/\S+|@\w+/g, '').trim().length <= 80;
 

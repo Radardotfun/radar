@@ -145,3 +145,16 @@ assert.ok(!gtaCoins.picks.some((p) => p.token.address === otherCat.address), 'a 
 const noName = await botCoins({ ...gtaScan, anchors: ['vice'], terms: ['Vice City'] }, { text: 'Vice City memes' }, { search: async () => [] });
 assert.ok(!noName.picks.some((p) => p.token.address === gta6.address), 'no runner when its name is not in the post');
 console.log('PASS bot: the story\'s main runner takes Highest MC even when the judge rates it low');
+// The same post gets the same verdicts on every tag: remembered scores win, a coin the judge dropped this time comes
+// back from the candidate pool with its old score, and only new coins take the fresh verdict.
+const { withMemory } = await import('../bot/coins.js');
+const memA = tok('CATS', 'Robinhood Cats', 'MemA1111111111111111111111111111111pump', 30_000, { relevance: 85 });
+const memB = tok('KITTY', 'Robinhood Kitty', 'MemB2222222222222222222222222222222pump', 12_000, { relevance: 62 });
+const memC = tok('GEMCAT', 'Gem Cat', 'MemC3333333333333333333333333333333pump', 9_000, { relevance: 90 });
+const first = withMemory({ roleCandidates: [memA, memB], picks: [], others: [], pool: [memA, memB, memC] }, null);
+assert.deepEqual(first.scores, { [memA.address]: 85, [memB.address]: 62 });
+const second = withMemory({ roleCandidates: [{ ...memA, relevance: 70 }, memC], picks: [], others: [], pool: [memA, { ...memB, relevance: 0 }, memC] }, first.scores);
+const rel = Object.fromEntries(second.scan.roleCandidates.map((t) => [t.symbol, t.relevance]));
+assert.deepEqual(rel, { CATS: 85, KITTY: 62, GEMCAT: 90 });
+assert.equal(second.scores[memC.address], 90);
+console.log('PASS bot: a post keeps its first verdicts across tags; only new coins get a fresh one');

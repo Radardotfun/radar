@@ -15,7 +15,7 @@
 import { makeHandlers, API_BASE, DEFAULTS } from '../extension/src/lib/handlers.js';
 import { searchPairs, allPairs, aggregate } from '../extension/src/lib/market.js';
 import { botReply, NO_COINS, xLength } from './reply.js';
-import { botCoins } from './coins.js';
+import { botCoins, withMemory } from './coins.js';
 import { oauthHeader } from './oauth.js';
 import { wantsCoins } from './trigger.js';
 
@@ -140,7 +140,8 @@ async function matchImages(images, logos) {
 
 // One post, as the bot would answer it. Kept 10 minutes, so a post tagged many times is scanned once.
 const scans = new Map();
-async function replyFor(postUrl) {
+// known: the verdicts this post got on earlier tags ({ address: score }), which win over a new judge call.
+async function replyFor(postUrl, known = null) {
   const hit = scans.get(postUrl);
   if (hit && Date.now() - hit.at < 600_000) return hit.p;
   const p = (async () => {
@@ -153,10 +154,11 @@ async function replyFor(postUrl) {
     }
     // The panel skips the AI judge when the read gives anchor words (any coin naming one counts); the bot posts in
     // public, so every candidate is judged.
-    const scan = await handlers.coins({ post, judge: true });
-    if (scan.engineError) throw new Error('Radar could not read this post right now');
+    const fresh = await handlers.coins({ post, judge: true });
+    if (fresh.engineError) throw new Error('Radar could not read this post right now');
+    const { scan, scores } = withMemory(fresh, known);
     const res = { ...scan, ...await botCoins(scan, post, { search: searchPairs, lookupCa, matchImages, chains: SETTINGS.chains }) };
-    return { text: botReply(res, postUrl) || NO_COINS, short: botReply(res, postUrl, Date.now(), { full: false }) || NO_COINS, links: botReply(res, postUrl, Date.now(), { links: true }) || NO_COINS, story: res.narrative || '' };
+    return { text: botReply(res, postUrl) || NO_COINS, short: botReply(res, postUrl, Date.now(), { full: false }) || NO_COINS, links: botReply(res, postUrl, Date.now(), { links: true }) || NO_COINS, story: res.narrative || '', scores };
   })();
   scans.set(postUrl, { at: Date.now(), p });
   p.catch(() => scans.delete(postUrl));
@@ -228,10 +230,17 @@ async function poll(env) {
   await Promise.all(done.filter((e) => !e.skip).map((entry) => env.SELF.fetch('https://radar-bot/handle', {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-bot-token': env.BOT_TOKEN },
-    body: JSON.stringify({ mention: entry.mention, target: entry.target, live }),
+    body: JSON.stringify({ mention: entry.mention, target: entry.target, live, scores: s.judged?.[entry.target]?.s || null }),
   }).then((r) => r.json()).then((r) => Object.assign(entry, r)).catch((e) => { entry.error = String(e.message || e).slice(0, 200); })));
 
   for (const e of done) if (e.reply || e.dry) s.sent += 1;
+  // Each post's verdicts, for its next tags: kept a day, for the 50 posts tagged last.
+  s.judged = s.judged || {};
+  for (const e of done) {
+    if (e.scores) s.judged[e.target] = { at: Date.now(), s: e.scores };
+    delete e.scores;
+  }
+  s.judged = Object.fromEntries(Object.entries(s.judged).filter(([, v]) => Date.now() - v.at < 86_400_000).sort((a, b) => b[1].at - a[1].at).slice(0, 50));
   // A busy DexScreener, AI or X (429, timeouts) is worth another try next minute; anything else is not.
   s.pending = done.filter((e) => e.error && /rate-limit|429|timed out|timeout|could not read|Too Many/i.test(e.error) && !e.reply)
     .map((e) => ({ mention: e.mention, by: e.by, target: e.target, tries: (e.tries || 0) + 1 }));
@@ -242,10 +251,10 @@ async function poll(env) {
 }
 
 // One tag: scan the post it's about, then reply (or, in dry mode, only say what the reply would be).
-async function handle(env, { mention, target, live }) {
+async function handle(env, { mention, target, live, scores: known = null }) {
   dexBudget = DEX_BUDGET;
-  const { text, short, links, story } = await replyFor(`https://x.com/i/status/${target}`);
-  const out = { story, chars: xLength(text), text };
+  const { text, short, links, story, scores } = await replyFor(`https://x.com/i/status/${target}`, known);
+  const out = { story, chars: xLength(text), text, scores };
   if (!live) return { ...out, dry: true };
   const post = (t) => xApi(env, 'POST', `${X}/tweets`, { text: t, reply: { in_reply_to_tweet_id: mention } });
   // The keys were authorised on 29 Oct 2026 around 17:05 UTC, and X refuses crypto addresses as text for a week:
