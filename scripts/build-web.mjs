@@ -9,8 +9,9 @@ import { execFileSync } from 'node:child_process';
 import { join, resolve } from 'node:path';
 import { homedir, tmpdir } from 'node:os';
 
-// The userscript is built into web/ first, so the site serves the current version.
+// The userscript and Radar on the web (scan.js) are built into web/ first, so the site serves the current version.
 execFileSync(process.execPath, ['scripts/build-userscript.mjs'], { stdio: 'inherit' });
+execFileSync(process.execPath, ['scripts/build-webapp.mjs'], { stdio: 'inherit' });
 
 const out = resolve('dist/web');
 rmSync('dist', { recursive: true, force: true });

@@ -6,7 +6,9 @@ Radar is a browser extension for X. Tap the radar under any post to see the coin
 - Edge store: https://microsoftedge.microsoft.com/addons/detail/lchjfepnoaglhmnbbjffhbmfbchnojml
 - X: [@radardotfunn](https://x.com/radardotfunn)
 
-This repo is the full source of the extension, the website (including the Quick Buy page) and the server it talks to. It's public so anyone can check what Radar does before installing it.
+No extension? Paste any post link at **https://tryradar.fun/scan** for the same results in the browser.
+
+This repo is the full source of the extension, the website (including the Quick Buy page and Radar on the web) and the server it talks to. It's public so anyone can check what Radar does before installing it.
 
 Not financial advice. Memecoins are extremely risky.
 
@@ -72,16 +74,17 @@ mkdir radar-zip && cd radar-zip && unzip ../radar-extension.zip
 diff -r --strip-trailing-cr . ../extension
 ```
 
-No output means the files are identical. The zip is built on Windows, so its text files end lines with CRLF; `--strip-trailing-cr` ignores that difference. The Edge store build is the same folder. The iPhone and Tampermonkey script, `web/radar.user.js`, is built from the same files by `scripts/build-userscript.mjs`.
+No output means the files are identical. The zip is built on Windows, so its text files end lines with CRLF; `--strip-trailing-cr` ignores that difference. The Edge store build is the same folder. The iPhone and Tampermonkey script, `web/radar.user.js`, and Radar on the web, `web/scan.js`, are built from the same files by `scripts/build-userscript.mjs` and `scripts/build-webapp.mjs`, unminified.
 
 ## Layout
 
 ```
 extension/   the extension (Manifest V3): post button, panel, background, chain checks
 server/      Cloudflare Worker: reads a post's story, larp check, Solana RPC relay
-web/         tryradar.fun: home, privacy, Quick Buy page
+web/         tryradar.fun: home, privacy, Quick Buy page, Radar on the web (scan)
+webapp/      Radar on the web: the extension's panel and checks running in a page, bundled into web/scan.js
 userscript/  wrapper that runs the extension as a userscript (iPhone Safari, Tampermonkey)
-scripts/     builds the site, the zip, the .crx, the Firefox build and the userscript
+scripts/     builds the site, the zip, the .crx, the Firefox build, the userscript and web/scan.js
 test/        offline tests and live checks against real posts and coins
 ```
 
