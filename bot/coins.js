@@ -5,6 +5,7 @@
 // - leaves out copycats of that coin (same ticker or same name), so a shilled $PURR isn't followed by three fake PURRs;
 // - leaves out coins trading under a major's ticker (a "$HYPE" on Solana is not Hyperliquid), which otherwise win
 //   Highest MC on posts about the majors themselves;
+// - leaves out copies of our own coin, anything else called Radar, unless the post gives its contract;
 // - keeps the story's main runner (its biggest real coin, carrying a name the post uses) even when the judge rates it
 //   low, so a pile of small copies can't take Highest MC from it.
 import { aggregate, pickThree, alive } from '../extension/src/lib/market.js';
@@ -12,6 +13,9 @@ import { aggregate, pickThree, alive } from '../extension/src/lib/market.js';
 // PEPE, DOGE and SHIB live on chains the bot doesn't scan, so what it finds under those tickers are copies (a $2M "PEPE"
 // on Base as Highest MC on a Pepe meme).
 const MAJORS = new Set('BTC ETH SOL HYPE XRP BNB USDC USDT WBTC WETH WSOL PEPE DOGE SHIB'.split(' '));
+// The real $RADAR (RADAR_MINT in the server's wrangler.toml). An $84K "Radar" on BNB Chain was Highest MC on a post
+// that mentions Radar, which sent people to a copy of our own coin.
+const RADAR_MINT = 'HyDSdtgiSa5mHqkTVoz8cTFTeVLFKdZ8amPvtNYfpump';
 const sym = (t) => String(t?.symbol || '').replace(/^\$+/, '').toUpperCase();
 const lower = (s) => String(s || '').toLowerCase().trim();
 // Not dust: what the reply would show at all.
@@ -30,12 +34,12 @@ export function cashtags(text) {
 // The coin a ticker means: exact ticker, live; its name written in the post first, then the biggest market cap that
 // real liquidity backs (a "$GTA6" showing $21B with nothing in its pool is not the big one). The name counts as
 // whole words outside cashtags: in "$DACITY $DACITYCOIN" the second is another ticker, and it made a $4.5K coin named
-// "DacityCoin" beat the $7.6M Dacity Coin.
+// "DacityCoin" beat the $7.6M Dacity Coin. The ticker RADAR only ever means the real mint.
 const plain = (s) => ` ${lower(s).replace(/\$[\p{L}\p{N}_]+/gu, ' ').replace(/[^\p{L}\p{N}]+/gu, ' ').trim()} `;
 export function pickNamed(tk, tokens, text) {
   const words = plain(text);
   const named = (t) => { const n = plain(t.name).trim(); return n.length >= 3 && n !== lower(tk) && words.includes(` ${n} `); };
-  return tokens.filter((t) => t?.address && sym(t) === tk && live(t) && (t.mcapBacked || alive(t)))
+  return tokens.filter((t) => t?.address && sym(t) === tk && (tk !== 'RADAR' || t.address === RADAR_MINT) && live(t) && (t.mcapBacked || alive(t)))
     .sort((a, b) => Number(named(b)) - Number(named(a)) || Number(!!b.mcapBacked) - Number(!!a.mcapBacked) || (b.marketCap || 0) - (a.marketCap || 0))[0] || null;
 }
 
@@ -64,9 +68,10 @@ const EVM_CAS = /\b0x[a-fA-F0-9]{40}\b/g;
 const key = (s) => String(s || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
 const MAJOR_NAME = new Set('bitcoin ethereum solana hyperliquid ripple binance pepe dogecoin shibainu'.split(' '));
 const isMajor = (t) => MAJORS.has(sym(t)) || MAJOR_NAME.has(key(t.name));
+const isRadarCopy = (t) => (sym(t) === 'RADAR' || key(t.name) === 'radar') && t.address !== RADAR_MINT;
 export function runnerOf(tokens, words) {
   const names = new Set(words.map(key).filter((k) => k.length >= 3 && !MAJOR_NAME.has(k)));
-  return tokens.filter((t) => t?.address && (t.relevance || 0) >= 60 && t.mcapBacked && alive(t) && !isMajor(t)
+  return tokens.filter((t) => t?.address && (t.relevance || 0) >= 60 && t.mcapBacked && alive(t) && !isMajor(t) && !isRadarCopy(t)
     && (names.has(key(t.symbol)) || names.has(key(t.name))))
     .sort((a, b) => (b.marketCap || 0) - (a.marketCap || 0))[0] || null;
 }
@@ -156,7 +161,7 @@ export async function botCoins(res, post, { search, lookupCa, matchImages, capOf
   let pictured = [];
   if (!named && matchImages && picturePost(post)) {
     const have = new Set();
-    const logos = [...scanned, ...(res?.pool || [])].filter((t) => t?.image && live(t) && !MAJORS.has(sym(t)) && !have.has(t.address) && have.add(t.address)).slice(0, 16);
+    const logos = [...scanned, ...(res?.pool || [])].filter((t) => t?.image && live(t) && !MAJORS.has(sym(t)) && !isRadarCopy(t) && !have.has(t.address) && have.add(t.address)).slice(0, 16);
     if (logos.length) pictured = (await matchImages(post.images, logos.map((t) => t.image)).catch(() => [])).map((i) => logos[i]).filter(Boolean);
     named = leadOf(pictured);
     if (named) how = 'picture';
@@ -172,7 +177,7 @@ export async function botCoins(res, post, { search, lookupCa, matchImages, capOf
   const story = scanned.filter((t) => {
     if (seen.has(t.address)) return false;
     seen.add(t.address);
-    return (onStory(t) || t.address === runner?.address) && !isMajor(t) && !elsewhere.has(sym(t)) && !(named && sameCoin(t, named));
+    return (onStory(t) || t.address === runner?.address) && !isMajor(t) && !isRadarCopy(t) && !elsewhere.has(sym(t)) && !(named && sameCoin(t, named));
   }).map((t) => (t.address === runner?.address ? { ...t, relevance: Math.max(t.relevance || 0, 90) } : t));
   // Other coins with the same picture under another name were made for this post too.
   for (const t of pictured) if (!seen.has(t.address) && !sameCoin(t, named)) { seen.add(t.address); story.push({ ...t, relevance: 99 }); }

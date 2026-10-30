@@ -192,3 +192,28 @@ assert.match(botReply(curved, 'x', now), /📌 In the post[^\n]*: \$RADAR · \$1
 const uncurved = await botCoins({ mentioned: [curve], picks: [], roleCandidates: [] }, { text: '' }, { search: async () => [], capOf: async () => { throw new Error('Jupiter down'); } });
 assert.equal(uncurved.named.address, curve.address, 'no price from elsewhere is no reason to fail');
 console.log('PASS bot: a coin on its launch curve still shows a market cap');
+// Anything else called Radar is a copy of our own coin: an $84K "Radar" on BNB Chain was Highest MC on a post that mentions Radar.
+const radarMint = 'HyDSdtgiSa5mHqkTVoz8cTFTeVLFKdZ8amPvtNYfpump';
+const realRadar = tok('RADAR', 'Radar', radarMint, 40_000);
+const radarBnb = tok('RADAR', 'Radar', '0x1111111111111111111111111111111111111111', 84_000, { chain: 'bsc' });
+const radarName = tok('RDR', 'Radar', 'RadarName777777777777777777777777777pump', 300_000);
+const radarTicker = tok('RADAR', 'Radar Finance', 'RadarTick888888888888888888888888888pump', 500_000);
+const radarCopies = [radarBnb, radarName, radarTicker];
+const radarWords = { anchors: ['radar'], terms: ['Radar', 'Radar Finance'] };
+const copyPicks = await botCoins({ mentioned: [], picks: [], roleCandidates: radarCopies, ...radarWords }, { text: 'this radar picks up everything' }, { search: async () => [], chains: evmChains });
+assert.deepEqual(copyPicks.picks, [], 'a copy named Radar is no story pick and no runner');
+const lowCopy = await botCoins({ mentioned: [], picks: [], roleCandidates: [{ ...radarBnb, relevance: 62 }], ...radarWords }, { text: 'this radar picks up everything' }, { search: async () => [], chains: evmChains });
+assert.deepEqual(lowCopy.picks, [], 'a copy the judge rates low is not kept as the runner');
+const realPick = await botCoins({ mentioned: [], picks: [], roleCandidates: [...radarCopies, realRadar], ...radarWords }, { text: 'this radar picks up everything' }, { search: async () => [], chains: evmChains });
+assert.deepEqual(realPick.picks.map((p) => p.token.address), [radarMint], 'the real coin can still be picked');
+assert.equal(pickNamed('RADAR', [radarBnb, radarTicker, realRadar], 'just aped $RADAR'), realRadar, 'a typed $RADAR names the real mint');
+assert.equal(pickNamed('RADAR', [radarBnb, radarTicker], 'just aped $RADAR'), null, 'a typed $RADAR never names a copy');
+const typedRadar = await botCoins({ mentioned: [], picks: [], roleCandidates: [] }, { text: 'just aped $RADAR' }, { search: async () => [radarTicker].map(pair) });
+assert.equal(typedRadar.named, null);
+assert.deepEqual(typedRadar.picks, []);
+const radarByCa = await botCoins({ mentioned: [], picks: [], roleCandidates: [radarTicker] }, { text: `$RADAR ${radarBnb.address}` }, { search: async () => [], lookupCa: async () => radarBnb, chains: evmChains });
+assert.equal(radarByCa.named?.address, radarBnb.address, 'a contract written in the post still names its coin');
+assert.deepEqual(radarByCa.picks.map((p) => p.token.address), [radarBnb.address]);
+const radarPic = await botCoins({ mentioned: [], picks: [], roleCandidates: [], pool: [{ ...radarTicker, image: 'https://cdn.dexscreener.com/cms/images/radar' }] }, { text: '', images: ['https://pbs.twimg.com/media/radar.jpg'] }, { search: async () => [], matchImages: async (images, logos) => logos.map((_, i) => i) });
+assert.equal(radarPic.named, null, 'nor does a copy win with our picture as its logo');
+console.log('PASS bot: copies of $RADAR stay out unless the post gives their contract; a typed $RADAR is the real mint');
