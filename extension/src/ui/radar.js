@@ -142,6 +142,13 @@ const INSTA_KEY = 'nr:insta-sol';
 const instaSol = () => { try { const v = localStorage.getItem(INSTA_KEY); return INSTA_SOL.includes(v) ? v : '0.1'; } catch { return '0.1'; } };
 const setInstaSol = (v) => { try { localStorage.setItem(INSTA_KEY, v); } catch {} };
 const instaUrl = (addr, sol) => `https://tryradar.fun/trade?mint=${encodeURIComponent(addr)}&sol=${sol}&insta=1`;
+// Robinhood Chain's own buy page (tryradar.fun/trade-robinhood), which checks the real cost of the buy first, in ETH.
+const INSTA_ETH = ['0.005', '0.01', '0.025', '0.05', '0.1'];
+const INSTA_ETH_KEY = 'nr:insta-eth';
+const instaEth = () => { try { const v = localStorage.getItem(INSTA_ETH_KEY); return INSTA_ETH.includes(v) ? v : '0.01'; } catch { return '0.01'; } };
+const setInstaEth = (v) => { try { localStorage.setItem(INSTA_ETH_KEY, v); } catch {} };
+const isHood = (t) => t?.chain === 'robinhood';
+const hoodBuyUrl = (addr, eth) => `https://tryradar.fun/trade-robinhood?token=${encodeURIComponent(addr)}${eth ? `&eth=${eth}&insta=1` : ''}`;
 // Markets PumpPortal builds buys on (same list as QUICK_MARKETS in web/quickbuy-guard.js). Coins only on Orca or
 // Meteora get no Insta Buy; a coin whose market isn't known yet keeps it, and the buy page explains if it can't.
 const QUICK_MARKETS = new Set(['pumpfun', 'pumpswap', 'raydium']);
@@ -227,9 +234,13 @@ class Radar {
     this.frMsg = new Map(); // address -> result line (HTML built from validated values)
     this.alerts = null; // { watches, feed, unread, notifications } from the background; null where alerts don't exist
     this.watchBusy = false;
+    this.holder = null; // { on, min, holder } from the backend
+    this.who = new Map(); // X handle -> what Frontrun knows
+    this.whoBusy = new Set();
     this.render();
     this.loadFrontrun();
     this.loadAlerts();
+    this.loadHolder();
     this.listenForBuys();
     send('settings').then((s) => { this.refreshSec = s.refreshSec || 10; }).catch(() => {});
     document.addEventListener('visibilitychange', () => this.updateLive());
@@ -528,6 +539,58 @@ class Radar {
 
   // Larp check under the narrative (is the post's story real?): one word + score, a trader's one-liner, findings on tap.
   // When Larpcheck has a verdict on the coin, the larp check is theirs, credited and linked to their report.
+  // ---------- Who posted this (holders of $RADAR, data from Frontrun; server/holder.js) ----------
+  loadHolder() {
+    return send('holderStatus').then((h) => { this.holder = h; this.renderHead(); }).catch(() => { this.holder = { on: false }; });
+  }
+
+  whoHtml() {
+    const handle = this.lastPost?.author;
+    if (!this.holder?.on || !handle) return '';
+    const head = '<div class="story-top who-top"><span class="story-k">Who posted this</span></div>';
+    if (!this.holder.holder) {
+      return `<div class="story who">${head}
+        <div class="story-call">Holders of ${Number(this.holder.min).toLocaleString('en-US')}+ $RADAR see this account's smart followers and past coins, deleted posts included.</div>
+        <button type="button" class="who-connect" data-holder-connect>Check my wallet</button></div>`;
+    }
+    const w = this.who.get(handle);
+    if (!w) { this.loadWho(handle); return `<div class="story who loading">${head}<div class="story-call"><span class="spinner"></span>Looking up @${esc(handle)}…</div></div>`; }
+    if (w.error) return `<div class="story who">${head}<div class="story-call">${esc(w.error)}</div></div>`;
+    if (w.off) return '';
+    const lines = [];
+    if (w.smartCount != null) lines.push(`<b>${w.smartCount}</b> smart follower${w.smartCount === 1 ? '' : 's'}${w.smartFinal ? '' : ' so far'}${w.smart?.length ? `: ${w.smart.map((s) => `@${esc(s)}`).join(', ')}` : ''}`);
+    if (w.coins) lines.push(`Posted <b>${w.coins.live + w.coins.deleted}</b> coin${w.coins.live + w.coins.deleted === 1 ? '' : 's'} before${w.coins.deleted ? `, <b>${w.coins.deleted}</b> in deleted posts` : ''}`);
+    else lines.push('Past coins: Frontrun is still looking. Check back in a couple of minutes.');
+    return `<div class="story who">${head}
+      ${w.label ? `<div class="who-label">${esc(w.label)}</div>` : ''}
+      ${lines.map((l) => `<div class="story-call">${l}</div>`).join('')}
+      <div class="story-note">Data from Frontrun, for $RADAR holders.</div></div>`;
+  }
+
+  async loadWho(handle) {
+    this.who.set(handle, { loading: true });
+    this.who.delete(handle);
+    if (this.whoBusy.has(handle)) return;
+    this.whoBusy.add(handle);
+    try {
+      const w = await send('holderWho', { handle });
+      if (w.locked) await this.loadHolder();
+      else this.who.set(handle, w);
+    } catch (err) {
+      this.who.set(handle, { error: err.message });
+    }
+    this.whoBusy.delete(handle);
+    this.renderHead();
+  }
+
+  // The wallet check runs on tryradar.fun, where the wallet lives, and reports back here (see listenForBuys).
+  holderConnect() {
+    const w = 440;
+    const left = Math.max(0, (window.screenX || 0) + (window.outerWidth || w) - w - 32);
+    const win = window.open('https://tryradar.fun/holder', 'radar-holder', `popup=yes,width=${w},height=640,left=${left},top=${Math.max(0, (window.screenY || 0) + 72)}`);
+    if (!win) this.toast('Pop-ups are blocked here. Allow them to check your wallet', 3200);
+  }
+
   storyHtml() {
     const s = this.state.story;
     if (!s || s.error) return '';
@@ -576,7 +639,7 @@ class Radar {
   narrativeHtml() {
     const { loading, narrative, engineError } = this.state;
     if (!loading && engineError) return `<div class="narrative"><span>Coin from the post only</span><em>${esc(engineError)}</em></div>`;
-    if (narrative) return `<div class="narrative"><span>${esc(narrative)}</span>${loading ? '<em>finding coins…</em>' : ''}</div>${this.storyHtml()}`;
+    if (narrative) return `<div class="narrative"><span>${esc(narrative)}</span>${loading ? '<em>finding coins…</em>' : ''}</div>${this.storyHtml()}${this.whoHtml()}`;
     if (!loading || !this.lastPost) return '';
     const doing = this.watching ? 'Watching the video…' : this.lastPost.hasVideo ? 'Listening to the video…' : this.lastPost.images?.length ? 'Looking at the image…' : 'Reading the post…';
     return `<div class="narrative thinking"><span>${doing}</span></div>`;
@@ -698,13 +761,15 @@ class Radar {
     const fr = this.frontrun?.connected && t.chain === 'solana';
     const frOpen = fr && this.expanded.has(`fr:${t.address}`);
     const buyBtn = fr ? `<button class="fr-buy${frOpen ? ' on' : ''}" data-fr-buy="${t.address}" aria-expanded="${frOpen}" title="Buy with your Frontrun wallet">${I.bolt}Frontrun</button>` : '';
-    const sol = instaSol();
+    const hood = isHood(t);
+    const sol = hood ? instaEth() : instaSol();
+    const unit = hood ? 'ETH' : 'SOL';
     const instaOpen = this.expanded.has(`ib:${t.address}`);
-    const quick = quickBuyable(t) ? `<div class="insta">
-        <button type="button" class="radar-buy" data-insta="${t.address}" title="Buy ${sol} SOL with your own wallet, in a small window over this page">Insta buy · ${sol} SOL</button>
+    const quick = quickBuyable(t) || hood ? `<div class="insta">
+        <button type="button" class="radar-buy" data-insta="${t.address}" title="Buy ${sol} ${unit} with your own wallet, in a small window over this page">Insta buy · ${sol} ${unit}</button>
         <button type="button" class="insta-more" data-insta-menu="${t.address}" aria-expanded="${instaOpen}" title="Change the amount">${I.chevron}</button>
-        ${instaOpen ? `<div class="insta-menu">${INSTA_SOL.map((v) => `<button type="button" data-insta-sol="${v}" data-addr="${t.address}"${v === sol ? ' class="on"' : ''}>${v}</button>`).join('')}
-          <a href="${esc(quickBuyUrl(t))}" target="_blank" rel="noopener noreferrer">Full buy page: any amount, slippage ↗</a></div>` : ''}
+        ${instaOpen ? `<div class="insta-menu">${(hood ? INSTA_ETH : INSTA_SOL).map((v) => `<button type="button" data-insta-sol="${v}" data-unit="${unit}" data-addr="${t.address}"${v === sol ? ' class="on"' : ''}>${v}</button>`).join('')}
+          <a href="${esc(hood ? hoodBuyUrl(t.address) : quickBuyUrl(t))}" target="_blank" rel="noopener noreferrer">Full buy page: any amount, slippage ↗</a></div>` : ''}
       </div>` : '';
     return `${quick}${buyBtn}${trade}<span class="lc-slot" data-lc="${t.address}">${lcButtonHtml(this.larp.get(t.address)?.lc)}</span>${frOpen ? this.frSheetHtml(t) : ''}`;
   }
@@ -1223,6 +1288,7 @@ class Radar {
     // Insta Buy opens its window right here, inside the click, so the browser lets it through.
     const ib = e.target.closest('[data-insta]');
     if (ib) { this.instaBuy(ib.dataset.insta); return; }
+    if (e.target.closest('[data-holder-connect]')) { this.holderConnect(); return; }
     const ibm = e.target.closest('[data-insta-menu]');
     if (ibm) {
       const k = `ib:${ibm.dataset.instaMenu}`;
@@ -1232,7 +1298,7 @@ class Radar {
     }
     const ibs = e.target.closest('[data-insta-sol]');
     if (ibs) {
-      setInstaSol(ibs.dataset.instaSol);
+      (ibs.dataset.unit === 'ETH' ? setInstaEth : setInstaSol)(ibs.dataset.instaSol);
       this.expanded.delete(`ib:${ibs.dataset.addr}`);
       for (const t of this.cardTokens()) this.renderActions(t.address);
       return;
@@ -1332,25 +1398,30 @@ class Radar {
   // still approves the buy there; the window reports back (see listenForBuys) and closes when Solana confirms it.
   instaBuy(addr) {
     const t = this.tokens.get(addr);
+    const hood = isHood(t);
     const w = 440;
     const h = 780;
     const left = Math.max(0, (window.screenX || 0) + (window.outerWidth || w) - w - 32);
     const top = Math.max(0, (window.screenY || 0) + 72);
-    const win = window.open(instaUrl(addr, instaSol()), 'radar-insta', `popup=yes,width=${w},height=${h},left=${left},top=${top}`);
+    const win = window.open(hood ? hoodBuyUrl(addr, instaEth()) : instaUrl(addr, instaSol()), 'radar-insta', `popup=yes,width=${w},height=${h},left=${left},top=${top}`);
     if (!win) {
-      window.open(quickBuyUrl({ address: addr }), '_blank', 'noopener');
+      window.open(hood ? hoodBuyUrl(addr) : quickBuyUrl({ address: addr }), '_blank', 'noopener');
       this.toast('Pop-ups are blocked here, so the buy page opened in a tab', 3200);
       return;
     }
     win.focus?.();
-    this.toast(`Approve the ${instaSol()} SOL buy${t?.symbol ? ` of $${String(t.symbol).trim()}` : ''} in your wallet`, 3200);
+    this.toast(hood ? 'Radar checks the real cost first, then your wallet asks you to approve' : `Approve the ${instaSol()} SOL buy${t?.symbol ? ` of $${String(t.symbol).trim()}` : ''} in your wallet`, 3200);
   }
 
   listenForBuys() {
     window.addEventListener('message', (e) => {
+      if (e.origin === 'https://tryradar.fun' && e.data?.type === 'radar:holder') {
+        send('holderSave', { token: e.data.token, exp: e.data.exp }).then((h) => { this.holder = h; this.renderHead(); this.toast('Holder check passed', 2400); }).catch(() => {});
+        return;
+      }
       if (e.origin !== 'https://tryradar.fun' || e.data?.type !== 'radar:bought') return;
       const symbol = String(e.data.symbol || '').replace(/[^\w$./-]/g, '').slice(0, 20);
-      this.toast(`Bought ${symbol ? `$${symbol}` : 'it'} · confirmed on Solana`, 4200);
+      this.toast(`Bought ${symbol ? `$${symbol}` : 'it'} · confirmed on ${/^0x/.test(e.data.mint || '') ? 'Robinhood Chain' : 'Solana'}`, 4200);
     });
   }
 

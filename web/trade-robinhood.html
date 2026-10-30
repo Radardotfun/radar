@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#07050f" />
+  <meta name="description" content="Buy a Robinhood Chain coin from Radar with your own wallet. Radar checks the real cost first, and your wallet signs every buy." />
+  <meta name="robots" content="noindex" />
+  <title>Quick Buy · Radar</title>
+  <link rel="icon" href="/icons/icon32.png" sizes="32x32" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&family=Geist+Mono:wght@500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/trade.css?v=1.7.17" />
+  <script defer src="/robinhood-guard.js?v=1.7.17"></script>
+  <script defer src="/trade-robinhood.js?v=1.7.17"></script>
+</head>
+<body>
+  <header class="nav">
+    <a class="brand" href="/" aria-label="Radar home"><img src="/icons/icon32.png" width="28" height="28" alt="" /><span>Radar</span></a>
+    <a class="back" href="/">tryradar.fun</a>
+  </header>
+
+  <main class="trade-page">
+    <p class="eyebrow">Radar Quick Buy · Robinhood Chain</p>
+    <h1>Buy <span id="coin-name">…</span></h1>
+    <p class="lede">Connect your wallet and pick an amount. Radar checks what the buy really costs, then you approve it in your wallet.</p>
+
+    <section class="coin-box" aria-label="Selected token">
+      <div><span class="label">Token</span><b id="coin-symbol">Looking it up…</b><span id="coin-market" class="coin-market"></span></div>
+      <div class="mint"><span class="label">Contract address</span><code id="coin-mint">—</code><button id="copy-mint" type="button">Copy</button></div>
+    </section>
+
+    <section class="swap-box" aria-label="Quick Buy">
+      <div class="wallet-row">
+        <div class="wallet-copy">
+          <span class="label">Wallet</span>
+          <span id="wallet-status" class="wallet-status">Not connected</span>
+        </div>
+        <select id="wallet-choice" aria-label="Choose a wallet" hidden></select>
+        <button id="connect-wallet" class="button secondary" type="button">Connect wallet</button>
+      </div>
+
+      <div class="field-head">
+        <label for="eth-amount">Buy amount</label>
+        <span>ETH</span>
+      </div>
+      <div class="amount-presets" role="group" aria-label="Quick amount">
+        <button type="button" data-amount="0.005" aria-pressed="false">0.005 ETH</button>
+        <button type="button" data-amount="0.01" aria-pressed="true">0.01 ETH</button>
+        <button type="button" data-amount="0.05" aria-pressed="false">0.05 ETH</button>
+        <button type="button" data-amount="0.1" aria-pressed="false">0.1 ETH</button>
+      </div>
+      <div class="number-input">
+        <input id="eth-amount" type="number" inputmode="decimal" min="0.0001" max="2" step="0.001" value="0.01" autocomplete="off" aria-label="ETH amount" />
+        <span>ETH</span>
+      </div>
+
+      <div class="field-head slippage-head">
+        <label for="slippage">Max slippage</label>
+        <span>%</span>
+      </div>
+      <div class="number-input short-input">
+        <input id="slippage" type="number" inputmode="decimal" min="0.1" max="50" step="0.1" value="10" autocomplete="off" aria-label="Maximum slippage percentage" />
+        <span>%</span>
+      </div>
+      <p class="field-help">The most the price can move before the buy is refused.</p>
+
+      <div id="check-box" class="fee-box check-box" aria-live="polite">
+        <b>Radar's check</b>
+        <p id="check-result">Checking what this buy really costs…</p>
+      </div>
+
+      <div class="fee-box">
+        <b>Fees and checks</b>
+        <p>Radar takes no fee. You pay the Uniswap pool's fee and Robinhood Chain's network fee. Some coins take heavy fees or taxes, so before your wallet sees the buy, Radar simulates it and a sale right after it. It stops the buy if it would lose more than 10%, if buying and selling back would lose more than 20%, or if the sale fails. <a href="https://github.com/Radardotfun/radar/blob/main/web/robinhood-guard.js" target="_blank" rel="noopener noreferrer">Read the checks</a></p>
+      </div>
+
+      <button id="buy-button" class="button primary" type="button" disabled>Connect a wallet to buy</button>
+      <p id="page-message" class="message" role="status" aria-live="polite">This buy is sent to Robinhood Chain.</p>
+    </section>
+
+    <section id="after-buy" class="after-buy" hidden aria-live="polite">
+      <div class="success-head"><span id="status-dot" class="success-dot"></span><b id="buy-status">Buy sent</b><a id="tx-link" target="_blank" rel="noopener noreferrer" hidden>View on Blockscout</a></div>
+      <p id="confirmation-message">Sent to Robinhood Chain.</p>
+    </section>
+
+    <div class="terminal-links rh-links">
+      <a id="link-uniswap" target="_blank" rel="noopener noreferrer">Open on Uniswap</a>
+      <a id="link-chart" target="_blank" rel="noopener noreferrer">Chart</a>
+    </div>
+
+    <aside class="wallet-note">
+      <b>Your wallet, your keys</b>
+      <span>Radar never asks for your seed phrase or private key and never holds your ETH. Your wallet shows each buy and only sends it if you approve.</span>
+    </aside>
+    <p class="risk">Memecoins are extremely risky and can go to zero. A coin can change its fees after this check, and passing it is not a guarantee against scams or losses. Not financial advice.</p>
+  </main>
+
+  <footer><span>Radar</span><a href="https://github.com/Radardotfun/radar" target="_blank" rel="noopener noreferrer">Source code</a><a href="/privacy">Privacy</a></footer>
+</body>
+</html>

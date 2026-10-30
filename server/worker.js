@@ -4,6 +4,7 @@
 //   POST /match     { post, logos }                  -> { same: [i] }: coin logos showing the post's own picture
 //   GET  /larpcheck?address=<CA>                     -> Larpcheck's verdict on the coin (see below)
 import { engine, interpret, judge, storyCheck, transcribe, sameImage, LOGO_HOST } from './narrative.js';
+import { holderOn, holderMin, holderVerify, holderWho } from './holder.js';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -279,6 +280,15 @@ export default {
     if (post) return Response.redirect(new URL(`/?url=${encodeURIComponent(`https://x.com/${post[1]}/status/${post[2]}`)}`, request.url), 302);
     if (pathname === '/tweet' && request.method === 'GET') return readTweet(new URL(request.url).searchParams.get('url'), ctx);
     if (pathname === '/larpcheck' && request.method === 'GET') return larpcheck(request, env, ctx);
+    // Holder-only data (server/holder.js): off until the Frontrun key and the rest are set.
+    if (pathname === '/holder/config' && request.method === 'GET') return json(200, { on: holderOn(env), min: holderMin(env) });
+    if ((pathname === '/holder/verify' || pathname === '/holder/who') && request.method === 'POST') {
+      if (!holderOn(env)) return json(200, { off: true });
+      if (limited(`holder:${request.headers.get('cf-connecting-ip') || 'anon'}`, 120)) return json(429, { error: 'Too many requests. Try again in a few minutes.' });
+      const body = await request.json().catch(() => ({}));
+      const r = pathname === '/holder/verify' ? await holderVerify(body, env, relayUrl(env)) : await holderWho(body, env, { limited });
+      return json(r.status, r.body);
+    }
     if (pathname === '/health') return json(200, {
       ok: true,
       rpc: !!relayUrl(env),

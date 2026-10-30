@@ -1,0 +1,31 @@
+<!doctype html>
+<!-- Manual check of "Who posted this" in the real panel. The live backend reads the post; holderStatus and holderWho are
+     answered by a fake, so no wallet, no key and no Frontrun credits are involved. Serve the repo root and open
+     /test/panel-holder.html. ?in shows a holder's view, ?wait a lookup Frontrun hasn't finished, ?off the feature off. -->
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Panel: holder check</title>
+<style>html,body{margin:0;height:100%;background:#000}#root{width:400px;height:100vh;margin:0 auto}</style></head>
+<body><div id="root"></div>
+<script type="module">
+import { makeHandlers, DEFAULTS } from '../extension/src/lib/handlers.js';
+import { useBackend, mountInline } from '../extension/src/ui/radar.js';
+
+const q = new URLSearchParams(location.search);
+const mem = new Map();
+const h = makeHandlers({
+  settings: async () => DEFAULTS,
+  store: { get: async (k) => mem.get(k) ?? null, set: async (k, v) => { mem.set(k, v); } },
+  openWindow: (url) => window.open(url),
+  rpcUrl: async () => null,
+  ready: Promise.resolve(),
+});
+h.holderStatus = async () => (q.has('off') ? { on: false } : { on: true, min: 100000, holder: q.has('in') || q.has('wait'), exp: Date.now() + 3600_000 });
+h.holderWho = async () => ({
+  handle: 'test', label: 'Founder of a thing', followers: 12400, smartCount: 12, smartFinal: true, smart: ['alice', 'bob', 'carol'],
+  coins: q.has('wait') ? null : { live: 9, deleted: 3, deletedPosts: 5 }, recent: [],
+});
+useBackend(h, { css: '../extension/src/ui/radar.css' });
+const radar = await mountInline(document.getElementById('root'), 'dark');
+window.radar = radar;
+radar.scan({ post: { text: 'the og solana dog is still here $BONK', author: 'test', url: 'https://x.com/test/status/1' }, source: { kind: '@test', label: 'Holder check' } });
+</script></body></html>

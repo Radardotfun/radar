@@ -12,3 +12,8 @@ binding = "AI"
 # Web app (mobile) and the extension download, built by scripts/build-web.mjs.
 [assets]
 directory = "./dist/web"
+
+# Holder-only data (server/holder.js): the coin and how much of it counts. Off until the Frontrun key is set.
+[vars]
+RADAR_MINT = "HyDSdtgiSa5mHqkTVoz8cTFTeVLFKdZ8amPvtNYfpump"
+HOLDER_MIN = "100000"

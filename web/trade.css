@@ -51,6 +51,9 @@ h1 { margin:8px 0 6px; font-size:clamp(30px,7vw,42px); line-height:1.1; letter-s
 .fee-box b { font-size:12px; }
 .fee-box p { margin:5px 0 0; color:#bcb7c7; font-size:11px; }
 .fee-box p a { color:var(--text); text-underline-offset:3px; white-space:nowrap; }
+.check-box.good { border-color:rgba(97,220,150,.4); background:rgba(97,220,150,.07); }
+.check-box.bad { border-color:rgba(255,107,107,.5); background:rgba(255,107,107,.08); }
+.check-box.good p, .check-box.bad p { color:var(--text); font-size:12px; }
 .button.primary { width:100%; margin-top:15px; border-color:transparent; background:#f5f2fa; color:#17131f; }
 .button.primary:hover:not(:disabled) { background:#fff; }
 .message { min-height:18px; margin:9px 1px 0; color:var(--muted); font-size:11px; overflow-wrap:anywhere; }
@@ -67,6 +70,7 @@ h1 { margin:8px 0 6px; font-size:clamp(30px,7vw,42px); line-height:1.1; letter-s
 .terminal-links { display:grid; grid-template-columns:repeat(4,1fr); gap:7px; }
 .terminal-links a { padding:9px 6px; text-align:center; border:1px solid var(--line); border-radius:9px; background:rgba(255,255,255,.04); text-decoration:none; font-size:12px; font-weight:700; }
 .terminal-links a:hover { border-color:var(--accent); }
+.terminal-links.rh-links { grid-template-columns:repeat(2,1fr); margin-top:14px; }
 .wallet-note { display:grid; gap:4px; margin-top:14px; padding:13px 15px; border:1px solid var(--line); border-radius:12px; background:rgba(255,255,255,.025); color:var(--muted); font-size:12px; }
 .wallet-note b { color:var(--text); }
 .risk { margin:20px 2px 0; color:#8d8997; font-size:11px; }

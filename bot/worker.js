@@ -63,6 +63,17 @@ function dexDone() {
   dexActive -= 1;
   dexWaiting.shift()?.();
 }
+// DexScreener answers Cloudflare's shared addresses 429 (error 1015) for minutes at a time, which left tags with
+// nothing but "too busy". So lookups go through a small proxy off Cloudflare (proxy/api/dex.js), set by DEX_PROXY_URL and
+// DEX_PROXY_SECRET. If the proxy itself is down, a lookup goes direct.
+let dexProxy = null;
+const useDexProxy = (env) => { dexProxy = env.DEX_PROXY_URL && env.DEX_PROXY_SECRET ? { url: env.DEX_PROXY_URL, secret: env.DEX_PROXY_SECRET } : null; };
+async function dexRequest(url, init = {}) {
+  if (!dexProxy) return realFetch(url, init);
+  const via = `${dexProxy.url}?path=${encodeURIComponent(url.replace('https://api.dexscreener.com/', ''))}`;
+  const res = await realFetch(via, { ...init, headers: { ...(init.headers || {}), 'x-radar-proxy': dexProxy.secret } }).catch(() => null);
+  return res && res.status !== 401 && res.status < 500 ? res : realFetch(url, init);
+}
 async function dexFetch(input, init = {}) {
   const url = String(input?.url || input);
   if (dexBudget <= 0) { dexLastStatus.set(url, 503); return new Response('{}', { status: 503, headers: { 'content-type': 'application/json' } }); }
@@ -72,7 +83,7 @@ async function dexFetch(input, init = {}) {
   const { signal, ...rest } = init;
   await dexSlot();
   try {
-    const res = await realFetch(input, { ...rest, signal: AbortSignal.timeout(10_000) });
+    const res = await dexRequest(url, { ...rest, signal: AbortSignal.timeout(10_000) });
     if (res.status === 429) { dexCoolUntil = Date.now() + 2500; calls.retries = (calls.retries || 0) + 1; }
     dexLastStatus.set(url, res.status);
     return res;
@@ -328,6 +339,7 @@ const authorized = (req, env) => {
 export default {
   async fetch(request, env) {
     radar = env.RADAR;
+    useDexProxy(env);
     const u = new URL(request.url);
     if (!authorized(request, env)) return json(401, { error: 'token required' });
     if (u.pathname === '/health') {
@@ -347,11 +359,11 @@ export default {
     if (u.pathname === '/debug-search') {
       const q = u.searchParams.get('q') || 'gemini';
       const t0 = Date.now();
-      const r = await realFetch(`https://api.dexscreener.com/latest/dex/search?q=${encodeURIComponent(q)}`).catch((e) => ({ status: 0, text: async () => String(e) }));
+      const r = await dexRequest(`https://api.dexscreener.com/latest/dex/search?q=${encodeURIComponent(q)}`).catch((e) => ({ status: 0, text: async () => String(e) }));
       const body = await r.text();
       let pairs = null;
       try { pairs = JSON.parse(body).pairs?.length ?? null; } catch {}
-      return json(200, { q, status: r.status, ms: Date.now() - t0, pairs, head: pairs == null ? body.slice(0, 200) : undefined });
+      return json(200, { q, proxy: !!dexProxy, status: r.status, ms: Date.now() - t0, pairs, head: pairs == null ? body.slice(0, 200) : undefined });
     }
     if (u.pathname === '/preview') {
       const url = u.searchParams.get('url') || '';
@@ -377,6 +389,7 @@ export default {
   },
   async scheduled(event, env, ctx) {
     radar = env.RADAR;
+    useDexProxy(env);
     ctx.waitUntil(poll(env).catch((e) => console.log('poll failed', e.message)));
   },
 };

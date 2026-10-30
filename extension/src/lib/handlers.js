@@ -248,7 +248,34 @@ export function makeHandlers(host) {
     });
   }
 
-  const handlers = { videoInfo, tweet, read, coins, mentioned, story, larpcheck, refresh, safety, bundle, image, openWindow, reroute, settings: () => host.settings() };
+  // Holder-only data (server/holder.js). The token stays in this host's storage; the panel only ever sees the status.
+  const HOLDER_KEY = 'radarHolder';
+  const holderStored = async () => {
+    const h = await host.store.get(HOLDER_KEY);
+    return h?.token && h.exp > Date.now() ? h : null;
+  };
+  async function holderStatus() {
+    const config = await cached('holder:config', 600_000, async () => (await fetch(`${API_BASE}/holder/config`, { signal: AbortSignal.timeout(6000) })).json()).catch(() => ({ on: false }));
+    if (!config.on) return { on: false };
+    const h = await holderStored();
+    return { on: true, min: config.min, holder: !!h, exp: h?.exp || null };
+  }
+  async function holderSave({ token, exp }) {
+    if (typeof token !== 'string' || token.length > 400 || !Number.isFinite(exp)) throw new Error('Bad holder token');
+    await host.store.set(HOLDER_KEY, { token, exp });
+    return holderStatus();
+  }
+  async function holderWho({ handle }) {
+    const h = await holderStored();
+    if (!h) return { locked: true };
+    const r = await fetch(`${API_BASE}/holder/who`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ token: h.token, handle }), signal: AbortSignal.timeout(25_000) });
+    const d = await r.json().catch(() => ({}));
+    if (r.status === 401) { await host.store.set(HOLDER_KEY, null); return { locked: true }; }
+    if (!r.ok) throw new Error(d.error || 'Frontrun is not answering right now.');
+    return d;
+  }
+
+  const handlers = { videoInfo, tweet, read, coins, mentioned, story, larpcheck, refresh, safety, bundle, image, openWindow, reroute, holderStatus, holderSave, holderWho, settings: () => host.settings() };
   // Changing the RPC drops cached bundle results so they're re-read through the new one.
   handlers.resetBundles = () => memo.forEach((_, k) => k.startsWith('bd:') && memo.delete(k));
   return handlers;

@@ -4,6 +4,11 @@ name = "radar-bot"
 main = "worker.js"
 compatibility_date = "2026-09-01"
 
+# DexScreener answers some Cloudflare regions 429 (error 1015) for minutes at a time, which ended tags in "too busy".
+# Tested 30 Oct 2026: London and Virginia blocked, Mumbai answering.
+[placement]
+region = "gcp:asia-south1"
+
 [triggers]
 crons = ["* * * * *"]
 
