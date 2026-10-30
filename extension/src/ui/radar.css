@@ -648,6 +648,7 @@ svg { display: block; }
 .story.loading .story-call { color: var(--faint); }
 .who-top { cursor: default; }
 .who-label { margin-top: 5px; font-size: 12px; font-weight: 600; color: var(--text); }
+.who:not(.loading) .story-call { display: block; }
 .who .story-call b { color: var(--text); }
 .who-connect { all: unset; cursor: pointer; display: block; margin-top: 8px; padding: 7px 10px; border-radius: 8px; border: 1px solid var(--line); font-size: 12px; font-weight: 600; color: var(--text); text-align: center; }
 .who-connect:hover { border-color: var(--text); }

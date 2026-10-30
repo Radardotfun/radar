@@ -3439,6 +3439,7 @@ svg { display: block; }\r
 .story.loading .story-call { color: var(--faint); }\r
 .who-top { cursor: default; }\r
 .who-label { margin-top: 5px; font-size: 12px; font-weight: 600; color: var(--text); }\r
+.who:not(.loading) .story-call { display: block; }\r
 .who .story-call b { color: var(--text); }\r
 .who-connect { all: unset; cursor: pointer; display: block; margin-top: 8px; padding: 7px 10px; border-radius: 8px; border: 1px solid var(--line); font-size: 12px; font-weight: 600; color: var(--text); text-align: center; }\r
 .who-connect:hover { border-color: var(--text); }\r
