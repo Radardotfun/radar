@@ -250,3 +250,22 @@ assert.equal((await botCoins({ mentioned: [], picks: [], roleCandidates: [offici
 console.log('PASS bot: a coin named after the poster stays out, at any score, unless the post uses the name');
 assert.deepEqual((await botCoins({ mentioned: [], picks: [], roleCandidates: [officialElon], anchors: ['california'], terms: [] }, { text: 'California became a one-party state', quoted: 'What Elon said about it', author: 'elonmusk', authorName: 'Elon Musk' }, { search: async () => [] })).picks, [], 'a quote using the name is not the poster using it');
 console.log("PASS bot: only the poster's own words count");
+
+// X's link on a typed cashtag: the text holds "ethereum:0x…" where the reader sees the ticker.
+{
+  const { typedCashtags } = await import('../extension/src/lib/market.js');
+  const { writtenBy, addressesIn } = await import('../server/ledger.js');
+  const dapp = '0x44709a920fccf795fbc57baa433cc3dd53c44dbe';
+  const sol = 'ARiZfq6dK19uNqxWyRudhbM2MswLyYhVUHdndGkffdGc';
+  const asked = [];
+  const symbolOf = async (chain, a) => { asked.push(chain); return a === dapp ? 'RADAR' : null; };
+  assert.equal(await typedCashtags(`ethereum:${dapp} is live. ethereum:${dapp} soon`, symbolOf), '$RADAR is live. $RADAR soon');
+  assert.deepEqual(asked, ['ethereum'], 'the same link is looked up once');
+  assert.equal(await typedCashtags(`solana:${sol} is live`, symbolOf), `solana:${sol} is live`, 'a Solana link stays an address');
+  assert.equal(await typedCashtags(`CA: ${dapp}`, symbolOf), `CA: ${dapp}`, 'a written address is left alone');
+  assert.equal(await typedCashtags(`ethereum:${'0x' + 'a'.repeat(40)} x`, symbolOf), `ethereum:${'0x' + 'a'.repeat(40)} x`, 'no answer leaves the text');
+  assert.equal(await typedCashtags(`ethereum:${dapp} x`, async () => { throw new Error('busy'); }), `ethereum:${dapp} x`, 'a busy lookup leaves the text');
+  assert.deepEqual(addressesIn(writtenBy(`ethereum:${dapp} and solana:${sol}`)), [], 'a link is not an address the poster wrote');
+  assert.deepEqual(addressesIn(writtenBy(`$EVO | ${dapp}`)), [dapp], 'a written 0x still counts');
+  assert.deepEqual(addressesIn(writtenBy(`ca: ${sol}`)), [sol], 'a written CA still counts');
+}

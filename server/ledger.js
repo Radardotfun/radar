@@ -18,6 +18,10 @@ export function isAddress(text) {
   return bytes + zeros === 32;
 }
 
+// X links a typed $TICKER to a token it picks ("solana:…", "ethereum:0x…" in the text): the poster never wrote that address.
+const LINKED = /\b(?:solana|ethereum|base|bsc|arbitrum|polygon|optimism|avalanche|robinhood):(?:0x[a-fA-F0-9]{40}|[1-9A-HJ-NP-Za-km-z]{32,44})\b/gi;
+export const writtenBy = (text) => String(text || '').replace(LINKED, ' ');
+
 export const addressesIn = (text) => [...new Set(String(text || '').match(CA) || [])].filter(isAddress).slice(0, 3);
 
 // 'gone' only on a real 404: a busy FxTwitter says nothing about the post.
@@ -44,7 +48,7 @@ export async function recordPost(env, post) {
   if (!real || real === 'gone' || !author) return;
   const now = Date.now();
   const at = Number(real.created_timestamp) * 1000 || now;
-  const cas = addressesIn(real.text).filter((ca) => claimed.includes(ca));
+  const cas = addressesIn(writtenBy(real.text)).filter((ca) => claimed.includes(ca));
   for (const ca of cas) {
     await env.DB.prepare('INSERT OR IGNORE INTO posts (id, author, ca, at, gone, checked) VALUES (?, ?, ?, ?, 0, ?)').bind(id, author, ca, at, now).run();
   }

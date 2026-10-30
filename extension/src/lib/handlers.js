@@ -1,6 +1,6 @@
 // The radar's backend: everything the panel asks for. The extension runs it in its service worker;
 // the web app runs it in the page. Each host supplies its own storage, window opening and RPC.
-import { fullTokens, mentionedTokens, LAUNCHPADS, pickThree } from './market.js';
+import { fullTokens, mentionedTokens, typedCashtags, linkedSymbol, LAUNCHPADS, pickThree } from './market.js';
 import { rugReport } from './rugcheck.js';
 import { readPost, findCoins } from './narrative.js';
 import { makeRpc, analyzeLaunch, PUBLIC_RPC } from './solana.js';
@@ -184,6 +184,7 @@ export function makeHandlers(host) {
       const res = await fetch(`${API_BASE}/tweet?url=${encodeURIComponent(url)}`, { signal: AbortSignal.timeout(10_000) });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Couldn't open that post");
+      if (data.post) for (const k of ['text', 'quoted', 'parent']) if (data.post[k]) data.post[k] = await typedCashtags(data.post[k], linkedSymbol);
       return data;
     });
   }

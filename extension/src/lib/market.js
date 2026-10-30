@@ -266,6 +266,28 @@ export async function fullTokens(refs, deep = new Set()) {
 export const SOL_CA = /\b[1-9A-HJ-NP-Za-km-z]{32,44}\b/g;
 export const EVM_CA = /\b0x[a-fA-F0-9]{40}\b/g;
 
+// X links a typed $TICKER to a token it picks, and the post's text then holds "ethereum:0x…" where the reader sees $RADAR.
+// A link to a chain the scan doesn't cover is X's guess, not what the poster wrote (their $RADAR read as DappRadar's
+// Ethereum token, so the Solana coin never got looked for). It's read back as the ticker; "solana:" stays an address.
+const LINKED_ELSEWHERE = /\b(ethereum|base|bsc|arbitrum|polygon|optimism|avalanche):(0x[a-fA-F0-9]{40})\b/gi;
+export async function typedCashtags(text, symbolOf) {
+  const links = [...new Set(String(text || '').match(LINKED_ELSEWHERE) || [])].slice(0, 3);
+  let out = String(text || '');
+  for (const link of links) {
+    const [chain, address] = link.split(':');
+    const symbol = await symbolOf(chain.toLowerCase(), address).catch(() => null);
+    if (/^[A-Za-z][A-Za-z0-9]{0,11}$/.test(symbol || '')) out = out.split(link).join(`$${symbol}`);
+  }
+  return out;
+}
+export async function linkedSymbol(chain, address) {
+  const r = await fetch(`https://api.dexscreener.com/tokens/v1/${chain}/${address}`, { signal: AbortSignal.timeout(8000) });
+  const pairs = r.ok ? await r.json() : [];
+  const key = address.toLowerCase();
+  const pair = (Array.isArray(pairs) ? pairs : []).find((p) => [p.baseToken?.address, p.quoteToken?.address].some((a) => a?.toLowerCase() === key));
+  return pair ? (pair.baseToken.address.toLowerCase() === key ? pair.baseToken : pair.quoteToken).symbol : null;
+}
+
 // Contract addresses written in the post itself. A chart link (dexscreener.com/solana/<pool>) carries the pool's
 // address, not the token's: it counts as that pool's token.
 export async function mentionedTokens(text, chains, search = searchPairs) {
