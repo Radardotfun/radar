@@ -115,7 +115,7 @@ async function route(kind, request, env, ctx) {
   if (kind === 'match') {
     const logos = (Array.isArray(body.logos) ? body.logos : []).filter((u) => typeof u === 'string' && LOGO_HOST.test(u)).slice(0, 16);
     if (!post.images.length || !logos.length) return json(400, { error: 'Nothing to compare' });
-    const key = await sha256(JSON.stringify(['m', post.images, logos]));
+    const key = await sha256(JSON.stringify(['m2', post.images, logos]));
     return cachedJson(ctx, `m/${key}`, 3600, () => sameImage(ai, { images: post.images, logos }), debug);
   }
   const candidates = (Array.isArray(body.candidates) ? body.candidates : []).slice(0, 30).map(cleanCandidate);

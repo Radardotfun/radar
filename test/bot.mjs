@@ -158,3 +158,37 @@ const rel = Object.fromEntries(second.scan.roleCandidates.map((t) => [t.symbol, 
 assert.deepEqual(rel, { CATS: 85, KITTY: 62, GEMCAT: 90 });
 assert.equal(second.scores[memC.address], 90);
 console.log('PASS bot: a post keeps its first verdicts across tags; only new coins get a fresh one');
+
+// A judge score of 80-89 also needs a name from the post's story; 90+ stands on its own.
+const { tiedToPost } = await import('../bot/coins.js');
+const cashWords = ['cash', 'cashcat', 'Cash Cat', 'Matrix Cat', 'Two Cats', 'Cash Cat Token'];
+assert.equal(tiedToPost(tok('CASHCAT', 'Cash Cat', 'a'.repeat(32), 1), cashWords), true, 'its whole name');
+assert.equal(tiedToPost(tok('MAVU', 'Matrix Cat Deja Vu', 'a'.repeat(32), 1), cashWords), true, 'a telling word of its name');
+assert.equal(tiedToPost(tok('PCC', 'Pussy Cat Club', 'a'.repeat(32), 1), cashWords), false, '"cat" alone says nothing');
+assert.equal(tiedToPost(tok('RKC', 'Red Kitten Crew', 'a'.repeat(32), 1), ['kitten', 'hacker kitten']), false, 'nor does "kitten"');
+assert.equal(tiedToPost(tok('Burn', 'Burn', 'a'.repeat(32), 1), ['ownerless', 'Ownerless coin']), false);
+const cashcat = tok('CASHCAT', 'Cash Cat', 'CashCat111111111111111111111111111111pump', 90_000_000, { relevance: 92 });
+const pussy = tok('PCC', 'Pussy Cat Club', 'PussyCat22222222222222222222222222222pump', 950_000, { relevance: 82 });
+const sandKitten = tok('SNDK', 'Sand Kitten', 'SandKit33333333333333333333333333333pump', 1_380_000, { relevance: 85 });
+const unrelated = tok('LUCK', 'Lucky Thing', 'Lucky44444444444444444444444444444pump', 2_000_000, { relevance: 93 });
+const tied = await botCoins({ mentioned: [], picks: [], roleCandidates: [cashcat, pussy, sandKitten, unrelated], anchors: ['cash', 'cashcat'], terms: ['Cash Cat', 'Matrix Cat'] }, { text: '😸😸' }, { search: async () => [] });
+assert.ok(!tied.picks.some((p) => ['PCC', 'SNDK'].includes(p.token.symbol)), '80-89 without a name from the post stays out');
+assert.ok(tied.picks.some((p) => p.token.symbol === 'LUCK'), '90+ stays in');
+console.log('PASS bot: a coin the judge rates 80-89 also needs a name from the post');
+// Copies of coins that live on chains the bot doesn't scan are treated like majors.
+const pepeCopy = tok('PEPE', 'Pepe', '0x52b492a33e447cdb854c7fc19f1e57e8bfa1777d', 2_190_000, { chain: 'base', relevance: 95 });
+const pepeName = tok('PEPE2', 'Pepe', 'PepeTwo5555555555555555555555555555pump', 100_000, { relevance: 95 });
+const pepeCoins = await botCoins({ mentioned: [], picks: [], roleCandidates: [pepeCopy, pepeName], anchors: ['pepe'], terms: ['Pepe'] }, { text: 'gm' }, { search: async () => [], chains: evmChains });
+assert.deepEqual(pepeCoins.picks, [], 'no PEPE copy as Highest MC');
+assert.deepEqual(cashtags('$PEPE and $DOGE and $SHIB'), []);
+const pepeByCa = await botCoins({ mentioned: [pepeCopy], picks: [], roleCandidates: [] }, { text: '' }, { search: async () => [], chains: evmChains });
+assert.equal(pepeByCa.named?.address, pepeCopy.address, 'a contract written in the post still names it');
+console.log('PASS bot: PEPE, DOGE and SHIB copies stay out unless the post gives their contract');
+// A coin still on its launch curve gets a market cap from elsewhere, when DexScreener has none.
+const curve = tok('RADAR', 'Radar', 'Radar666666666666666666666666666666pump', 0, { volume: { h1: 0, h24: 0 }, mcapBacked: false });
+const curved = await botCoins({ mentioned: [curve], picks: [], roleCandidates: [] }, { text: '' }, { search: async () => [], capOf: async () => 11_677 });
+assert.equal(curved.named.marketCap, 11_677);
+assert.match(botReply(curved, 'x', now), /📌 In the post[^\n]*: \$RADAR · \$11\.7K\n/);
+const uncurved = await botCoins({ mentioned: [curve], picks: [], roleCandidates: [] }, { text: '' }, { search: async () => [], capOf: async () => { throw new Error('Jupiter down'); } });
+assert.equal(uncurved.named.address, curve.address, 'no price from elsewhere is no reason to fail');
+console.log('PASS bot: a coin on its launch curve still shows a market cap');

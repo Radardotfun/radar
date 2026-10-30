@@ -146,6 +146,15 @@ async function matchImages(images, logos) {
   return r.ok ? (await r.json()).same || [] : [];
 }
 
+// A coin still on pump.fun's launch curve: DexScreener often gives it no price (so a reply about $RADAR showed no
+// market cap), Jupiter does, and a pump.fun coin has 1B tokens.
+async function curveCap(t) {
+  if (t.chain !== 'solana') return 0;
+  const r = await fetch(`https://lite-api.jup.ag/price/v3?ids=${t.address}`, { signal: AbortSignal.timeout(6000) });
+  const p = r.ok ? (await r.json())[t.address] : null;
+  return p?.launchpad === 'pump.fun' && p.usdPrice > 0 ? p.usdPrice * 1e9 : 0;
+}
+
 // One post, as the bot would answer it. Kept 10 minutes, so a post tagged many times is scanned once.
 const scans = new Map();
 // known: the verdicts this post got on earlier tags ({ address: score }), which win over a new judge call.
@@ -173,7 +182,7 @@ async function replyFor(postUrl, known = null, fresh = false) {
     const found = await h.coins({ post, judge: true }).finally(() => { dexBudget += reserve; });
     if (found.engineError) throw new Error('Radar could not read this post right now');
     const { scan, scores } = withMemory(found, known);
-    const res = { ...scan, ...await botCoins(scan, post, { search: searchPairs, lookupCa, matchImages, chains: SETTINGS.chains }) };
+    const res = { ...scan, ...await botCoins(scan, post, { search: searchPairs, lookupCa, matchImages, capOf: curveCap, chains: SETTINGS.chains }) };
     return { text: botReply(res, postUrl) || NO_COINS, short: botReply(res, postUrl, Date.now(), { full: false }) || NO_COINS, links: botReply(res, postUrl, Date.now(), { links: true }) || NO_COINS, story: res.narrative || '', scores };
   })();
   scans.set(postUrl, { at: Date.now(), p });
@@ -271,7 +280,19 @@ async function handle(env, { mention, target, live, scores: known = null, tries 
   dexBudget = DEX_BUDGET;
   dexLastStatus.clear();
   const postUrl = `https://x.com/i/status/${target}`;
-  const { text, short, links, story, scores } = await replyFor(postUrl, known, tries > 0);
+  const post = (t) => xApi(env, 'POST', `${X}/tweets`, { text: t, reply: { in_reply_to_tweet_id: mention } });
+  let found;
+  try {
+    found = await replyFor(postUrl, known, tries > 0);
+  } catch (e) {
+    // The fifth try failed too (a busy DexScreener can last that long): say so rather than leave the tag unanswered.
+    if (tries < 4) throw e;
+    const busy = `Too busy to read this post right now (${new Date().toISOString().slice(11, 16)} UTC). Tag me again in a few minutes.`;
+    if (!live) return { busy: String(e.message || e).slice(0, 200), chars: xLength(busy), text: busy, dry: true };
+    const sent = await post(busy);
+    return { busy: String(e.message || e).slice(0, 200), chars: xLength(busy), text: busy, reply: sent.data?.id };
+  }
+  const { text, short, links, story, scores } = found;
   // DexScreener left lookups unanswered: the coins may be missing the big one. Try again next minute (a new run,
   // a fresh budget), with this scan dropped from the cache. The retry list allows five tries in all (one a minute);
   // the last one posts what there is.
@@ -282,7 +303,6 @@ async function handle(env, { mention, target, live, scores: known = null, tries 
   }
   const out = { story, chars: xLength(text), text, scores, ...(lost ? { lost } : {}) };
   if (!live) return { ...out, dry: true };
-  const post = (t) => xApi(env, 'POST', `${X}/tweets`, { text: t, reply: { in_reply_to_tweet_id: mention } });
   // The keys were authorised on 29 Oct 2026 around 17:05 UTC, and X refuses crypto addresses as text for a week:
   // until then each coin gets its DexScreener link (the user's call, at $0.20 a reply), then the full address.
   let sent = Date.now() < Date.parse('2026-11-05T18:00:00Z') ? links : text;

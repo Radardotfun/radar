@@ -333,6 +333,18 @@ const MATCH_SCHEMA = {
   properties: { same: { type: 'array', items: { type: 'integer' } } },
 };
 
+// A second look at each logo the first pass named, one at a time: with 16 logos side by side the first pass sometimes
+// names a look-alike (a different kitten photo). Saying what it sees comes before the verdict. A true match can still
+// fail here (a cat cut out onto a new background passes about half the time); the coin then simply isn't labelled.
+const CONFIRM_SYSTEM = `You check one claimed match. The first images come from a post on X; the last image is a coin's logo. Decide whether the logo was made from one of the post's images: the same photo, drawing or video frame. These do not matter: cropping, resizing, slight recolouring, low resolution, added text or a border, or the subject cut out and placed on a different background. What must match is the subject itself: the same pose, the same expression, the same markings. First write what you see for each of those in both images. Another picture of the same kind of subject is not the same picture, however alike it looks: another kitten, the same character drawn in another pose, another photo of the same person. Answer same: true only when the subject's pose and details line up exactly.`;
+
+const CONFIRM_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['differences', 'same'],
+  properties: { differences: { type: 'string' }, same: { type: 'boolean' } },
+};
+
 // A coin logo, from DexScreener's image host only, at 128 px (about 3 KB) instead of the 800 px it links.
 export const LOGO_HOST = /^https:\/\/(?:cdn|dd)\.dexscreener\.com\//;
 async function logoBlock(url) {
@@ -357,7 +369,9 @@ export async function sameImage(ai, { images, logos }) {
   marks.forEach((b, i) => { if (b) content.push({ type: 'text', text: `Logo ${i}:` }, b); });
   content.push({ type: 'text', text: 'Which logo numbers show the same picture as the post?' });
   const r = await ask(ai, MATCH_SYSTEM, content, MATCH_SCHEMA);
-  return { same: [...new Set((r.same || []).filter((i) => Number.isInteger(i) && marks[i]))], model: r.model };
+  const claimed = [...new Set((r.same || []).filter((i) => Number.isInteger(i) && marks[i]))].slice(0, 4);
+  const looks = await Promise.all(claimed.map((i) => ask(ai, CONFIRM_SYSTEM, [{ type: 'text', text: 'The post\'s images:' }, ...post, { type: 'text', text: 'The coin\'s logo:' }, marks[i]], CONFIRM_SCHEMA)));
+  return { same: claimed.filter((_, n) => looks[n].same === true), model: r.model };
 }
 
 /** post: { text, quoted, card, author, url, images[] } -> { narrative, coinable, terms[], anchors[], tickers[], cas[] } */

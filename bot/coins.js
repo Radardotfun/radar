@@ -9,7 +9,9 @@
 //   low, so a pile of small copies can't take Highest MC from it.
 import { aggregate, pickThree, alive } from '../extension/src/lib/market.js';
 
-const MAJORS = new Set('BTC ETH SOL HYPE XRP BNB USDC USDT WBTC WETH WSOL'.split(' '));
+// PEPE, DOGE and SHIB live on chains the bot doesn't scan, so what it finds under those tickers are copies (a $2M "PEPE"
+// on Base as Highest MC on a Pepe meme).
+const MAJORS = new Set('BTC ETH SOL HYPE XRP BNB USDC USDT WBTC WETH WSOL PEPE DOGE SHIB'.split(' '));
 const sym = (t) => String(t?.symbol || '').replace(/^\$+/, '').toUpperCase();
 const lower = (s) => String(s || '').toLowerCase().trim();
 // Not dust: what the reply would show at all.
@@ -60,12 +62,25 @@ const EVM_CAS = /\b0x[a-fA-F0-9]{40}\b/g;
 // the post itself uses. The judge sometimes rates it only "the same subject": a $9.7M GTA VI trading $24M a day got 62
 // next to 85 for an $836K "GTA memes", and the reply's Highest MC went to a coin a tenth its size.
 const key = (s) => String(s || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
-const MAJOR_NAME = new Set('bitcoin ethereum solana hyperliquid ripple binance'.split(' '));
+const MAJOR_NAME = new Set('bitcoin ethereum solana hyperliquid ripple binance pepe dogecoin shibainu'.split(' '));
+const isMajor = (t) => MAJORS.has(sym(t)) || MAJOR_NAME.has(key(t.name));
 export function runnerOf(tokens, words) {
   const names = new Set(words.map(key).filter((k) => k.length >= 3 && !MAJOR_NAME.has(k)));
-  return tokens.filter((t) => t?.address && (t.relevance || 0) >= 60 && t.mcapBacked && alive(t) && !MAJORS.has(sym(t))
+  return tokens.filter((t) => t?.address && (t.relevance || 0) >= 60 && t.mcapBacked && alive(t) && !isMajor(t)
     && (names.has(key(t.symbol)) || names.has(key(t.name))))
     .sort((a, b) => (b.marketCap || 0) - (a.marketCap || 0))[0] || null;
+}
+
+// The judge's 90+ means made for this exact story. Its 80-89 is looser and varies between runs ("Burn" on an account
+// update, "Pussy Cat Club" on a Cash Cat post), so there a coin also needs a name the post's story uses: its whole ticker
+// or name, or a telling word of it. Kinds of animal and words like "coin" say nothing.
+const VAGUE = new Set('the and for with coin coins token tokens meme memes crypto official new baby cat cats kitten kitty dog dogs puppy frog bird'.split(' '));
+const telling = (s) => lower(s).split(/[^\p{L}\p{N}]+/u).filter((w) => w.length >= 3 && !VAGUE.has(w));
+export function tiedToPost(t, words) {
+  const whole = new Set(words.map(key).filter((k) => k.length >= 2));
+  if (whole.has(key(t.symbol)) || whole.has(key(t.name))) return true;
+  const used = new Set(words.flatMap(telling));
+  return [...telling(t.symbol), ...telling(t.name)].some((w) => used.has(w));
 }
 
 // The judge is a sampled model call (no temperature control on the judge's model), and DexScreener's search results
@@ -102,11 +117,12 @@ const leadOf = (tokens) => [...tokens].sort((a, b) => Number(!!b.mcapBacked) - N
  * res: the scan (findCoins), post: the tagged post. search(q) -> DexScreener pairs. lookupCa(address) -> the token
  * at that address (or the token of the pool at it), null when it is no token, and throws when DexScreener can't say.
  * matchImages(postImages, logoUrls) -> indexes of the logos that show the post's picture.
+ * capOf(token) -> a market cap for a coin DexScreener gives none for (still on its launch curve), or 0.
  * -> { named, how, picks }: the coin the post names or pictures (or null), how it was found ('post': its CA or ticker;
  * 'picture': its logo is the post's picture) and the three story picks, as pickThree gives them. That coin competes for
  * the roles too, so Highest MC is never a smaller coin than the post's own.
  */
-export async function botCoins(res, post, { search, lookupCa, matchImages, chains = ['solana'] }) {
+export async function botCoins(res, post, { search, lookupCa, matchImages, capOf, chains = ['solana'] }) {
   const scanned = [...(res?.roleCandidates || []), ...(res?.picks || []).map((p) => p.token), ...(res?.others || []), res?.techMatch].filter((t) => t?.address);
   const text = [post?.text, post?.quoted, post?.parent].filter(Boolean).join('\n');
   let named = res?.mentioned?.[0] || null;
@@ -145,12 +161,18 @@ export async function botCoins(res, post, { search, lookupCa, matchImages, chain
     named = leadOf(pictured);
     if (named) how = 'picture';
   }
-  const runner = runnerOf(scanned, [...(res?.anchors || []), ...(res?.terms || []), ...typed]);
+  if (named && !named.marketCap && capOf) {
+    const cap = await capOf(named).catch(() => 0);
+    if (cap) named = { ...named, marketCap: cap };
+  }
+  const postWords = [...(res?.anchors || []), ...(res?.terms || []), ...typed];
+  const runner = runnerOf(scanned, postWords);
+  const onStory = (t) => (t.relevance || 0) >= 90 || ((t.relevance || 0) >= ON_STORY && tiedToPost(t, postWords));
   const seen = new Set();
   const story = scanned.filter((t) => {
     if (seen.has(t.address)) return false;
     seen.add(t.address);
-    return ((t.relevance || 0) >= ON_STORY || t.address === runner?.address) && !MAJORS.has(sym(t)) && !elsewhere.has(sym(t)) && !(named && sameCoin(t, named));
+    return (onStory(t) || t.address === runner?.address) && !isMajor(t) && !elsewhere.has(sym(t)) && !(named && sameCoin(t, named));
   }).map((t) => (t.address === runner?.address ? { ...t, relevance: Math.max(t.relevance || 0, 90) } : t));
   // Other coins with the same picture under another name were made for this post too.
   for (const t of pictured) if (!seen.has(t.address) && !sameCoin(t, named)) { seen.add(t.address); story.push({ ...t, relevance: 99 }); }
