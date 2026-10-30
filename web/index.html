@@ -170,7 +170,7 @@
       </div>
       <p class="perks-live" id="perks-live" hidden>
         <b id="perks-bond"></b>
-        <span>When we bond, we run a DEX boost.</span>
+        <span id="perks-boost">When we bond, we run a DEX boost.</span>
       </p>
       <div class="hero-actions">
         <a class="btn btn-solid" href="/holder">Check my wallet</a>
@@ -195,14 +195,20 @@
     <span class="foot-links"><a href="https://github.com/Radardotfun/radar" target="_blank" rel="noopener">Source code</a> · <a href="/privacy">Privacy</a></span>
   </footer>
   <script>
-    // The bonding line shows only on a real number; a failed read or a graduated coin leaves it hidden.
+    // The bonding line shows only on a real number, or once the coin has bonded; a failed read leaves it hidden.
     (function () {
       var mint = 'HyDSdtgiSa5mHqkTVoz8cTFTeVLFKdZ8amPvtNYfpump';
       fetch('https://datapi.jup.ag/v1/assets/search?query=' + mint)
         .then(function (res) { return res.ok ? res.json() : null; })
         .then(function (list) {
           var coin = list && list[0];
-          if (!coin || coin.id !== mint || coin.graduatedPool) return;
+          if (!coin || coin.id !== mint) return;
+          if (coin.graduatedPool) {
+            document.getElementById('perks-bond').textContent = '$RADAR has bonded.';
+            document.getElementById('perks-boost').hidden = true;
+            document.getElementById('perks-live').hidden = false;
+            return;
+          }
           var curve = coin.bondingCurve;
           if (typeof curve !== 'number' || !(curve >= 0 && curve <= 100)) return;
           document.getElementById('perks-bond').textContent = 'About ' + Math.round(curve) + '% of the way to bonding';
