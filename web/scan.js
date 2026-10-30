@@ -1,4 +1,4 @@
-// Radar 1.7.20 on the web: built from the extension source at https://tryradar.fun. Not financial advice.
+// Radar 1.7.21 on the web: built from the extension source at https://tryradar.fun. Not financial advice.
 (() => {
   // extension/src/lib/keywords.js
   var STOP = new Set(`a about above after again against all almost also am an and any are aren as at be because been before
@@ -1069,6 +1069,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
         if (data.post) {
           for (const k of ["text", "quoted", "parent"]) if (data.post[k]) data.post[k] = await typedCashtags(data.post[k], linkedSymbol);
         }
+        if (data.post?.text && data.source?.label) data.source.label = data.post.text.replace(/\s+/g, " ").slice(0, 90);
         return data;
       });
     }
@@ -3579,8 +3580,28 @@ svg { display: block; }\r
   handlers.tweet = async (msg) => {
     const r = await tweet(msg);
     history.replaceState(null, "", `/scan?url=${encodeURIComponent(msg.url.trim())}`);
+    showShare();
     return r;
   };
+  function showShare() {
+    const box = document.getElementById("scan-share");
+    if (!box) return;
+    box.querySelector("[data-share-post]").href = `https://x.com/intent/post?text=${encodeURIComponent("Radar's read on this post:")}&url=${encodeURIComponent(location.href)}`;
+    box.hidden = false;
+  }
+  document.querySelector("[data-share-copy]")?.addEventListener("click", async (e) => {
+    const button = e.currentTarget;
+    const label = button.dataset.label ||= button.textContent;
+    try {
+      await navigator.clipboard.writeText(location.href);
+      button.textContent = "Copied";
+    } catch {
+      button.textContent = "Could not copy";
+    }
+    setTimeout(() => {
+      button.textContent = label;
+    }, 1800);
+  });
   useBackend(handlers, { cssText: radar_default });
   var url = new URLSearchParams(location.search).get("url");
   mountInline(document.getElementById("radar"), "dark", { hint: "Paste a link to a post on X above. Or search a narrative, a ticker or a CA." }).then((radar) => radar.open(url && isPostLink(url) ? { text: url } : {}));

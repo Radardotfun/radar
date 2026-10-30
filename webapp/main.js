@@ -65,8 +65,28 @@ const tweet = handlers.tweet;
 handlers.tweet = async (msg) => {
   const r = await tweet(msg);
   history.replaceState(null, '', `/scan?url=${encodeURIComponent(msg.url.trim())}`);
+  showShare();
   return r;
 };
+
+// The buttons under the panel, once there's a scan to pass on.
+function showShare() {
+  const box = document.getElementById('scan-share');
+  if (!box) return;
+  box.querySelector('[data-share-post]').href = `https://x.com/intent/post?text=${encodeURIComponent("Radar's read on this post:")}&url=${encodeURIComponent(location.href)}`;
+  box.hidden = false;
+}
+document.querySelector('[data-share-copy]')?.addEventListener('click', async (e) => {
+  const button = e.currentTarget;
+  const label = button.dataset.label ||= button.textContent;
+  try {
+    await navigator.clipboard.writeText(location.href);
+    button.textContent = 'Copied';
+  } catch {
+    button.textContent = 'Could not copy';
+  }
+  setTimeout(() => { button.textContent = label; }, 1800);
+});
 
 useBackend(handlers, { cssText: css });
 

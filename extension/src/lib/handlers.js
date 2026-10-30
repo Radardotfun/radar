@@ -185,6 +185,7 @@ export function makeHandlers(host) {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Couldn't open that post");
       if (data.post) for (const k of ['text', 'quoted', 'parent']) if (data.post[k]) data.post[k] = await typedCashtags(data.post[k], linkedSymbol);
+      if (data.post?.text && data.source?.label) data.source.label = data.post.text.replace(/\s+/g, ' ').slice(0, 90);
       return data;
     });
   }

@@ -191,6 +191,9 @@ h3 { font-size: 18px; letter-spacing: -0.02em; font-weight: 700; }
   box-shadow: 0 0 0 8px rgba(86, 33, 172, 0.16), 0 40px 120px -40px rgba(109, 47, 212, 0.7);
   animation: rise 0.8s var(--ease) both;
 }
+.scan-share { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
+.scan-share[hidden] { display: none; }
+.scan-share .btn { flex: 1 1 200px; }
 .scan-page .site-foot { border-top: 1px solid var(--line); }
 
 /* ---------- mobile ---------- */
