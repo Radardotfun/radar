@@ -50,9 +50,10 @@
       if (!res.ok) throw new Error(d.error || 'The check failed. Try again.');
       if (d.off) { say('Holder features are not on yet.', 'error'); return; }
       const fmt = (n) => Number(n).toLocaleString('en-US', { maximumFractionDigits: 0 });
-      if (!d.holder) { say(`This wallet holds ${fmt(d.balance)} $RADAR. Holder features start at ${fmt(d.min)}.`, 'error'); return; }
+      const usd = (n) => `$${Number(n).toFixed(2)}`;
+      if (!d.holder) { say(`This wallet holds ${fmt(d.balance)} $RADAR, worth ${usd(d.value)}. Holder features start at ${usd(d.minUsd)}.`, 'error'); return; }
       if (window.opener) for (const origin of PANELS) { try { window.opener.postMessage({ type: 'radar:holder', token: d.token, exp: d.exp }, origin); } catch {} }
-      say(`You hold ${fmt(d.balance)} $RADAR. You're in. This window closes in a moment.`, 'success');
+      say(`You hold ${usd(d.value)} of $RADAR. You're in. This window closes in a moment.`, 'success');
       setTimeout(() => window.close(), 2500);
     } catch (e) {
       say(e?.code === 4001 || /reject|cancel|denied/i.test(e?.message || '') ? 'Cancelled in your wallet. Nothing was signed.' : e?.message || 'The check failed. Try again.', 'error');

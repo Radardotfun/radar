@@ -4,7 +4,7 @@
 //   POST /match     { post, logos }                  -> { same: [i] }: coin logos showing the post's own picture
 //   GET  /larpcheck?address=<CA>                     -> Larpcheck's verdict on the coin (see below)
 import { engine, interpret, judge, storyCheck, transcribe, sameImage, LOGO_HOST } from './narrative.js';
-import { holderOn, holderMin, holderVerify, holderWho } from './holder.js';
+import { holderOn, holderConfig, holderVerify, holderWho } from './holder.js';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -281,7 +281,7 @@ export default {
     if (pathname === '/tweet' && request.method === 'GET') return readTweet(new URL(request.url).searchParams.get('url'), ctx);
     if (pathname === '/larpcheck' && request.method === 'GET') return larpcheck(request, env, ctx);
     // Holder-only data (server/holder.js): off until the Frontrun key and the rest are set.
-    if (pathname === '/holder/config' && request.method === 'GET') return json(200, { on: holderOn(env), min: holderMin(env) });
+    if (pathname === '/holder/config' && request.method === 'GET') return json(200, await holderConfig(env));
     if ((pathname === '/holder/verify' || pathname === '/holder/who') && request.method === 'POST') {
       if (!holderOn(env)) return json(200, { off: true });
       if (limited(`holder:${request.headers.get('cf-connecting-ip') || 'anon'}`, 120)) return json(429, { error: 'Too many requests. Try again in a few minutes.' });

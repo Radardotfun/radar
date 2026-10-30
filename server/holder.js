@@ -4,8 +4,10 @@
 // access within a day. The code is public, so this check can only live here, and so does the Frontrun key: its docs
 // say never to put a key in a browser.
 //
-// Off until these are set on the Worker: FRONTRUN_DATA_KEY and HOLDER_SECRET (secrets), RADAR_MINT and HOLDER_MIN (vars).
+// Off until these are set on the Worker: FRONTRUN_DATA_KEY and HOLDER_SECRET (secrets), RADAR_MINT and HOLDER_MIN_USD (vars).
 // One fresh lookup costs 40 Frontrun credits (10 smart followers, 20 past coins, 10 profile), kept 6 hours per account.
+// With a $1 entry, one wallet could otherwise spend the whole plan, so a wallet gets 30 lookups a day and everyone
+// together HOLDER_DAILY_LOOKUPS (default 250: API Basic's 300,000 credits over a month).
 
 const ISSUED_WINDOW = 10 * 60_000;
 const TOKEN_LIFE = 24 * 3600_000;
@@ -13,8 +15,28 @@ const FRONTRUN = 'https://api.frontrun.pro/api/v1/pro/twitter';
 const HANDLE = /^\w{1,15}$/;
 const SOL_ADDRESS = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 
-export const holderMin = (env) => { const n = Number(env.HOLDER_MIN); return Number.isFinite(n) && n > 0 ? n : 100000; };
+export const holderMinUsd = (env) => { const n = Number(env.HOLDER_MIN_USD); return Number.isFinite(n) && n > 0 ? n : 1; };
 export const holderOn = (env) => !!(env.FRONTRUN_DATA_KEY && env.HOLDER_SECRET && env.RADAR_MINT);
+
+// $RADAR's price in USD, from Jupiter: DexScreener often has none for a coin on its launch curve. Throws if there is none.
+async function radarPrice(env) {
+  const r = await fetch(`https://lite-api.jup.ag/price/v3?ids=${env.RADAR_MINT}`, { signal: AbortSignal.timeout(8000) });
+  const p = r.ok ? Number((await r.json())[env.RADAR_MINT]?.usdPrice) : NaN;
+  if (!Number.isFinite(p) || p <= 0) throw new Error('no price');
+  return p;
+}
+// The tokens that make up the entry, rounded up to two figures so the panel shows a clean number (86,000, not 85,213).
+function tokensFor(usd, price) {
+  const raw = usd / price;
+  const unit = 10 ** Math.max(0, Math.floor(Math.log10(raw)) - 1);
+  return Math.ceil(raw / unit) * unit;
+}
+/** -> { on, minUsd, min (tokens worth that now) }. Off if the price can't be read, since nobody could be checked. */
+export async function holderConfig(env) {
+  const minUsd = holderMinUsd(env);
+  if (!holderOn(env)) return { on: false, minUsd };
+  try { return { on: true, minUsd, min: tokensFor(minUsd, await radarPrice(env)) }; } catch { return { on: false, minUsd }; }
+}
 
 // What the wallet signs. web/holder.js writes the same words.
 export const holderMessage = (address, issued) => `Radar holder check\n\nThis only proves you own this wallet. It can't move funds.\n\nWallet: ${address}\nIssued: ${issued}`;
@@ -77,15 +99,17 @@ async function balanceOf(rpcUrl, env, address) {
   return d.result.value.reduce((sum, a) => sum + Number(a.account?.data?.parsed?.info?.tokenAmount?.uiAmount || 0), 0);
 }
 
-/** { address, issued, signature (hex) } -> { holder, balance, min, token?, exp? } */
+/** { address, issued, signature (hex) } -> { holder, balance, value, minUsd, token?, exp? } */
 export async function holderVerify(body, env, rpcUrl, now = Date.now()) {
   const address = String(body?.address || '');
   if (!SOL_ADDRESS.test(address) || !await validSignature({ address, issued: String(body?.issued || ''), signature: String(body?.signature || '') }, now)) return { status: 400, body: { error: 'That signature did not check out. Try again.' } };
   let balance;
-  try { balance = await balanceOf(rpcUrl, env, address); } catch { return { status: 502, body: { error: "Couldn't read your balance right now. Try again in a moment." } }; }
-  const min = holderMin(env);
-  if (balance < min) return { status: 200, body: { holder: false, balance, min } };
-  return { status: 200, body: { holder: true, balance, min, ...await makeToken(env, address, now) } };
+  let price;
+  try { [balance, price] = await Promise.all([balanceOf(rpcUrl, env, address), radarPrice(env)]); } catch { return { status: 502, body: { error: "Couldn't read your balance right now. Try again in a moment." } }; }
+  const minUsd = holderMinUsd(env);
+  const value = balance * price;
+  if (value < minUsd) return { status: 200, body: { holder: false, balance, value, minUsd } };
+  return { status: 200, body: { holder: true, balance, value, minUsd, ...await makeToken(env, address, now) } };
 }
 
 const text = (s, n) => (typeof s === 'string' ? s.replace(/[\u0000-\u001f\u007f<>]/g, ' ').trim().slice(0, n) : '');
@@ -115,11 +139,17 @@ export async function holderWho(body, env, { limited, cache = caches.default, no
   if (!wallet) return { status: 401, body: { error: 'Your holder check ran out. Connect your wallet again.' } };
   const handle = String(body?.handle || '').replace(/^@/, '');
   if (!HANDLE.test(handle)) return { status: 400, body: { error: 'Not an X account' } };
-  if (limited(`who:${wallet}`, 100, 24 * 3600_000)) return { status: 429, body: { error: 'Holder lookups are limited to 100 a day. Try again tomorrow.' } };
   const id = handle.toLowerCase();
   const key = new Request(`https://cache.narrative-radar/fr1/${id}`);
   const hit = await cache.match(key);
   if (hit) return { status: 200, body: await hit.json() };
+  // Only a fresh lookup spends credits, so only that counts.
+  if (limited(`who:${wallet}`, 30, 24 * 3600_000)) return { status: 429, body: { error: 'You reached 30 new lookups for today. Try again tomorrow.' } };
+  const spentKey = new Request(`https://cache.narrative-radar/fr-day/${new Date(now).toISOString().slice(0, 10)}`);
+  const spent = Number(await (await cache.match(spentKey))?.text()) || 0;
+  const cap = Number(env.HOLDER_DAILY_LOOKUPS) || 250;
+  if (spent >= cap) return { status: 429, body: { error: "Today's holder lookups are used up. They reset at 00:00 UTC." } };
+  await cache.put(spentKey, new Response(String(spent + 1), { headers: { 'cache-control': 'public, max-age=90000' } }));
   const get = async (path) => {
     const r = await fetch(`${FRONTRUN}/${id}/${path}`, { headers: { accept: 'application/json', authorization: `Bearer ${env.FRONTRUN_DATA_KEY}` }, signal: AbortSignal.timeout(8000) });
     if (!r.ok) throw new Error(`frontrun ${r.status}`);

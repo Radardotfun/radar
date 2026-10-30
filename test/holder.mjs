@@ -1,7 +1,7 @@
 // The holder gate (server/holder.js), offline: real Ed25519 signatures, a fake chain and a fake Frontrun. node test/holder.mjs
 import assert from 'node:assert/strict';
 import { webcrypto } from 'node:crypto';
-import { holderMessage, holderVerify, holderWho, holderOn, holderMin, readToken, makeToken, whoView, fromBase58 } from '../server/holder.js';
+import { holderMessage, holderVerify, holderWho, holderOn, holderMinUsd, holderConfig, readToken, makeToken, whoView, fromBase58 } from '../server/holder.js';
 
 const B58 = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
 function toBase58(bytes) {
@@ -21,18 +21,24 @@ assert.equal(toBase58(fromBase58(address)), address, 'base58 both ways');
 const sign = async (text, key = pair.privateKey) => [...new Uint8Array(await webcrypto.subtle.sign('Ed25519', key, new TextEncoder().encode(text)))].map((b) => b.toString(16).padStart(2, '0')).join('');
 const now = Date.parse('2026-10-30T12:00:00Z');
 const issued = new Date(now - 5000).toISOString();
-const env = { FRONTRUN_DATA_KEY: 'k', HOLDER_SECRET: 'test-secret', RADAR_MINT: 'RadarMint11111111111111111111111111111111111', HOLDER_MIN: '100000' };
+const env = { FRONTRUN_DATA_KEY: 'k', HOLDER_SECRET: 'test-secret', RADAR_MINT: 'RadarMint11111111111111111111111111111111111', HOLDER_MIN_USD: '1' };
 
 // Off until every piece is set.
 assert.equal(holderOn({}), false);
 assert.equal(holderOn({ ...env, FRONTRUN_DATA_KEY: '' }), false);
 assert.equal(holderOn(env), true);
-assert.equal(holderMin({}), 100000);
-assert.equal(holderMin({ HOLDER_MIN: '5' }), 5);
+assert.equal(holderMinUsd({}), 1);
+assert.equal(holderMinUsd({ HOLDER_MIN_USD: '5' }), 5);
 
+// $1 at $0.00001 is 100,000 tokens.
 let balance = 250000;
+let price = 0.00001;
 let frontrunCalls = 0;
 globalThis.fetch = async (url, init) => {
+  if (String(url).startsWith('https://lite-api.jup.ag')) {
+    if (!price) return new Response('{}');
+    return new Response(JSON.stringify({ [env.RADAR_MINT]: { usdPrice: price } }));
+  }
   if (String(url).startsWith('https://rpc.test')) {
     const body = JSON.parse(init.body);
     assert.equal(body.params[1].mint, env.RADAR_MINT, 'the balance asked for is $RADAR');
@@ -54,14 +60,23 @@ assert.equal(ok.body.holder, true);
 assert.equal(await readToken(env, ok.body.token, now), address);
 console.log('PASS holder: a signed wallet with enough $RADAR gets a day\'s token');
 
-// Not enough tokens: told how many, no token.
+// Under $1: told what it's worth, no token. The line follows the price.
 balance = 99999;
 const short = await holderVerify(good, env, 'https://rpc.test', now);
 assert.equal(short.body.holder, false);
 assert.equal(short.body.token, undefined);
-assert.equal(short.body.min, 100000);
+assert.equal(short.body.minUsd, 1);
+assert.ok(short.body.value < 1);
+price = 0.00002;
+assert.equal((await holderVerify(good, env, 'https://rpc.test', now)).body.holder, true, 'the same tokens pass once they are worth $1');
+price = 0;
+assert.equal((await holderVerify(good, env, 'https://rpc.test', now)).status, 502, 'no price, no pass');
+assert.equal((await holderConfig(env)).on, false, 'no price: off, since nobody could be checked');
+price = 0.0000117;
+assert.deepEqual(await holderConfig(env), { on: true, minUsd: 1, min: 86000 });
+price = 0.00001;
 balance = 250000;
-console.log('PASS holder: below the line gets no token');
+console.log('PASS holder: the line is $1 of $RADAR at the current price');
 
 // Forgeries.
 const other = await webcrypto.subtle.generateKey({ name: 'Ed25519' }, true, ['sign', 'verify']);
@@ -103,6 +118,12 @@ assert.equal(who.body.recent.length, 1, 'only real contracts');
 await holderWho({ token: t.token, handle: 'someone' }, env, opts);
 assert.equal(frontrunCalls, 3, 'the second lookup costs no credits');
 console.log('PASS holder: lookups need a token, are cached and are cleaned');
+// The daily cap protects the paid credits, whoever is asking.
+const capped = await holderWho({ token: t.token, handle: 'someoneelse' }, { ...env, HOLDER_DAILY_LOOKUPS: '1' }, opts);
+assert.equal(capped.status, 429);
+assert.equal(frontrunCalls, 3, 'over the cap, nothing is spent');
+assert.equal((await holderWho({ token: t.token, handle: 'someone' }, { ...env, HOLDER_DAILY_LOOKUPS: '1' }, opts)).status, 200, 'a cached account still answers');
+console.log('PASS holder: the daily cap stops new lookups, not cached ones');
 
 // Frontrun still looking: coins is null, not zero.
 assert.equal(whoView('x', { totalCount: 0 }, { cacheHit: false, data: null }, null).coins, null);
