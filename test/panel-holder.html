@@ -19,7 +19,7 @@ const h = makeHandlers({
   rpcUrl: async () => null,
   ready: Promise.resolve(),
 });
-h.holderStatus = async () => (q.has('off') ? { on: false } : { on: true, pitch: 'Hold $1 of $RADAR to see the coins this account has posted before, and which of those posts are gone.', holder: q.has('in') || q.has('none'), exp: Date.now() + 3600_000 });
+h.holderStatus = async () => (q.has('off') ? { on: false } : { on: true, pitch: 'Hold $10 of $RADAR to see the coins this account has posted before, and which of those posts are gone.', holder: q.has('in') || q.has('none'), exp: Date.now() + 3600_000 });
 h.holderWho = async () => ({
   handle: 'test',
   own: q.has('none') ? { coins: { live: 0, deleted: 0, deletedPosts: 0 }, recent: [] } : { coins: { live: 4, deleted: 2, deletedPosts: 2 }, recent: [
