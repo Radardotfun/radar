@@ -5,6 +5,7 @@
 //   GET  /larpcheck?address=<CA>                     -> Larpcheck's verdict on the coin (see below)
 import { engine, interpret, judge, storyCheck, transcribe, sameImage, LOGO_HOST } from './narrative.js';
 import { holderOn, holderConfig, holderVerify, holderWho } from './holder.js';
+import { recordPost } from './ledger.js';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -102,6 +103,7 @@ async function route(kind, request, env, ctx) {
   }
   if (kind === 'interpret') {
     if (!post.text && !post.quoted && !post.card && !post.images.length) return json(400, { error: 'Empty post' });
+    ctx.waitUntil(recordPost(env, post).catch((e) => console.error('ledger', e?.message)));
     const key = await sha256(JSON.stringify(['i', post]));
     return cachedJson(ctx, `i/${key}`, 300, () => interpret(ai, post), debug);
   }
@@ -280,8 +282,10 @@ export default {
     if (post) return Response.redirect(new URL(`/?url=${encodeURIComponent(`https://x.com/${post[1]}/status/${post[2]}`)}`, request.url), 302);
     if (pathname === '/tweet' && request.method === 'GET') return readTweet(new URL(request.url).searchParams.get('url'), ctx);
     if (pathname === '/larpcheck' && request.method === 'GET') return larpcheck(request, env, ctx);
-    // Holder-only data (server/holder.js): off until the Frontrun key and the rest are set.
-    if (pathname === '/holder/config' && request.method === 'GET') return json(200, await holderConfig(env));
+    // Holder-only data (server/holder.js). 1.7.17 reads /holder/config and its panel promises Frontrun's data, so that
+    // route stays off for it; 1.7.18 on reads /holder/settings, whose wording comes from here.
+    if (pathname === '/holder/config' && request.method === 'GET') return json(200, { on: false });
+    if (pathname === '/holder/settings' && request.method === 'GET') return json(200, await holderConfig(env));
     if ((pathname === '/holder/verify' || pathname === '/holder/who') && request.method === 'POST') {
       if (!holderOn(env)) return json(200, { off: true });
       if (limited(`holder:${request.headers.get('cf-connecting-ip') || 'anon'}`, 120)) return json(429, { error: 'Too many requests. Try again in a few minutes.' });

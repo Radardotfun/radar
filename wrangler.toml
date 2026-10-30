@@ -17,3 +17,9 @@ directory = "./dist/web"
 [vars]
 RADAR_MINT = "HyDSdtgiSa5mHqkTVoz8cTFTeVLFKdZ8amPvtNYfpump"
 HOLDER_MIN_USD = "1"
+
+# Radar's own record of which X accounts posted which coins (server/ledger.js, server/ledger.sql).
+[[d1_databases]]
+binding = "DB"
+database_name = "radar-ledger"
+database_id = "3dcfd367-581e-4f54-9e9d-3f1219d8b37c"

@@ -550,7 +550,7 @@ class Radar {
     const head = '<div class="story-top who-top"><span class="story-k">Who posted this</span></div>';
     if (!this.holder.holder) {
       return `<div class="story who">${head}
-        <div class="story-call">Holders of ${Number(this.holder.min).toLocaleString('en-US')}+ $RADAR see this account's smart followers and past coins, deleted posts included.</div>
+        <div class="story-call">${esc(this.holder.pitch || '')}</div>
         <button type="button" class="who-connect" data-holder-connect>Check my wallet</button></div>`;
     }
     const w = this.who.get(handle);
@@ -558,13 +558,18 @@ class Radar {
     if (w.error) return `<div class="story who">${head}<div class="story-call">${esc(w.error)}</div></div>`;
     if (w.off) return '';
     const lines = [];
+    const own = w.own?.coins;
+    const total = own ? own.live + own.deleted : 0;
+    if (own) lines.push(total ? `Radar has seen <b>${total}</b> coin${total === 1 ? '' : 's'} from this account${own.deletedPosts ? `, and <b>${own.deletedPosts}</b> of its coin post${own.deletedPosts === 1 ? ' is' : 's are'} gone` : ''}` : "Radar hasn't seen this account post a coin yet.");
+    const rows = (w.own?.recent || []).map((r) => `<a class="who-row" href="https://x.com/${esc(handle)}/status/${esc(r.id)}" target="_blank" rel="noopener noreferrer">
+        <b>${r.symbol ? `$${esc(r.symbol)}` : esc(`${r.ca.slice(0, 4)}…${r.ca.slice(-4)}`)}</b><span>${r.mc ? usd(r.mc) : 'no market'}</span><span>${age(r.at)} ago${r.gone ? ' · post gone' : ''}</span></a>`).join('');
     if (w.smartCount != null) lines.push(`<b>${w.smartCount}</b> smart follower${w.smartCount === 1 ? '' : 's'}${w.smartFinal ? '' : ' so far'}${w.smart?.length ? `: ${w.smart.map((s) => `@${esc(s)}`).join(', ')}` : ''}`);
-    if (w.coins) lines.push(`Posted <b>${w.coins.live + w.coins.deleted}</b> coin${w.coins.live + w.coins.deleted === 1 ? '' : 's'} before${w.coins.deleted ? `, <b>${w.coins.deleted}</b> in deleted posts` : ''}`);
-    else lines.push('Past coins: Frontrun is still looking. Check back in a couple of minutes.');
+    if (w.coins) lines.push(`Frontrun: posted <b>${w.coins.live + w.coins.deleted}</b> coin${w.coins.live + w.coins.deleted === 1 ? '' : 's'}${w.coins.deleted ? `, <b>${w.coins.deleted}</b> in deleted posts` : ''}`);
     return `<div class="story who">${head}
       ${w.label ? `<div class="who-label">${esc(w.label)}</div>` : ''}
       ${lines.map((l) => `<div class="story-call">${l}</div>`).join('')}
-      <div class="story-note">Data from Frontrun, for $RADAR holders.</div></div>`;
+      ${rows ? `<div class="who-rows">${rows}</div>` : ''}
+      <div class="story-note">Radar's own record, from posts scanned since 30 Oct 2026, so it won't show everything${w.smartCount != null || w.coins ? '. Smart followers from Frontrun' : ''}.</div></div>`;
   }
 
   async loadWho(handle) {

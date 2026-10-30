@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Radar
 // @namespace    https://tryradar.fun
-// @version      1.7.17
+// @version      1.7.18
 // @description  See the coins behind any post on X and instantly reroute to the biggest match that passes available on-chain safety checks.
 // @homepageURL  https://tryradar.fun
 // @supportURL   https://tryradar.fun
@@ -31,7 +31,7 @@
 // @downloadURL  https://tryradar.fun/radar.user.js
 // ==/UserScript==
 
-// Radar 1.7.17: built from the extension source at https://tryradar.fun. Not financial advice.
+// Radar 1.7.18: built from the extension source at https://tryradar.fun. Not financial advice.
 (() => {
   var __defProp = Object.defineProperty;
   var __export = (target, all) => {
@@ -1196,10 +1196,27 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       return h?.token && h.exp > Date.now() ? h : null;
     };
     async function holderStatus() {
-      const config = await cached("holder:config", 6e5, async () => (await gmFetch(`${API_BASE}/holder/config`, { signal: AbortSignal.timeout(6e3) })).json()).catch(() => ({ on: false }));
+      const config = await cached("holder:config", 6e5, async () => (await gmFetch(`${API_BASE}/holder/settings`, { signal: AbortSignal.timeout(6e3) })).json()).catch(() => ({ on: false }));
       if (!config.on) return { on: false };
       const h = await holderStored();
-      return { on: true, min: config.min, holder: !!h, exp: h?.exp || null };
+      return { on: true, pitch: config.pitch, holder: !!h, exp: h?.exp || null };
+    }
+    async function holderCoinFacts(rows) {
+      const facts = /* @__PURE__ */ new Map();
+      const cas = rows.map((r) => r.ca);
+      const sol = cas.filter((a) => !a.startsWith("0x"));
+      const evm = cas.filter((a) => a.startsWith("0x"));
+      const asks = [...sol.length ? [["solana", sol]] : [], ...evm.length ? ["robinhood", "base", "bsc"].map((c) => [c, evm]) : []];
+      await Promise.all(asks.map(async ([chain, list]) => {
+        const r = await gmFetch(`https://api.dexscreener.com/tokens/v1/${chain}/${list.join(",")}`, { signal: AbortSignal.timeout(8e3) });
+        for (const p of r.ok ? await r.json() : []) {
+          const a = p.baseToken?.address;
+          const best = facts.get(String(a).toLowerCase());
+          if (a && (!best || (p.liquidity?.usd || 0) > best.liq)) facts.set(String(a).toLowerCase(), { symbol: String(p.baseToken.symbol || "").replace(/^\$+/, "").slice(0, 20), mc: Number(p.marketCap || p.fdv || 0), liq: p.liquidity?.usd || 0 });
+        }
+      }).map((p) => p.catch(() => {
+      })));
+      return rows.map((r) => ({ ...r, ...facts.get(r.ca.toLowerCase()) || {} }));
     }
     async function holderSave({ token, exp }) {
       if (typeof token !== "string" || token.length > 400 || !Number.isFinite(exp)) throw new Error("Bad holder token");
@@ -1215,7 +1232,8 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
         await host.store.set(HOLDER_KEY, null);
         return { locked: true };
       }
-      if (!r.ok) throw new Error(d.error || "Frontrun is not answering right now.");
+      if (!r.ok) throw new Error(d.error || "Radar could not look this account up right now.");
+      if (d.own?.recent?.length) d.own.recent = await holderCoinFacts(d.own.recent);
       return d;
     }
     const handlers2 = { videoInfo, tweet, read, coins, mentioned, story, larpcheck, refresh, safety, bundle, image, openWindow, reroute, holderStatus, holderSave, holderWho, settings: () => host.settings() };
@@ -1924,7 +1942,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       const head = '<div class="story-top who-top"><span class="story-k">Who posted this</span></div>';
       if (!this.holder.holder) {
         return `<div class="story who">${head}
-        <div class="story-call">Holders of ${Number(this.holder.min).toLocaleString("en-US")}+ $RADAR see this account's smart followers and past coins, deleted posts included.</div>
+        <div class="story-call">${esc2(this.holder.pitch || "")}</div>
         <button type="button" class="who-connect" data-holder-connect>Check my wallet</button></div>`;
       }
       const w = this.who.get(handle);
@@ -1935,13 +1953,18 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       if (w.error) return `<div class="story who">${head}<div class="story-call">${esc2(w.error)}</div></div>`;
       if (w.off) return "";
       const lines = [];
+      const own = w.own?.coins;
+      const total = own ? own.live + own.deleted : 0;
+      if (own) lines.push(total ? `Radar has seen <b>${total}</b> coin${total === 1 ? "" : "s"} from this account${own.deletedPosts ? `, and <b>${own.deletedPosts}</b> of its coin post${own.deletedPosts === 1 ? " is" : "s are"} gone` : ""}` : "Radar hasn't seen this account post a coin yet.");
+      const rows = (w.own?.recent || []).map((r) => `<a class="who-row" href="https://x.com/${esc2(handle)}/status/${esc2(r.id)}" target="_blank" rel="noopener noreferrer">
+        <b>${r.symbol ? `$${esc2(r.symbol)}` : esc2(`${r.ca.slice(0, 4)}\u2026${r.ca.slice(-4)}`)}</b><span>${r.mc ? usd(r.mc) : "no market"}</span><span>${age(r.at)} ago${r.gone ? " \xB7 post gone" : ""}</span></a>`).join("");
       if (w.smartCount != null) lines.push(`<b>${w.smartCount}</b> smart follower${w.smartCount === 1 ? "" : "s"}${w.smartFinal ? "" : " so far"}${w.smart?.length ? `: ${w.smart.map((s) => `@${esc2(s)}`).join(", ")}` : ""}`);
-      if (w.coins) lines.push(`Posted <b>${w.coins.live + w.coins.deleted}</b> coin${w.coins.live + w.coins.deleted === 1 ? "" : "s"} before${w.coins.deleted ? `, <b>${w.coins.deleted}</b> in deleted posts` : ""}`);
-      else lines.push("Past coins: Frontrun is still looking. Check back in a couple of minutes.");
+      if (w.coins) lines.push(`Frontrun: posted <b>${w.coins.live + w.coins.deleted}</b> coin${w.coins.live + w.coins.deleted === 1 ? "" : "s"}${w.coins.deleted ? `, <b>${w.coins.deleted}</b> in deleted posts` : ""}`);
       return `<div class="story who">${head}
       ${w.label ? `<div class="who-label">${esc2(w.label)}</div>` : ""}
       ${lines.map((l) => `<div class="story-call">${l}</div>`).join("")}
-      <div class="story-note">Data from Frontrun, for $RADAR holders.</div></div>`;
+      ${rows ? `<div class="who-rows">${rows}</div>` : ""}
+      <div class="story-note">Radar's own record, from posts scanned since 30 Oct 2026, so it won't show everything${w.smartCount != null || w.coins ? ". Smart followers from Frontrun" : ""}.</div></div>`;
     }
     async loadWho(handle) {
       this.who.set(handle, { loading: true });
@@ -3547,6 +3570,10 @@ svg { display: block; }\r
 .who .story-call b { color: var(--text); }\r
 .who-connect { all: unset; cursor: pointer; display: block; margin-top: 8px; padding: 7px 10px; border-radius: 8px; border: 1px solid var(--line); font-size: 12px; font-weight: 600; color: var(--text); text-align: center; }\r
 .who-connect:hover { border-color: var(--text); }\r
+.who-rows { margin-top: 7px; display: grid; gap: 2px; }\r
+.who-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; padding: 4px 0; font-size: 11px; color: var(--muted); text-decoration: none; border-top: 1px solid var(--line); }\r
+.who-row b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); font-weight: 600; }\r
+.who-row:hover b { text-decoration: underline; }\r
 .findings { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; }\r
 .findings li { font-size: 11.5px; line-height: 1.4; color: var(--muted); display: grid; grid-template-columns: 58px 1fr; gap: 6px; }\r
 .findings li span { font: 700 9.5px var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--faint); padding-top: 2px; }\r

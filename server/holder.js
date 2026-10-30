@@ -1,13 +1,15 @@
-// Holder-only data: people holding $RADAR see who is behind a post, from Frontrun's paid data API (frontrun.pro).
+// Holder-only data: people holding $RADAR see who is behind a post: Radar's own record of the coins an account has posted
+// (server/ledger.js) and, once a key is set, Frontrun's paid data (frontrun.pro).
 // A wallet proves itself by signing a message (a signature, not a transaction: it can't move funds). The server checks
 // the signature and the wallet's balance on-chain, and hands back a token good for a day, so someone who sells loses
 // access within a day. The code is public, so this check can only live here, and so does the Frontrun key: its docs
 // say never to put a key in a browser.
 //
-// Off until these are set on the Worker: FRONTRUN_DATA_KEY and HOLDER_SECRET (secrets), RADAR_MINT and HOLDER_MIN_USD (vars).
-// One fresh lookup costs 40 Frontrun credits (10 smart followers, 20 past coins, 10 profile), kept 6 hours per account.
-// With a $1 entry, one wallet could otherwise spend the whole plan, so a wallet gets 30 lookups a day and everyone
-// together HOLDER_DAILY_LOOKUPS (default 250: API Basic's 300,000 credits over a month).
+// On when HOLDER_SECRET (secret), RADAR_MINT and HOLDER_MIN_USD (vars) and the DB binding are set. FRONTRUN_DATA_KEY
+// (secret) adds Frontrun. One fresh Frontrun lookup costs 40 credits (10 smart followers, 20 past coins, 10 profile), kept
+// 6 hours per account. With a $1 entry, one wallet could otherwise spend the whole plan, so a wallet gets 30 a day and
+// everyone together HOLDER_DAILY_LOOKUPS (default 250: API Basic's 300,000 credits over a month).
+import { ledgerWho } from './ledger.js';
 
 const ISSUED_WINDOW = 10 * 60_000;
 const TOKEN_LIFE = 24 * 3600_000;
@@ -16,7 +18,10 @@ const HANDLE = /^\w{1,15}$/;
 const SOL_ADDRESS = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 
 export const holderMinUsd = (env) => { const n = Number(env.HOLDER_MIN_USD); return Number.isFinite(n) && n > 0 ? n : 1; };
-export const holderOn = (env) => !!(env.FRONTRUN_DATA_KEY && env.HOLDER_SECRET && env.RADAR_MINT);
+export const holderOn = (env) => !!(env.HOLDER_SECRET && env.RADAR_MINT && env.DB);
+const money = (n) => `$${Number.isInteger(n) ? n : n.toFixed(2)}`;
+// What the panel tells someone who hasn't checked their wallet. From here, so it stays true when Frontrun is added.
+const pitch = (env) => `Hold ${money(holderMinUsd(env))} of $RADAR to see the coins this account has posted before, and which of those posts are gone${env.FRONTRUN_DATA_KEY ? ', plus its smart followers' : ''}.`;
 
 // $RADAR's price in USD, from Jupiter: DexScreener often has none for a coin on its launch curve. Throws if there is none.
 async function radarPrice(env) {
@@ -25,17 +30,11 @@ async function radarPrice(env) {
   if (!Number.isFinite(p) || p <= 0) throw new Error('no price');
   return p;
 }
-// The tokens that make up the entry, rounded up to two figures so the panel shows a clean number (86,000, not 85,213).
-function tokensFor(usd, price) {
-  const raw = usd / price;
-  const unit = 10 ** Math.max(0, Math.floor(Math.log10(raw)) - 1);
-  return Math.ceil(raw / unit) * unit;
-}
-/** -> { on, minUsd, min (tokens worth that now) }. Off if the price can't be read, since nobody could be checked. */
+/** -> { on, minUsd, pitch }. Off if the price can't be read, since nobody could be checked. */
 export async function holderConfig(env) {
   const minUsd = holderMinUsd(env);
   if (!holderOn(env)) return { on: false, minUsd };
-  try { return { on: true, minUsd, min: tokensFor(minUsd, await radarPrice(env)) }; } catch { return { on: false, minUsd }; }
+  try { await radarPrice(env); return { on: true, minUsd, pitch: pitch(env) }; } catch { return { on: false, minUsd }; }
 }
 
 // What the wallet signs. web/holder.js writes the same words.
@@ -132,23 +131,30 @@ export function whoView(handle, smart, past, info) {
   };
 }
 
-/** { token, handle } -> who's behind the account, for holders. { off: true } while no key is set. */
+/** { token, handle } -> who's behind the account, for holders: { handle, own, ...Frontrun's fields once there's a key }. */
 export async function holderWho(body, env, { limited, cache = caches.default, now = Date.now() }) {
   if (!holderOn(env)) return { status: 200, body: { off: true } };
   const wallet = await readToken(env, body?.token, now);
   if (!wallet) return { status: 401, body: { error: 'Your holder check ran out. Connect your wallet again.' } };
   const handle = String(body?.handle || '').replace(/^@/, '');
   if (!HANDLE.test(handle)) return { status: 400, body: { error: 'Not an X account' } };
+  if (limited(`own:${wallet}`, 300, 24 * 3600_000)) return { status: 429, body: { error: 'You reached 300 lookups for today. Try again tomorrow.' } };
   const id = handle.toLowerCase();
+  const [own, paid] = await Promise.all([ledgerWho(env, id, now), frontrunWho(env, id, wallet, { limited, cache, now }).catch(() => null)]);
+  return { status: 200, body: { handle: id, own, ...(paid || {}) } };
+}
+
+// Frontrun's data on an account, or null: no key, a limit reached or Frontrun down all leave Radar's own record standing.
+async function frontrunWho(env, id, wallet, { limited, cache, now }) {
+  if (!env.FRONTRUN_DATA_KEY) return null;
   const key = new Request(`https://cache.narrative-radar/fr1/${id}`);
   const hit = await cache.match(key);
-  if (hit) return { status: 200, body: await hit.json() };
+  if (hit) return hit.json();
   // Only a fresh lookup spends credits, so only that counts.
-  if (limited(`who:${wallet}`, 30, 24 * 3600_000)) return { status: 429, body: { error: 'You reached 30 new lookups for today. Try again tomorrow.' } };
+  if (limited(`who:${wallet}`, 30, 24 * 3600_000)) return null;
   const spentKey = new Request(`https://cache.narrative-radar/fr-day/${new Date(now).toISOString().slice(0, 10)}`);
   const spent = Number(await (await cache.match(spentKey))?.text()) || 0;
-  const cap = Number(env.HOLDER_DAILY_LOOKUPS) || 250;
-  if (spent >= cap) return { status: 429, body: { error: "Today's holder lookups are used up. They reset at 00:00 UTC." } };
+  if (spent >= (Number(env.HOLDER_DAILY_LOOKUPS) || 250)) return null;
   await cache.put(spentKey, new Response(String(spent + 1), { headers: { 'cache-control': 'public, max-age=90000' } }));
   const get = async (path) => {
     const r = await fetch(`${FRONTRUN}/${id}/${path}`, { headers: { accept: 'application/json', authorization: `Bearer ${env.FRONTRUN_DATA_KEY}` }, signal: AbortSignal.timeout(8000) });
@@ -158,11 +164,11 @@ export async function holderWho(body, env, { limited, cache = caches.default, no
   const [smart, past, info] = await Promise.allSettled([get('smart-followers'), get('tweets-with-ca-cache'), get('info')]);
   if (smart.status === 'rejected' && past.status === 'rejected' && info.status === 'rejected') {
     console.error('frontrun', smart.reason?.message);
-    return { status: 502, body: { error: 'Frontrun is not answering right now.' } };
+    return null;
   }
   const view = whoView(id, smart.value, past.value, info.value);
   // An account Frontrun is still looking up is asked again soon; each ask costs credits, so not sooner than it suggests.
   const ttl = view.coins ? 6 * 3600 : 120;
   await cache.put(key, new Response(JSON.stringify(view), { headers: { 'content-type': 'application/json', 'cache-control': `public, max-age=${ttl}` } }));
-  return { status: 200, body: view };
+  return view;
 }

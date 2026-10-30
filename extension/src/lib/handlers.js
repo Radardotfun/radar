@@ -255,10 +255,27 @@ export function makeHandlers(host) {
     return h?.token && h.exp > Date.now() ? h : null;
   };
   async function holderStatus() {
-    const config = await cached('holder:config', 600_000, async () => (await fetch(`${API_BASE}/holder/config`, { signal: AbortSignal.timeout(6000) })).json()).catch(() => ({ on: false }));
+    const config = await cached('holder:config', 600_000, async () => (await fetch(`${API_BASE}/holder/settings`, { signal: AbortSignal.timeout(6000) })).json()).catch(() => ({ on: false }));
     if (!config.on) return { on: false };
     const h = await holderStored();
-    return { on: true, min: config.min, holder: !!h, exp: h?.exp || null };
+    return { on: true, pitch: config.pitch, holder: !!h, exp: h?.exp || null };
+  }
+  // The coins in Radar's record, with their ticker and market cap now, read from DexScreener by this browser.
+  async function holderCoinFacts(rows) {
+    const facts = new Map();
+    const cas = rows.map((r) => r.ca);
+    const sol = cas.filter((a) => !a.startsWith('0x'));
+    const evm = cas.filter((a) => a.startsWith('0x'));
+    const asks = [...(sol.length ? [['solana', sol]] : []), ...(evm.length ? ['robinhood', 'base', 'bsc'].map((c) => [c, evm]) : [])];
+    await Promise.all(asks.map(async ([chain, list]) => {
+      const r = await fetch(`https://api.dexscreener.com/tokens/v1/${chain}/${list.join(',')}`, { signal: AbortSignal.timeout(8000) });
+      for (const p of r.ok ? await r.json() : []) {
+        const a = p.baseToken?.address;
+        const best = facts.get(String(a).toLowerCase());
+        if (a && (!best || (p.liquidity?.usd || 0) > best.liq)) facts.set(String(a).toLowerCase(), { symbol: String(p.baseToken.symbol || '').replace(/^\$+/, '').slice(0, 20), mc: Number(p.marketCap || p.fdv || 0), liq: p.liquidity?.usd || 0 });
+      }
+    }).map((p) => p.catch(() => {})));
+    return rows.map((r) => ({ ...r, ...(facts.get(r.ca.toLowerCase()) || {}) }));
   }
   async function holderSave({ token, exp }) {
     if (typeof token !== 'string' || token.length > 400 || !Number.isFinite(exp)) throw new Error('Bad holder token');
@@ -271,7 +288,8 @@ export function makeHandlers(host) {
     const r = await fetch(`${API_BASE}/holder/who`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ token: h.token, handle }), signal: AbortSignal.timeout(25_000) });
     const d = await r.json().catch(() => ({}));
     if (r.status === 401) { await host.store.set(HOLDER_KEY, null); return { locked: true }; }
-    if (!r.ok) throw new Error(d.error || 'Frontrun is not answering right now.');
+    if (!r.ok) throw new Error(d.error || 'Radar could not look this account up right now.');
+    if (d.own?.recent?.length) d.own.recent = await holderCoinFacts(d.own.recent);
     return d;
   }
 

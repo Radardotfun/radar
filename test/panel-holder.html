@@ -1,7 +1,7 @@
 <!doctype html>
 <!-- Manual check of "Who posted this" in the real panel. The live backend reads the post; holderStatus and holderWho are
      answered by a fake, so no wallet, no key and no Frontrun credits are involved. Serve the repo root and open
-     /test/panel-holder.html. ?in shows a holder's view, ?wait a lookup Frontrun hasn't finished, ?off the feature off. -->
+     /test/panel-holder.html. ?in shows a holder's view, ?none an account with no coins on record, ?off the feature off. -->
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Panel: holder check</title>
 <style>html,body{margin:0;height:100%;background:#000}#root{width:400px;height:100vh;margin:0 auto}</style></head>
@@ -19,10 +19,14 @@ const h = makeHandlers({
   rpcUrl: async () => null,
   ready: Promise.resolve(),
 });
-h.holderStatus = async () => (q.has('off') ? { on: false } : { on: true, min: 100000, holder: q.has('in') || q.has('wait'), exp: Date.now() + 3600_000 });
+h.holderStatus = async () => (q.has('off') ? { on: false } : { on: true, pitch: 'Hold $1 of $RADAR to see the coins this account has posted before, and which of those posts are gone.', holder: q.has('in') || q.has('none'), exp: Date.now() + 3600_000 });
 h.holderWho = async () => ({
-  handle: 'test', label: 'Founder of a thing', followers: 12400, smartCount: 12, smartFinal: true, smart: ['alice', 'bob', 'carol'],
-  coins: q.has('wait') ? null : { live: 9, deleted: 3, deletedPosts: 5 }, recent: [],
+  handle: 'test',
+  own: q.has('none') ? { coins: { live: 0, deleted: 0, deletedPosts: 0 }, recent: [] } : { coins: { live: 4, deleted: 2, deletedPosts: 2 }, recent: [
+    { ca: 'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263', id: '100001', at: Date.now() - 3 * 864e5, gone: false, symbol: 'BONK', mc: 1250000000 },
+    { ca: 'So11111111111111111111111111111111111111112', id: '100002', at: Date.now() - 9 * 864e5, gone: true, symbol: 'RUGGED', mc: 2100 },
+    { ca: '0x7fe995a80075df3dc8ae11a9b82c7fe4202cd87f', id: '100003', at: Date.now() - 20 * 864e5, gone: true },
+  ] },
 });
 useBackend(h, { css: '../extension/src/ui/radar.css' });
 const radar = await mountInline(document.getElementById('root'), 'dark');
