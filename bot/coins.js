@@ -69,9 +69,11 @@ const key = (s) => String(s || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '')
 const MAJOR_NAME = new Set('bitcoin ethereum solana hyperliquid ripple binance pepe dogecoin shibainu'.split(' '));
 const isMajor = (t) => MAJORS.has(sym(t)) || MAJOR_NAME.has(key(t.name));
 const isRadarCopy = (t) => (sym(t) === 'RADAR' || key(t.name) === 'radar') && t.address !== RADAR_MINT;
+// Big enough to really be the runner: a $2.8K "ICE" was Highest MC on a post about Intercontinental Exchange.
+const RUNNER_MIN = 100_000;
 export function runnerOf(tokens, words) {
   const names = new Set(words.map(key).filter((k) => k.length >= 3 && !MAJOR_NAME.has(k)));
-  return tokens.filter((t) => t?.address && (t.relevance || 0) >= 60 && t.mcapBacked && alive(t) && !isMajor(t) && !isRadarCopy(t)
+  return tokens.filter((t) => t?.address && (t.relevance || 0) >= 60 && (t.marketCap || 0) >= RUNNER_MIN && t.mcapBacked && alive(t) && !isMajor(t) && !isRadarCopy(t)
     && (names.has(key(t.symbol)) || names.has(key(t.name))))
     .sort((a, b) => (b.marketCap || 0) - (a.marketCap || 0))[0] || null;
 }
@@ -86,6 +88,29 @@ export function tiedToPost(t, words) {
   if (whole.has(key(t.symbol)) || whole.has(key(t.name))) return true;
   const used = new Set(words.flatMap(telling));
   return [...telling(t.symbol), ...telling(t.name)].some((w) => used.has(w));
+}
+
+// The story's words, without the poster's own name unless the post itself uses it. The read lists the author among its
+// names, so "$Elon" counted as on the story when Elon Musk posted about California. A word that is most of the handle
+// stays: that's a project's own account (@Juggernautrh on $JUGGERNAUT), not a person with a name.
+const posterWord = (post, text) => {
+  // A project's handle often wraps its name: @usepurpsfun, @cashcat_token.
+  const handle = key(post?.author);
+  const core = handle.replace(/^(use|get|try|the|join|official)|(fun|app|xyz|hq|labs|token|coin|sol|official)$/g, '');
+  const who = [handle, key(post?.authorName)];
+  const said = plain(text);
+  return (w) => key(w).length >= 3 && !/^(use|get|try|the|join|official|fun|app|xyz|labs|token|coin|sol)$/.test(key(w)) && who.some((x) => x.includes(key(w))) && key(w).length / (core.length || 1) < 0.7 && !said.includes(` ${lower(w)} `);
+};
+export function storyWords(words, post, text) {
+  const byAuthor = posterWord(post, text);
+  return words.map((w) => String(w).split(/\s+/).filter((p) => !byAuthor(p)).join(' ')).filter(Boolean);
+}
+
+// A coin named after the poster, on a post that doesn't use that name, whatever the judge scored it (it gave a $291K
+// "Official Elon Coin" enough on one run and not on the next).
+export function namedAfterPoster(t, post, text) {
+  const byAuthor = posterWord(post, text);
+  return [sym(t).toLowerCase(), ...telling(t.name)].some(byAuthor);
 }
 
 // The judge is a sampled model call (no temperature control on the judge's model), and DexScreener's search results
@@ -170,15 +195,20 @@ export async function botCoins(res, post, { search, lookupCa, matchImages, capOf
     const cap = await capOf(named).catch(() => 0);
     if (cap) named = { ...named, marketCap: cap };
   }
-  const postWords = [...(res?.anchors || []), ...(res?.terms || []), ...typed];
-  const runner = runnerOf(scanned, postWords);
-  const onStory = (t) => (t.relevance || 0) >= 90 || ((t.relevance || 0) >= ON_STORY && tiedToPost(t, postWords));
+  const postWords = [...storyWords([...(res?.anchors || []), ...(res?.terms || [])], post, text), ...typed];
+  const runner = runnerOf(scanned.filter((t) => !namedAfterPoster(t, post, text)), postWords);
+  // Under $10K a coin needs the judge's 90+: a name in common is no reason to call dust the post's coin.
+  const onStory = (t) => (t.relevance || 0) >= 90 || ((t.relevance || 0) >= ON_STORY && (t.marketCap || 0) >= 10_000 && tiedToPost(t, postWords));
   const seen = new Set();
-  const story = scanned.filter((t) => {
+  let story = scanned.filter((t) => {
     if (seen.has(t.address)) return false;
     seen.add(t.address);
-    return (onStory(t) || t.address === runner?.address) && !isMajor(t) && !isRadarCopy(t) && !elsewhere.has(sym(t)) && !(named && sameCoin(t, named));
+    return (onStory(t) || t.address === runner?.address) && !isMajor(t) && !isRadarCopy(t) && !namedAfterPoster(t, post, text) && !elsewhere.has(sym(t)) && !(named && sameCoin(t, named));
   }).map((t) => (t.address === runner?.address ? { ...t, relevance: Math.max(t.relevance || 0, 90) } : t));
+  // With no coin named in the post, newer coins copying the biggest one's ticker or name are its copies, not the OG or
+  // the mover (a launch post got two "PURPS" beside the real one). An older one stays: it may be the original.
+  const lead = named ? null : leadOf(story.filter((t) => t.mcapBacked && alive(t)));
+  if (lead) story = story.filter((t) => t.address === lead.address || !sameCoin(t, lead) || (t.createdAt || 0) < (lead.createdAt || 0));
   // Other coins with the same picture under another name were made for this post too.
   for (const t of pictured) if (!seen.has(t.address) && !sameCoin(t, named)) { seen.add(t.address); story.push({ ...t, relevance: 99 }); }
   if (named) story.push({ ...named, relevance: Math.max(100, ...story.map((t) => t.relevance || 0)) });

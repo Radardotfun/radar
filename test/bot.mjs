@@ -217,3 +217,34 @@ assert.deepEqual(radarByCa.picks.map((p) => p.token.address), [radarBnb.address]
 const radarPic = await botCoins({ mentioned: [], picks: [], roleCandidates: [], pool: [{ ...radarTicker, image: 'https://cdn.dexscreener.com/cms/images/radar' }] }, { text: '', images: ['https://pbs.twimg.com/media/radar.jpg'] }, { search: async () => [], matchImages: async (images, logos) => logos.map((_, i) => i) });
 assert.equal(radarPic.named, null, 'nor does a copy win with our picture as its logo');
 console.log('PASS bot: copies of $RADAR stay out unless the post gives their contract; a typed $RADAR is the real mint');
+
+// What today's real replies got wrong. The poster's own name isn't the story, unless the post says it.
+const { storyWords, runnerOf } = await import('../bot/coins.js');
+assert.deepEqual(storyWords(['california', 'elon', 'musk', 'Elon California'], { author: 'elonmusk', authorName: 'Elon Musk' }, 'California became a one-party state'), ['california', 'California']);
+assert.deepEqual(storyWords(['elon', 'mars'], { author: 'elonmusk' }, 'elon is going to mars'), ['elon', 'mars'], 'the post says it');
+assert.deepEqual(storyWords(['ansem', 'ice'], { author: 'blknoiz06', authorName: 'Ansem' }, 'a partnership with ICE'), ['ice']);
+const elonCoin = tok('Elon', 'Elon Coin', 'ElonCoin1111111111111111111111111111pump', 275_000, { relevance: 75 });
+const elonReply = await botCoins({ mentioned: [], picks: [], roleCandidates: [elonCoin], anchors: ['california', 'elon', 'musk'], terms: ['Elon California'] }, { text: 'California became a one-party state', author: 'elonmusk', authorName: 'Elon Musk' }, { search: async () => [] });
+assert.deepEqual(elonReply.picks, [], "a coin named after the poster isn't the story of an unrelated post");
+// Dust that only shares a name isn't the runner, or an 80-89 pick; a real one still is.
+const iceCoin = tok('ICE', 'Intercontinental Exchange', 'IceCoin22222222222222222222222222222pump', 2_800, { relevance: 70 });
+assert.equal(runnerOf([iceCoin], ['ice']), null);
+const iceTied = tok('ICEY', 'ICE', 'IceCoin33333333333333333333333333333pump', 2_800, { relevance: 85 });
+assert.deepEqual((await botCoins({ mentioned: [], picks: [], roleCandidates: [iceCoin, iceTied], anchors: ['ice'], terms: ['ICE'] }, { text: 'a partnership with ICE', author: 'x' }, { search: async () => [] })).picks, []);
+assert.equal(runnerOf([{ ...gta6, marketCap: 150_000 }], ['gta6'])?.address, gta6.address);
+console.log("PASS bot: the poster's name and dust that shares a name aren't the story");
+// Newer copies of the biggest coin don't take OG or Mover; an older one can.
+const purpsReal = tok('PURPS', 'usepurps.fun', 'PurpsReal1111111111111111111111111111pump', 149_000, { createdAt: now - 3 * 3600_000 });
+const purpsNew = tok('PURPS', 'usepurps.fun', 'PurpsNew22222222222222222222222222222pump', 7_000, { createdAt: now - 3600_000, volume: { h1: 90_000, h24: 900_000 } });
+const purpsOld = tok('PURPS', 'Purps', 'PurpsOld33333333333333333333333333333pump', 20_000, { createdAt: now - 30 * 864e5 });
+const purpsPicks = (await botCoins({ mentioned: [], picks: [], roleCandidates: [purpsReal, purpsNew, purpsOld], anchors: ['purps'], terms: ['Purps'] }, { text: 'launch post', author: 'usepurpsfun' }, { search: async () => [] })).picks;
+assert.ok(!purpsPicks.some((p) => p.token.address === purpsNew.address), 'the newer copy is out');
+assert.equal(purpsPicks.find((p) => p.role === 'top')?.token.address, purpsReal.address);
+assert.equal(purpsPicks.find((p) => p.role === 'og')?.token.address, purpsOld.address, 'the older one can be the OG');
+console.log('PASS bot: newer copies of the biggest coin are left out');
+assert.deepEqual(storyWords(['juggernaut', 'robinhood'], { author: 'Juggernautrh' }, 'Robinhood Chain btw'), ['juggernaut', 'robinhood'], "a project's own account keeps its name");
+console.log("PASS bot: a project's own name still counts on its own account");
+const officialElon = tok('ELON', 'Official Elon Coin', 'ElonOfficial3333333333333333333333pump', 291_000, { relevance: 95 });
+assert.deepEqual((await botCoins({ mentioned: [], picks: [], roleCandidates: [officialElon], anchors: ['california'], terms: [] }, { text: 'California became a one-party state', author: 'elonmusk', authorName: 'Elon Musk' }, { search: async () => [] })).picks, [], 'even at 95');
+assert.equal((await botCoins({ mentioned: [], picks: [], roleCandidates: [officialElon], anchors: ['elon'], terms: [] }, { text: 'Elon coin is running', author: 'someone' }, { search: async () => [] })).picks.length, 1, 'someone else posting about it still counts');
+console.log('PASS bot: a coin named after the poster stays out, at any score, unless the post uses the name');
