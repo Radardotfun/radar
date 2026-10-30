@@ -195,15 +195,15 @@ export async function botCoins(res, post, { search, lookupCa, matchImages, capOf
     const cap = await capOf(named).catch(() => 0);
     if (cap) named = { ...named, marketCap: cap };
   }
-  const postWords = [...storyWords([...(res?.anchors || []), ...(res?.terms || [])], post, text), ...typed];
-  const runner = runnerOf(scanned.filter((t) => !namedAfterPoster(t, post, text)), postWords);
+  const postWords = [...storyWords([...(res?.anchors || []), ...(res?.terms || [])], post, post?.text), ...typed];
+  const runner = runnerOf(scanned.filter((t) => !namedAfterPoster(t, post, post?.text)), postWords);
   // Under $10K a coin needs the judge's 90+: a name in common is no reason to call dust the post's coin.
   const onStory = (t) => (t.relevance || 0) >= 90 || ((t.relevance || 0) >= ON_STORY && (t.marketCap || 0) >= 10_000 && tiedToPost(t, postWords));
   const seen = new Set();
   let story = scanned.filter((t) => {
     if (seen.has(t.address)) return false;
     seen.add(t.address);
-    return (onStory(t) || t.address === runner?.address) && !isMajor(t) && !isRadarCopy(t) && !namedAfterPoster(t, post, text) && !elsewhere.has(sym(t)) && !(named && sameCoin(t, named));
+    return (onStory(t) || t.address === runner?.address) && !isMajor(t) && !isRadarCopy(t) && !namedAfterPoster(t, post, post?.text) && !elsewhere.has(sym(t)) && !(named && sameCoin(t, named));
   }).map((t) => (t.address === runner?.address ? { ...t, relevance: Math.max(t.relevance || 0, 90) } : t));
   // With no coin named in the post, newer coins copying the biggest one's ticker or name are its copies, not the OG or
   // the mover (a launch post got two "PURPS" beside the real one). An older one stays: it may be the original.

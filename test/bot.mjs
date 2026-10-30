@@ -248,3 +248,5 @@ const officialElon = tok('ELON', 'Official Elon Coin', 'ElonOfficial333333333333
 assert.deepEqual((await botCoins({ mentioned: [], picks: [], roleCandidates: [officialElon], anchors: ['california'], terms: [] }, { text: 'California became a one-party state', author: 'elonmusk', authorName: 'Elon Musk' }, { search: async () => [] })).picks, [], 'even at 95');
 assert.equal((await botCoins({ mentioned: [], picks: [], roleCandidates: [officialElon], anchors: ['elon'], terms: [] }, { text: 'Elon coin is running', author: 'someone' }, { search: async () => [] })).picks.length, 1, 'someone else posting about it still counts');
 console.log('PASS bot: a coin named after the poster stays out, at any score, unless the post uses the name');
+assert.deepEqual((await botCoins({ mentioned: [], picks: [], roleCandidates: [officialElon], anchors: ['california'], terms: [] }, { text: 'California became a one-party state', quoted: 'What Elon said about it', author: 'elonmusk', authorName: 'Elon Musk' }, { search: async () => [] })).picks, [], 'a quote using the name is not the poster using it');
+console.log("PASS bot: only the poster's own words count");
