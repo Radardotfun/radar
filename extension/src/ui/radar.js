@@ -1032,6 +1032,10 @@ class Radar {
       const h = Math.max(1, Math.round((w.watch.until - Date.now()) / 3_600_000));
       return `<div class="watch on${cta ? ' cta' : ''}">${I.bell}<span>Watching this post · ${h}h left</span><button type="button" data-act="unwatch" data-id="${esc(w.id)}">Stop</button></div>`;
     }
+    // A holder perk (the background checks it too). A watch already running keeps running.
+    if (this.holder && !this.holder.holder) {
+      return `<div class="watch on${cta ? ' cta' : ''}">${I.bell}<span>Launch alerts are for $RADAR holders</span>${this.holder.on ? '<button type="button" data-holder-connect>Check my wallet</button>' : ''}</div>`;
+    }
     return `<button type="button" class="watch${cta ? ' cta' : ''}" data-act="watch"${this.watchBusy ? ' disabled' : ''}>${I.bell}<span>${this.watchBusy ? 'Setting up the alert…' : 'Alert me when a coin launches off this post'}</span></button>`;
   }
 
@@ -1421,7 +1425,7 @@ class Radar {
   listenForBuys() {
     window.addEventListener('message', (e) => {
       if (e.origin === 'https://tryradar.fun' && e.data?.type === 'radar:holder') {
-        send('holderSave', { token: e.data.token, exp: e.data.exp }).then((h) => { this.holder = h; this.renderHead(); this.toast('Holder check passed', 2400); }).catch(() => {});
+        send('holderSave', { token: e.data.token, exp: e.data.exp }).then((h) => { this.holder = h; this.renderHead(); this.renderBody(); this.toast('Holder check passed', 2400); }).catch(() => {});
         return;
       }
       if (e.origin !== 'https://tryradar.fun' || e.data?.type !== 'radar:bought') return;

@@ -260,6 +260,8 @@ export function makeHandlers(host) {
     const h = await holderStored();
     return { on: true, pitch: config.pitch, holder: !!h, exp: h?.exp || null };
   }
+  // Whether this browser holds a current holder check, for perks that run here (launch alerts).
+  const holderActive = async () => !!(await holderStored());
   // The coins in Radar's record, with their ticker and market cap now, read from DexScreener by this browser.
   async function holderCoinFacts(rows) {
     const facts = new Map();
@@ -293,7 +295,7 @@ export function makeHandlers(host) {
     return d;
   }
 
-  const handlers = { videoInfo, tweet, read, coins, mentioned, story, larpcheck, refresh, safety, bundle, image, openWindow, reroute, holderStatus, holderSave, holderWho, settings: () => host.settings() };
+  const handlers = { videoInfo, tweet, read, coins, mentioned, story, larpcheck, refresh, safety, bundle, image, openWindow, reroute, holderStatus, holderSave, holderWho, holderActive, settings: () => host.settings() };
   // Changing the RPC drops cached bundle results so they're re-read through the new one.
   handlers.resetBundles = () => memo.forEach((_, k) => k.startsWith('bd:') && memo.delete(k));
   return handlers;

@@ -21,7 +21,7 @@ export const holderMinUsd = (env) => { const n = Number(env.HOLDER_MIN_USD); ret
 export const holderOn = (env) => !!(env.HOLDER_SECRET && env.RADAR_MINT && env.DB);
 const money = (n) => `$${Number.isInteger(n) ? n : n.toFixed(2)}`;
 // What the panel tells someone who hasn't checked their wallet. From here, so it stays true when Frontrun is added.
-const pitch = (env) => `Hold ${money(holderMinUsd(env))} of $RADAR to see the coins this account has posted before, and which of those posts are gone${env.FRONTRUN_DATA_KEY ? ', plus its smart followers' : ''}.`;
+const pitch = (env) => `Hold ${money(holderMinUsd(env))} of $RADAR for launch alerts, and to see the coins this account has posted before and which of those posts are gone${env.FRONTRUN_DATA_KEY ? ', plus its smart followers' : ''}.`;
 
 // $RADAR's price in USD, from Jupiter: DexScreener often has none for a coin on its launch curve. Throws if there is none.
 async function radarPrice(env) {

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Radar
 // @namespace    https://tryradar.fun
-// @version      1.7.18
+// @version      1.7.19
 // @description  See the coins behind any post on X and instantly reroute to the biggest match that passes available on-chain safety checks.
 // @homepageURL  https://tryradar.fun
 // @supportURL   https://tryradar.fun
@@ -31,7 +31,7 @@
 // @downloadURL  https://tryradar.fun/radar.user.js
 // ==/UserScript==
 
-// Radar 1.7.18: built from the extension source at https://tryradar.fun. Not financial advice.
+// Radar 1.7.19: built from the extension source at https://tryradar.fun. Not financial advice.
 (() => {
   var __defProp = Object.defineProperty;
   var __export = (target, all) => {
@@ -1201,6 +1201,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       const h = await holderStored();
       return { on: true, pitch: config.pitch, holder: !!h, exp: h?.exp || null };
     }
+    const holderActive = async () => !!await holderStored();
     async function holderCoinFacts(rows) {
       const facts = /* @__PURE__ */ new Map();
       const cas = rows.map((r) => r.ca);
@@ -1236,7 +1237,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       if (d.own?.recent?.length) d.own.recent = await holderCoinFacts(d.own.recent);
       return d;
     }
-    const handlers2 = { videoInfo, tweet, read, coins, mentioned, story, larpcheck, refresh, safety, bundle, image, openWindow, reroute, holderStatus, holderSave, holderWho, settings: () => host.settings() };
+    const handlers2 = { videoInfo, tweet, read, coins, mentioned, story, larpcheck, refresh, safety, bundle, image, openWindow, reroute, holderStatus, holderSave, holderWho, holderActive, settings: () => host.settings() };
     handlers2.resetBundles = () => memo.forEach((_, k) => k.startsWith("bd:") && memo.delete(k));
     return handlers2;
   }
@@ -2402,6 +2403,9 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
         const h = Math.max(1, Math.round((w.watch.until - Date.now()) / 36e5));
         return `<div class="watch on${cta ? " cta" : ""}">${I.bell}<span>Watching this post \xB7 ${h}h left</span><button type="button" data-act="unwatch" data-id="${esc2(w.id)}">Stop</button></div>`;
       }
+      if (this.holder && !this.holder.holder) {
+        return `<div class="watch on${cta ? " cta" : ""}">${I.bell}<span>Launch alerts are for $RADAR holders</span>${this.holder.on ? '<button type="button" data-holder-connect>Check my wallet</button>' : ""}</div>`;
+      }
       return `<button type="button" class="watch${cta ? " cta" : ""}" data-act="watch"${this.watchBusy ? " disabled" : ""}>${I.bell}<span>${this.watchBusy ? "Setting up the alert\u2026" : "Alert me when a coin launches off this post"}</span></button>`;
     }
     async watch() {
@@ -2841,6 +2845,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
           send("holderSave", { token: e.data.token, exp: e.data.exp }).then((h) => {
             this.holder = h;
             this.renderHead();
+            this.renderBody();
             this.toast("Holder check passed", 2400);
           }).catch(() => {
           });

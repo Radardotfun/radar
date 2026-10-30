@@ -138,6 +138,8 @@ const alertList = async (a) => ({ watches: a.watches.filter((w) => w.until > Dat
 handlers['alerts:list'] = async () => alertList(await loadAlerts());
 handlers['alerts:watch'] = async ({ post }, sender) => {
   if (!fromPopup(sender) && !fromX(sender)) throw new Error('Watch posts from the Radar panel');
+  // A holder perk. Alerts run on this device, so unlike the server's holder data this can only be a check here.
+  if (!(await handlers.holderActive())) throw new Error('Launch alerts are for $RADAR holders. Check your wallet first.');
   const read = await handlers.read({ post });
   if (read.engineError) throw new Error(`Radar couldn't read this post right now (${read.engineError})`);
   const w = newWatch(post, read);
