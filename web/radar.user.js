@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Radar
 // @namespace    https://tryradar.fun
-// @version      1.7.19
+// @version      1.7.20
 // @description  See the coins behind any post on X and instantly reroute to the biggest match that passes available on-chain safety checks.
 // @homepageURL  https://tryradar.fun
 // @supportURL   https://tryradar.fun
@@ -31,7 +31,7 @@
 // @downloadURL  https://tryradar.fun/radar.user.js
 // ==/UserScript==
 
-// Radar 1.7.19: built from the extension source at https://tryradar.fun. Not financial advice.
+// Radar 1.7.20: built from the extension source at https://tryradar.fun. Not financial advice.
 (() => {
   var __defProp = Object.defineProperty;
   var __export = (target, all) => {
@@ -416,6 +416,24 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
   }
   var SOL_CA = /\b[1-9A-HJ-NP-Za-km-z]{32,44}\b/g;
   var EVM_CA = /\b0x[a-fA-F0-9]{40}\b/g;
+  var LINKED_ELSEWHERE = /\b(ethereum|base|bsc|arbitrum|polygon|optimism|avalanche):(0x[a-fA-F0-9]{40})\b/gi;
+  async function typedCashtags(text, symbolOf) {
+    const links2 = [...new Set(String(text || "").match(LINKED_ELSEWHERE) || [])].slice(0, 3);
+    let out = String(text || "");
+    for (const link of links2) {
+      const [chain, address] = link.split(":");
+      const symbol = await symbolOf(chain.toLowerCase(), address).catch(() => null);
+      if (/^[A-Za-z][A-Za-z0-9]{0,11}$/.test(symbol || "")) out = out.split(link).join(`$${symbol}`);
+    }
+    return out;
+  }
+  async function linkedSymbol(chain, address) {
+    const r = await gmFetch(`https://api.dexscreener.com/tokens/v1/${chain}/${address}`, { signal: AbortSignal.timeout(8e3) });
+    const pairs = r.ok ? await r.json() : [];
+    const key = address.toLowerCase();
+    const pair = (Array.isArray(pairs) ? pairs : []).find((p) => [p.baseToken?.address, p.quoteToken?.address].some((a) => a?.toLowerCase() === key));
+    return pair ? (pair.baseToken.address.toLowerCase() === key ? pair.baseToken : pair.quoteToken).symbol : null;
+  }
   async function mentionedTokens(text, chains, search = searchPairs) {
     const cas = [.../* @__PURE__ */ new Set([...text.match(SOL_CA) || [], ...text.match(EVM_CA) || []])].slice(0, 3);
     const found = await Promise.all(cas.map(async (ca) => {
@@ -1137,6 +1155,9 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
         const res = await gmFetch(`${API_BASE}/tweet?url=${encodeURIComponent(url)}`, { signal: AbortSignal.timeout(1e4) });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || "Couldn't open that post");
+        if (data.post) {
+          for (const k of ["text", "quoted", "parent"]) if (data.post[k]) data.post[k] = await typedCashtags(data.post[k], linkedSymbol);
+        }
         return data;
       });
     }
@@ -1956,9 +1977,9 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       const lines = [];
       const own = w.own?.coins;
       const total = own ? own.live + own.deleted : 0;
-      if (own) lines.push(total ? `Radar has seen <b>${total}</b> coin${total === 1 ? "" : "s"} from this account${own.deletedPosts ? `, and <b>${own.deletedPosts}</b> of its coin post${own.deletedPosts === 1 ? " is" : "s are"} gone` : ""}` : "Radar hasn't seen this account post a coin yet.");
+      if (own) lines.push(total ? `Radar has seen <b>${total}</b> coin${total === 1 ? "" : "s"} from this account${own.deletedPosts ? `, and <b class="who-gone">${own.deletedPosts}</b> of its coin post${own.deletedPosts === 1 ? " is" : "s are"} gone` : ""}` : "Radar hasn't seen this account post a coin yet.");
       const rows = (w.own?.recent || []).map((r) => `<a class="who-row" href="https://x.com/${esc2(handle)}/status/${esc2(r.id)}" target="_blank" rel="noopener noreferrer">
-        <b>${r.symbol ? `$${esc2(r.symbol)}` : esc2(`${r.ca.slice(0, 4)}\u2026${r.ca.slice(-4)}`)}</b><span>${r.mc ? usd(r.mc) : "no market"}</span><span>${age(r.at)} ago${r.gone ? " \xB7 post gone" : ""}</span></a>`).join("");
+        <b>${r.symbol ? `$${esc2(r.symbol)}` : esc2(`${r.ca.slice(0, 4)}\u2026${r.ca.slice(-4)}`)}</b><span>${r.mc ? usd(r.mc) : "no market"}</span><span>${age(r.at)} ago</span><span class="who-gone">${r.gone ? "post gone" : ""}</span></a>`).join("");
       if (w.smartCount != null) lines.push(`<b>${w.smartCount}</b> smart follower${w.smartCount === 1 ? "" : "s"}${w.smartFinal ? "" : " so far"}${w.smart?.length ? `: ${w.smart.map((s) => `@${esc2(s)}`).join(", ")}` : ""}`);
       if (w.coins) lines.push(`Frontrun: posted <b>${w.coins.live + w.coins.deleted}</b> coin${w.coins.live + w.coins.deleted === 1 ? "" : "s"}${w.coins.deleted ? `, <b>${w.coins.deleted}</b> in deleted posts` : ""}`);
       return `<div class="story who">${head}
@@ -3577,9 +3598,11 @@ svg { display: block; }\r
 .who-connect { all: unset; cursor: pointer; display: block; margin-top: 8px; padding: 7px 10px; border-radius: 8px; border: 1px solid var(--line); font-size: 12px; font-weight: 600; color: var(--text); text-align: center; }\r
 .who-connect:hover { border-color: var(--text); }\r
 .who-rows { margin-top: 7px; display: grid; gap: 2px; }\r
-.who-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; padding: 4px 0; font-size: 11px; color: var(--muted); text-decoration: none; border-top: 1px solid var(--line); }\r
+.who-row { display: grid; grid-template-columns: minmax(0, 1fr) 58px 46px 54px; gap: 8px; padding: 4px 0; font-size: 11px; color: var(--muted); text-decoration: none; border-top: 1px solid var(--line); }\r
 .who-row b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); font-weight: 600; }\r
-.who-row:hover b { text-decoration: underline; }\r
+.who-row:hover b { text-decoration: underline; }
+.who-row span { text-align: right; white-space: nowrap; }
+.who .story-call b.who-gone, .who-row .who-gone { color: var(--warn); }\r
 .findings { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; }\r
 .findings li { font-size: 11.5px; line-height: 1.4; color: var(--muted); display: grid; grid-template-columns: 58px 1fr; gap: 6px; }\r
 .findings li span { font: 700 9.5px var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--faint); padding-top: 2px; }\r

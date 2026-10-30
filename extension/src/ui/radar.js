@@ -560,9 +560,9 @@ class Radar {
     const lines = [];
     const own = w.own?.coins;
     const total = own ? own.live + own.deleted : 0;
-    if (own) lines.push(total ? `Radar has seen <b>${total}</b> coin${total === 1 ? '' : 's'} from this account${own.deletedPosts ? `, and <b>${own.deletedPosts}</b> of its coin post${own.deletedPosts === 1 ? ' is' : 's are'} gone` : ''}` : "Radar hasn't seen this account post a coin yet.");
+    if (own) lines.push(total ? `Radar has seen <b>${total}</b> coin${total === 1 ? '' : 's'} from this account${own.deletedPosts ? `, and <b class="who-gone">${own.deletedPosts}</b> of its coin post${own.deletedPosts === 1 ? ' is' : 's are'} gone` : ''}` : "Radar hasn't seen this account post a coin yet.");
     const rows = (w.own?.recent || []).map((r) => `<a class="who-row" href="https://x.com/${esc(handle)}/status/${esc(r.id)}" target="_blank" rel="noopener noreferrer">
-        <b>${r.symbol ? `$${esc(r.symbol)}` : esc(`${r.ca.slice(0, 4)}…${r.ca.slice(-4)}`)}</b><span>${r.mc ? usd(r.mc) : 'no market'}</span><span>${age(r.at)} ago${r.gone ? ' · post gone' : ''}</span></a>`).join('');
+        <b>${r.symbol ? `$${esc(r.symbol)}` : esc(`${r.ca.slice(0, 4)}…${r.ca.slice(-4)}`)}</b><span>${r.mc ? usd(r.mc) : 'no market'}</span><span>${age(r.at)} ago</span><span class="who-gone">${r.gone ? 'post gone' : ''}</span></a>`).join('');
     if (w.smartCount != null) lines.push(`<b>${w.smartCount}</b> smart follower${w.smartCount === 1 ? '' : 's'}${w.smartFinal ? '' : ' so far'}${w.smart?.length ? `: ${w.smart.map((s) => `@${esc(s)}`).join(', ')}` : ''}`);
     if (w.coins) lines.push(`Frontrun: posted <b>${w.coins.live + w.coins.deleted}</b> coin${w.coins.live + w.coins.deleted === 1 ? '' : 's'}${w.coins.deleted ? `, <b>${w.coins.deleted}</b> in deleted posts` : ''}`);
     return `<div class="story who">${head}
