@@ -269,6 +269,9 @@ assert.equal(lumiPick.picks.find((p) => p.role === 'top').token.address, lumi.ad
 assert.equal(lumiPick.picks.find((p) => p.role === 'og')?.token.address, lumiOld.address, 'the older LUMI is the OG, judged or not');
 const lumiNamed = await botCoins({ mentioned: [lumi], picks: [], roleCandidates: [], pool: [lumi, lumiOld] }, { text: 'LUMI', author: 'x' }, { search: async () => [] });
 assert.ok(!lumiNamed.picks.some((p) => p.role === 'og' || p.alsoOg), 'the post named its coin: no older namesake, and no OG claim');
+const goat = tok('GOAT', 'Goatseus', 'GoatSol1111111111111111111111111111111pump', 14_000_000, { createdAt: now - 400 * 864e5 });
+const goatBnb = tok('GOAT', 'Goat Token', '0x72d2016400000000000000000000000000000000', 90_000, { chain: 'bsc', createdAt: now - 2000 * 864e5, relevance: 0 });
+assert.ok(!(await botCoins({ mentioned: [], picks: [], roleCandidates: [goat], pool: [goat, goatBnb], anchors: ['goat'], terms: ['GOAT'] }, { text: 'GOAT', author: 'x' }, { search: async () => [], chains: ['solana', 'bsc'] })).picks.some((p) => p.token.address === goatBnb.address), "another chain's namesake is not the OG");
 const lumiNews = tok('ROBOT', 'Robot', 'Robot11111111111111111111111111111111pump', 90_000, { createdAt: now - 3600_000 });
 const lumiRes = await botCoins({ mentioned: [], picks: [], roleCandidates: [lumi, lumiNews], pool: [lumi, lumiDust], anchors: ['lumi', 'robot'], terms: ['LUMI', 'Robot'] }, { text: 'LUMI the robot', author: 'x' }, { search: async () => [] });
 assert.ok(lumiRes.picks.find((p) => p.token.address === lumi.address).alsoOg, 'a dead pool from then is not an older twin');

@@ -1,4 +1,4 @@
-// Radar 1.7.37 on the web: built from the extension source at https://tryradar.fun. Not financial advice.
+// Radar 1.7.38 on the web: built from the extension source at https://tryradar.fun. Not financial advice.
 (() => {
   // extension/src/lib/keywords.js
   var STOP = new Set(`a about above after again against all almost also am an and any are aren as at be because been before
@@ -300,7 +300,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
   }
   var ogExists = (t) => alive(t) || t.liquidity >= 3e3 && Date.now() - t.createdAt > 30 * 864e5;
   var sameName = (a, b) => String(a.symbol).toLowerCase() === String(b.symbol).toLowerCase() || String(a.name).length >= 3 && String(a.name).toLowerCase() === String(b.name).toLowerCase();
-  var olderTwinOf = (t, pool = []) => t?.createdAt ? pool.filter((x) => x?.createdAt && x.address !== t.address && x.createdAt < t.createdAt && sameName(x, t) && ogExists(x)).sort((a, b) => a.createdAt - b.createdAt)[0] || null : null;
+  var olderTwinOf = (t, pool = []) => t?.createdAt ? pool.filter((x) => x?.createdAt && x.chain === t.chain && x.address !== t.address && x.createdAt < t.createdAt && sameName(x, t) && ogExists(x)).sort((a, b) => a.createdAt - b.createdAt)[0] || null : null;
   function pickThree(tokens, { cuts = [0.3, 0.15, 0], allowFallback = true } = {}) {
     const maxRel = Math.max(0, ...tokens.map((t) => t.relevance || 0));
     let live = [];

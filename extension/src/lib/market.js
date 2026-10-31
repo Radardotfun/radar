@@ -190,9 +190,10 @@ export { alive };
 // and no trades is just dead ($RAYPAD: 5 days, 4 trades, the OG on a $FOBO post).
 const ogExists = (t) => alive(t) || (t.liquidity >= 3000 && Date.now() - t.createdAt > 30 * 864e5);
 
-// The oldest live coin with this one's ticker or name among the coins searched, judged or not, if it's older than this one.
+// The oldest live coin with this one's ticker or name on its chain, among the coins searched, judged or not, if it's older
+// than this one. Another chain's namesake is another coin (a 5.5-year-old "GOAT" on BNB was the OG beside Solana's $GOAT).
 const sameName = (a, b) => String(a.symbol).toLowerCase() === String(b.symbol).toLowerCase() || (String(a.name).length >= 3 && String(a.name).toLowerCase() === String(b.name).toLowerCase());
-export const olderTwinOf = (t, pool = []) => (t?.createdAt ? pool.filter((x) => x?.createdAt && x.address !== t.address && x.createdAt < t.createdAt && sameName(x, t) && ogExists(x)).sort((a, b) => a.createdAt - b.createdAt)[0] || null : null);
+export const olderTwinOf = (t, pool = []) => (t?.createdAt ? pool.filter((x) => x?.createdAt && x.chain === t.chain && x.address !== t.address && x.createdAt < t.createdAt && sameName(x, t) && ogExists(x)).sort((a, b) => a.createdAt - b.createdAt)[0] || null : null);
 
 /**
  * Pick the three narrative coins:
