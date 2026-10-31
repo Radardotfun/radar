@@ -94,7 +94,7 @@ async function checkTwins() {
     const d = await (await fetch(`https://api.dexscreener.com/latest/dex/search?q=${encodeURIComponent(symbol)}`, { signal: AbortSignal.timeout(8000) })).json();
     if (twinsFor !== symbol) return;
     const n = new Set((d.pairs || []).filter((p) => p.chainId === 'solana' && p.baseToken?.symbol?.toUpperCase() === symbol.toUpperCase()).map((p) => p.baseToken.address)).size;
-    ui.twins.textContent = n ? `${n}${n >= 30 ? '+' : ''} Solana coin${n === 1 ? '' : 's'} already use $${symbol.toUpperCase()}. Yours would be another one.` : '';
+    ui.twins.textContent = n ? `${n}${n >= 30 ? '+' : ''} Solana coin${n === 1 ? ' already uses' : 's already use'} $${symbol.toUpperCase()}. Yours would be another one.` : '';
   } catch { ui.twins.textContent = ''; }
 }
 ui.symbol.addEventListener('blur', checkTwins);
@@ -232,10 +232,12 @@ async function runLaunch() {
     await waitFor(signature);
     shown(mint, signature);
     say('Launched. It is live on pump.fun.', 'success');
-    for (let i = 0; i < 5; i++) {
+    // A node can miss a new transaction for a while, so a "not found" is tried again for about a minute. The coin is live
+    // either way; this only decides when it shows on the list.
+    for (let i = 0; i < 12; i++) {
       const r = await fetch(`${API}/launch/record`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: meta.id, mint, signature }) }).catch(() => null);
-      if (r?.ok) break;
-      await new Promise((res) => setTimeout(res, 3000));
+      if (r?.ok || r?.status === 400) break;
+      await new Promise((res) => setTimeout(res, 5000));
     }
   } catch (e) {
     const m = String(e?.message || e);
