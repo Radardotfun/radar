@@ -167,6 +167,21 @@ async function curveCap(t) {
   return p?.launchpad === 'pump.fun' && p.usdPrice > 0 ? p.usdPrice * 1e9 : 0;
 }
 
+// A coin in a poster's bio that DexScreener doesn't list yet: Jupiter knows every coin with a market. Solana only.
+async function jupiterToken(ca) {
+  if (ca.startsWith('0x')) return null;
+  const r = await realFetch(`https://datapi.jup.ag/v1/assets/search?query=${encodeURIComponent(ca)}`, { signal: AbortSignal.timeout(8000) }).catch(() => null);
+  const a = r?.ok ? (await r.json().catch(() => []))?.find?.((x) => x?.id === ca) : null;
+  if (!a?.symbol) return null;
+  const cap = Number(a.mcap) || 0;
+  return {
+    address: ca, chain: 'solana', symbol: a.symbol, name: a.name || a.symbol, marketCap: cap, mcapBacked: false,
+    volume: { h24: (Number(a.stats24h?.buyVolume) || 0) + (Number(a.stats24h?.sellVolume) || 0) },
+    createdAt: Date.parse(a.firstPool?.createdAt) || null, socials: [], links: [],
+  };
+}
+const lookupBio = async (ca) => (await lookupCa(ca).catch(() => null)) || jupiterToken(ca);
+
 // One post, as the bot would answer it. Kept 10 minutes, so a post tagged many times is scanned once.
 const scans = new Map();
 // known: the verdicts this post got on earlier tags ({ address: score }), which win over a new judge call.
@@ -177,7 +192,8 @@ async function replyFor(postUrl, known = null, fresh = false) {
   if (hit && Date.now() - hit.at < 600_000) return hit.p;
   const h = fresh ? makeHandlers(HOST) : handlers;
   const p = (async () => {
-    const { post } = await h.tweet({ url: postUrl });
+    const { post: read } = await h.tweet({ url: postUrl });
+    const post = read.videoUrl ? { ...read, watchVideo: true } : read;
     // A tag under one of @radardotfunn's own posts (people trying the bot under its announcement): no scan of our
     // own words, just how to use it.
     if (String(post.author || '').toLowerCase() === 'radardotfunn') {
@@ -194,7 +210,7 @@ async function replyFor(postUrl, known = null, fresh = false) {
     const found = await h.coins({ post, judge: true }).finally(() => { dexBudget += reserve; });
     if (found.engineError) throw new Error('Radar could not read this post right now');
     const { scan, scores } = withMemory(found, known);
-    const res = { ...scan, ...await botCoins(scan, post, { search: searchPairs, lookupCa, matchImages, capOf: curveCap, chains: SETTINGS.chains }) };
+    const res = { ...scan, ...await botCoins(scan, post, { search: searchPairs, lookupCa, lookupBio, matchImages, capOf: curveCap, chains: SETTINGS.chains }) };
     const first = replyEntries(res)[0]?.t;
     const larp = first ? await h.larpcheck({ address: first.address }).catch(() => null) : null;
     return { text: botReply(res, postUrl) || NO_COINS, short: botReply(res, postUrl, Date.now(), { full: false }) || NO_COINS, links: botReply(res, postUrl, Date.now(), { links: true, larp }) || NO_COINS, story: res.narrative || '', scores, entries: replyEntries(res) };

@@ -92,6 +92,8 @@ Radar reads verdicts, holder data and lists from [Larpcheck's API](https://larpc
 
 ## The Radar bot on X
 
+The bot reads more than a post's words. Google's Gemini watches a post's video or GIF and describes it, as data, not instructions (`watchVideo` in `server/narrative.js`). Speech is transcribed from the video's smallest file. A contract address in the poster's bio counts only when it's tied to the post: the post uses its ticker or name, the coin's links name that account, or the account is plainly the coin's (`tiedToBio` in `bot/coins.js`). The reply says when a coin came from the bio.
+
 Tag **@radardotfunn** under any post on X and it replies with that post's coins: the highest market cap, the OG and the mover, each with its number and its contract (a DexScreener link until 5 November 2026, while X refuses crypto addresses from a new app; the address itself after that). It runs on Cloudflare ([bot/worker.js](bot/worker.js)) with the same scan as the extension and the web version, and it checks for tags every minute.
 
 - It answers only a tag someone typed, not replies under @radardotfunn's own posts or conversation ([bot/trigger.js](bot/trigger.js)).

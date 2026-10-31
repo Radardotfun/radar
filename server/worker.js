@@ -5,7 +5,7 @@
 //   GET  /larpcheck?address=<CA>                     -> Larpcheck's verdict on the coin (see below)
 import { lcBoard, lcHolders, lcSettings, lcStart, lcPoll, lcAsk, lcHandle } from './lc.js';
 import { launchState, launchMeta, launchMetaFile, launchRecord, launchList } from './launch.js';
-import { engine, interpret, judge, storyCheck, transcribe, sameImage, LOGO_HOST } from './narrative.js';
+import { engine, interpret, judge, storyCheck, transcribe, watchVideo, sameImage, LOGO_HOST } from './narrative.js';
 import { holderOn, holderConfig, holderVerify, holderWho } from './holder.js';
 import { recordPost } from './ledger.js';
 
@@ -49,6 +49,7 @@ const cleanPost = (p = {}) => ({
     : [],
   hasVideo: !!p.hasVideo,
   transcript: clip(p.transcript, 3000),
+  videoNotes: clip(p.videoNotes, 1200),
 });
 const cleanCoin = (c) => (c && typeof c === 'object' && c.address ? {
   name: clip(c.name, 60),
@@ -102,6 +103,11 @@ async function route(kind, request, env, ctx) {
     if (!/^https:\/\/video\.twimg\.com\/[\w/.-]+\.mp4(\?[\w=&]*)?$/.test(url)) return json(400, { error: 'Not an X video' });
     if (!env.AI) return json(503, { error: 'Transcription unavailable' });
     return cachedJson(ctx, `t/${await sha256(url)}`, 86400, () => transcribe(env.AI, url), debug);
+  }
+  if (kind === 'watch') {
+    const url = String(body.videoUrl || '');
+    if (!/^https:\/\/video\.twimg\.com\/[\w/.-]+\.mp4(\?[\w=&]*)?$/.test(url)) return json(400, { error: 'Not an X video' });
+    return cachedJson(ctx, `w/${await sha256(url)}`, 86400, () => watchVideo(env, url), debug);
   }
   if (kind === 'interpret') {
     if (!post.text && !post.quoted && !post.card && !post.images.length) return json(400, { error: 'Empty post' });
@@ -159,10 +165,17 @@ async function fxStatus(id) {
   const d = res.ok ? await res.json().catch(() => null) : null;
   return d?.tweet || null;
 }
+// The smallest MP4 of a video. Reading its words and pictures doesn't need sharpness, and the top variant is often too big to
+// read at all (22.9 MB against 1.3 MB for one 42 second video, with a 6 MB limit on transcribing).
+export function smallestMp4(video) {
+  const ok = (u) => /^https:\/\/video\.twimg\.com\/[\w/.-]+\.mp4(\?[\w=&]*)?$/.test(u || '');
+  const mp4s = (video?.variants || []).filter((v) => v?.content_type === 'video/mp4' && ok(v.url)).sort((a, b) => (a.bitrate || 0) - (b.bitrate || 0));
+  return mp4s[0]?.url || (ok(video?.url) ? video.url : null);
+}
 async function readTweet(url, ctx) {
   const id = String(url || '').match(/^https?:\/\/(?:www\.|mobile\.)?(?:x|twitter)\.com\/\w+\/status\/(\d+)/i)?.[1];
   if (!id) return json(400, { error: 'That is not a link to a post on X' });
-  const key = new Request(`https://cache.narrative-radar/tw2/${id}`);
+  const key = new Request(`https://cache.narrative-radar/tw3/${id}`);
   const hit = await caches.default.match(key);
   if (hit) return new Response(hit.body, { headers: { 'content-type': 'application/json', ...CORS } });
   const t = await fxStatus(id);
@@ -176,6 +189,7 @@ async function readTweet(url, ctx) {
   const quote = mediaOf(t.quote);
   const above = mediaOf(parent);
   const video = own.video || quote.video || above.video;
+  const videoFile = smallestMp4(video);
   const images = [...new Set([own.video?.thumbnail_url, ...own.photos, quote.video?.thumbnail_url, ...quote.photos, above.video?.thumbnail_url, ...above.photos])]
     .filter((u) => /^https:\/\/pbs\.twimg\.com\//.test(u || ''));
   const author = t.author?.screen_name || '';
@@ -191,7 +205,8 @@ async function readTweet(url, ctx) {
     url: `https://x.com/${author || 'i'}/status/${id}`,
     images: images.slice(0, 3),
     hasVideo: !!video,
-    ...(video && /^https:\/\/video\.twimg\.com\//.test(video.url || '') ? { videoUrl: video.url, gif: video.type === 'gif' } : {}),
+    bio: clip(t.author?.raw_description?.text || t.author?.description, 320),
+    ...(videoFile ? { videoUrl: videoFile, gif: video.type === 'gif' } : {}),
   };
   const label = (post.text || post.quoted || (video ? 'Video post' : images.length ? 'Image post' : '')).replace(/\s+/g, ' ').slice(0, 90);
   const out = json(200, { post, source: { kind: author ? `@${author}` : 'Post', label } }, { 'cache-control': 'public, max-age=600' });
@@ -340,7 +355,7 @@ export default {
         .map((k) => { const n = String(env[`${k}_API_KEY`] || '').split(/[\s,]+/).filter(Boolean).length; return n ? `${k.toLowerCase()} x${n}` : null; }),
       env.AI && 'workers-ai'].filter(Boolean).join(' > ') || 'none',
     });
-    if (request.method === 'POST' && ['/interpret', '/judge', '/transcribe', '/story', '/match'].includes(pathname)) {
+    if (request.method === 'POST' && ['/interpret', '/judge', '/transcribe', '/watch', '/story', '/match'].includes(pathname)) {
       try {
         return await route(pathname.slice(1), request, env, ctx);
       } catch (e) {

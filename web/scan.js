@@ -1,4 +1,4 @@
-// Radar 1.7.30 on the web: built from the extension source at https://tryradar.fun. Not financial advice.
+// Radar 1.7.31 on the web: built from the extension source at https://tryradar.fun. Not financial advice.
 (() => {
   // extension/src/lib/keywords.js
   var STOP = new Set(`a about above after again against all almost also am an and any are aren as at be because been before
@@ -440,11 +440,13 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       cached(`q:${k.toLowerCase()}`, 3e5, () => searchPairs(k)).catch(() => {
       });
     }
-    const [mentioned, transcript] = await Promise.all([
+    const [mentioned, transcript, videoNotes] = await Promise.all([
       mentionedTokens(fullText, chains, (q) => cached(`q:${q}`, 2e4, () => searchPairs(q))),
-      post.videoUrl && !post.gif ? cached(`tr:${post.videoUrl}`, 36e5, () => engine(apiBase, "transcribe", { videoUrl: post.videoUrl })).then((r) => r.text).catch(() => "") : ""
+      post.videoUrl && !post.gif ? cached(`tr:${post.videoUrl}`, 36e5, () => engine(apiBase, "transcribe", { videoUrl: post.videoUrl })).then((r) => r.text).catch(() => "") : "",
+      // The bot can't draw frames as the panel does, so the engine watches the video or GIF for it.
+      post.videoUrl && post.watchVideo ? cached(`wv:${post.videoUrl}`, 36e5, () => engine(apiBase, "watch", { videoUrl: post.videoUrl }, 5e4)).then((r) => r.text || "").catch(() => "") : ""
     ]);
-    const full = transcript ? { ...post, transcript } : post;
+    const full = { ...post, ...transcript ? { transcript } : {}, ...videoNotes ? { videoNotes } : {} };
     const named = mentioned.map((t) => `${t.name} ($${t.symbol})`).join(", ");
     let read;
     try {
@@ -473,7 +475,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
   }
   var TECH_CUES = /\b(?:technology|tech|software|hardware|application|app|platform|tool|open[- ]?source|github|repository|repo|developer|coding|code|artificial intelligence|ai|large language model|llm|model|agent|robot(?:ics)?|gpu|chip|semiconductor|compute|computing|protocol|framework|library|browser|operating system|cloud|saas|api)\b/i;
   function findTechMatch(tokens, mentioned, anchors, scores, narrative, post) {
-    const context = [narrative, post?.text, post?.quoted, post?.card, post?.parent, post?.transcript].filter(Boolean).join(" ");
+    const context = [narrative, post?.text, post?.quoted, post?.card, post?.parent, post?.transcript, post?.videoNotes].filter(Boolean).join(" ");
     if (!TECH_CUES.test(context) || !anchors.length) return null;
     const matches = [];
     for (const token of mentioned || []) {

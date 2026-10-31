@@ -40,7 +40,7 @@ export function replyEntries(result, now = Date.now()) {
   // The roles the named coin won itself ("📌 In the post (Highest MC, OG)") instead of lines repeating it.
   if (named) {
     const won = ROLES.filter(([role]) => picks.find((p) => p.role === role)?.token.address === named.address).map(([, label]) => label.replace(/^\S+ /, ''));
-    entries.push({ label: `${result.how === 'picture' ? '🖼 Same picture as the post' : '📌 In the post'}${won.length ? ` (${won.join(', ')})` : ''}`, t: named, stat: usd(named.marketCap) });
+    entries.push({ label: `${result.how === 'picture' ? '🖼 Same picture as the post' : result.how === 'bio' ? '👤 In the poster\'s bio' : '📌 In the post'}${won.length ? ` (${won.join(', ')})` : ''}`, t: named, stat: usd(named.marketCap) });
   }
   for (const [role, label] of ROLES) {
     const t = picks.find((p) => p.role === role)?.token;

@@ -65,3 +65,42 @@ assert.ok(!botReply(result, url, 0, { links: true, larp: { checked: false, page:
 assert.ok(!botReply(result, url, 0, { links: true, larp: { ...larp, url: 'https://evil.example/x' } }).includes('Larpcheck'), 'it must link to their check');
 assert.ok(!botReply(result, url, 0, { larp }).includes('Larpcheck'), 'a reply with no links can show no verdict: their terms need the link');
 console.log('PASS lc: a bot reply names the verdict only with its link');
+
+const { bioCas, tiedToBio } = await import('../bot/coins.js');
+const CA = 'HyDSdtgiSa5mHqkTVoz8cTFTeVLFKdZ8amPvtNYfpump';
+assert.deepEqual(bioCas({ bio: `building. CA: ${CA}` }), [CA]);
+assert.deepEqual(bioCas({ bio: 'no address, just vibes 0x12' }), []);
+assert.deepEqual(bioCas({}), []);
+const coin = (over = {}) => ({ address: CA, symbol: 'CASHCAT', name: 'Cash Cat', socials: [], ...over });
+assert.equal(tiedToBio(coin(), { author: 'someguy' }, ['news', 'markets']), false, "a coin in a bio, on an unrelated post, isn't this post's coin");
+assert.equal(tiedToBio(coin(), { author: 'someguy' }, ['cashcat', 'memes']), true, 'the post uses its name');
+assert.equal(tiedToBio(coin(), { author: 'someguy' }, [], ['CASHCAT']), true, 'the post types its ticker');
+assert.equal(tiedToBio(coin(), { author: 'someguy' }, ['cashcat'], ['OTHER']), false, 'the post types a different ticker');
+assert.equal(tiedToBio(coin(), { author: 'cashcat_token' }, []), true, "the account is the coin's own");
+assert.equal(tiedToBio(coin({ socials: [{ type: 'twitter', url: 'https://x.com/someguy' }] }), { author: 'someguy' }, []), true, "the coin's links name this account");
+assert.equal(tiedToBio(coin({ socials: [{ type: 'twitter', url: 'https://x.com/someguy2' }] }), { author: 'someguy' }, []), false, 'a longer handle is another account');
+assert.equal(tiedToBio(null, { author: 'x' }, []), false);
+console.log("PASS bot: a CA in a bio counts only when it's tied to the post");
+
+const { botReply: reply } = await import('../bot/reply.js');
+const bioReply = reply({ named: { address: CA, symbol: 'CASHCAT', chain: 'solana', marketCap: 50000 }, how: 'bio', picks: [] }, 'https://x.com/a/status/1', 0);
+assert.match(bioReply, /In the poster's bio/);
+console.log('PASS bot: the reply says the coin came from the bio');
+
+{
+  const { botCoins } = await import('../bot/coins.js');
+  const BIO = '8HpiWGZXcWGNBFrXHR56UcYiUp99BeqZkfXe4iQppump';
+  const OTHER = 'ch7rTovcUK7C1zNFM7F93kXU2CByYUsJT4pwYx7pump';
+  const big = { address: OTHER, symbol: 'PP', name: 'Official PPshow', chain: 'solana', marketCap: 1_330_000, mcapBacked: true, liquidity: 90000, volume: { h24: 90000 }, createdAt: 1, relevance: 95 };
+  const small = { address: BIO, symbol: 'PP', name: 'Pump Pump', chain: 'solana', marketCap: 400, mcapBacked: false, volume: { h24: 0 } };
+  const post = { author: 'pumppumpuranus', text: 'Two tokens: Pump Pump ($PP) and King Cheddar ($KCD).', bio: `Official token: Pump Pump ($PP). CA: ${BIO}` };
+  const run = (p, lookupBio) => botCoins({ roleCandidates: [big], anchors: [], terms: [] }, p, { search: async () => [], lookupCa: async () => null, lookupBio, chains: ['solana'] });
+  const r1 = await run(post, async (ca) => (ca === BIO ? small : null));
+  assert.equal(r1.named?.address, BIO, "the poster's own coin beats a bigger coin with the same ticker");
+  assert.equal(r1.how, 'bio');
+  const r2 = await run({ ...post, bio: 'no address here' }, async () => null);
+  assert.notEqual(r2.how, 'bio', 'with no CA in the bio, nothing changes');
+  const r3 = await run({ author: 'newsdesk', text: 'A big day for markets and the Fed.', bio: `my coin ${BIO}` }, async () => small);
+  assert.equal(r3.named, null, "an unrelated post doesn't name the coin in its poster's bio");
+  console.log("PASS bot: the poster's own coin wins over a bigger one with the same ticker");
+}

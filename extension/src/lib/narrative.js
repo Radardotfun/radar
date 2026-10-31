@@ -47,13 +47,17 @@ export async function readPost(post, chains, { apiBase, cached = passthrough }) 
     cached(`q:${k.toLowerCase()}`, 300_000, () => searchPairs(k)).catch(() => {});
   }
   // Speech in the video (transcribed by the engine) and coins written in the post, in parallel.
-  const [mentioned, transcript] = await Promise.all([
+  const [mentioned, transcript, videoNotes] = await Promise.all([
     mentionedTokens(fullText, chains, (q) => cached(`q:${q}`, 20_000, () => searchPairs(q))),
     post.videoUrl && !post.gif
       ? cached(`tr:${post.videoUrl}`, 3_600_000, () => engine(apiBase, 'transcribe', { videoUrl: post.videoUrl })).then((r) => r.text).catch(() => '')
       : '',
+    // The bot can't draw frames as the panel does, so the engine watches the video or GIF for it.
+    post.videoUrl && post.watchVideo
+      ? cached(`wv:${post.videoUrl}`, 3_600_000, () => engine(apiBase, 'watch', { videoUrl: post.videoUrl }, 50_000)).then((r) => r.text || '').catch(() => '')
+      : '',
   ]);
-  const full = transcript ? { ...post, transcript } : post;
+  const full = { ...post, ...(transcript ? { transcript } : {}), ...(videoNotes ? { videoNotes } : {}) };
   // A coin written in the post is the strongest narrative signal: tell the engine what it is.
   const named = mentioned.map((t) => `${t.name} ($${t.symbol})`).join(', ');
   let read;
@@ -94,7 +98,7 @@ function anchorHits(t, anchors) {
 const TECH_CUES = /\b(?:technology|tech|software|hardware|application|app|platform|tool|open[- ]?source|github|repository|repo|developer|coding|code|artificial intelligence|ai|large language model|llm|model|agent|robot(?:ics)?|gpu|chip|semiconductor|compute|computing|protocol|framework|library|browser|operating system|cloud|saas|api)\b/i;
 
 function findTechMatch(tokens, mentioned, anchors, scores, narrative, post) {
-  const context = [narrative, post?.text, post?.quoted, post?.card, post?.parent, post?.transcript].filter(Boolean).join(' ');
+  const context = [narrative, post?.text, post?.quoted, post?.card, post?.parent, post?.transcript, post?.videoNotes].filter(Boolean).join(' ');
   if (!TECH_CUES.test(context) || !anchors.length) return null;
   const matches = [];
   for (const token of mentioned || []) {

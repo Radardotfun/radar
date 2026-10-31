@@ -90,6 +90,24 @@ export function tiedToPost(t, words) {
   return [...telling(t.symbol), ...telling(t.name)].some((w) => used.has(w));
 }
 
+// A contract address in the poster's bio counts only when it's tied to this post: the post uses its ticker or name, the coin's
+// own links name this account, or the account is plainly the coin's (@cashcat_token with $CASHCAT). A bio often pins a coin
+// the post has nothing to do with, and a news account's post isn't about the coin in its bio.
+export function bioCas(post) {
+  return [...new Set([...(String(post?.bio || '').match(SOL_CA) || []), ...(String(post?.bio || '').match(EVM_CAS) || [])])].slice(0, 2);
+}
+export function tiedToBio(t, post, words, typed = []) {
+  if (!t?.address) return false;
+  if (typed.length && !typed.includes(sym(t))) return false; // the post names a different coin
+  if (typed.includes(sym(t)) || tiedToPost(t, words)) return true;
+  const handle = key(post?.author);
+  if (!handle) return false;
+  const links = [...(t.socials || []).map((s) => s?.url || s), ...(t.links || [])].map((u) => String(u || '').toLowerCase());
+  if (links.some((u) => new RegExp(`(^|//)(www\\.)?(x|twitter)\\.com/${handle}([/?#]|$)`, 'i').test(u))) return true;
+  const own = key(t.symbol).length >= 3 && handle.includes(key(t.symbol));
+  return own || (key(t.name).length >= 4 && handle.includes(key(t.name)));
+}
+
 // The story's words, without the poster's own name unless the post itself uses it. The read lists the author among its
 // names, so "$Elon" counted as on the story when Elon Musk posted about California. A word that is most of the handle
 // stays: that's a project's own account (@Juggernautrh on $JUGGERNAUT), not a person with a name.
@@ -152,7 +170,7 @@ const leadOf = (tokens) => [...tokens].sort((a, b) => Number(!!b.mcapBacked) - N
  * 'picture': its logo is the post's picture) and the three story picks, as pickThree gives them. That coin competes for
  * the roles too, so Highest MC is never a smaller coin than the post's own.
  */
-export async function botCoins(res, post, { search, lookupCa, matchImages, capOf, chains = ['solana'] }) {
+export async function botCoins(res, post, { search, lookupCa, lookupBio = lookupCa, matchImages, capOf, chains = ['solana'] }) {
   const scanned = [...(res?.roleCandidates || []), ...(res?.picks || []).map((p) => p.token), ...(res?.others || []), res?.techMatch].filter((t) => t?.address);
   const text = [post?.text, post?.quoted, post?.parent].filter(Boolean).join('\n');
   let named = res?.mentioned?.[0] || null;
@@ -163,6 +181,18 @@ export async function botCoins(res, post, { search, lookupCa, matchImages, capOf
       named = await lookupCa(ca);
       if (named && !chains.includes(named.chain)) named = null;
       if (named) break;
+    }
+  }
+  // The poster's bio, when it holds this post's coin. Ahead of a guess from a ticker, which can land on a copy.
+  let fromBio = false;
+  if (!named && lookupBio) {
+    const typedHere = cashtags(text);
+    const words = [...(res?.anchors || []), ...(res?.terms || []), ...text.split(/[^\p{L}\p{N}]+/u).filter((w) => w.length >= 3)];
+    for (const ca of bioCas(post)) {
+      const t = await lookupBio(ca).catch(() => null);
+      // The ticker the post types and the coin in the poster's own bio: that's the coin, whatever its size. A coin the post
+      // doesn't name has to at least be alive.
+      if (t && chains.includes(t.chain) && !isRadarCopy(t) && !isMajor(t) && (live(t) || typedHere.includes(sym(t))) && tiedToBio(t, post, words, typedHere)) { named = t; fromBio = true; break; }
     }
   }
   // A 0x address that isn't on a chain the bot scans (Ethereum, Arbitrum…): its ticker must not be matched to a coin
@@ -180,7 +210,7 @@ export async function botCoins(res, post, { search, lookupCa, matchImages, capOf
       if (named) break;
     }
   }
-  let how = named ? 'post' : null;
+  let how = named ? (fromBio ? 'bio' : 'post') : null;
   // A picture post that names no coin: the coins launched with that very picture as their logo, among every coin the
   // scan searched (judged or not; up to 16 logos).
   let pictured = [];
