@@ -342,6 +342,8 @@ class Radar {
     this.stopTimers();
     this.lastPost = post;
     this.state = { ...this.state, loading: true, early: [], error: null, narrative: null, engineError: null, source: source ?? this.state.source };
+    this.updateLive();
+    this.renderFoot();
     this.renderHead();
     this.renderBody();
     try {
@@ -382,6 +384,8 @@ class Radar {
     } catch (e) {
       if (stale()) return;
       this.state = { ...this.state, loading: false, error: e.message };
+      this.updateLive();
+      this.renderFoot();
       this.renderHead();
       this.renderBody();
     }
@@ -528,7 +532,7 @@ class Radar {
     if (!live) return;
     const on = this.timers.length && !document.hidden;
     live.classList.toggle('paused', !on);
-    live.querySelector('span').textContent = on ? `LIVE · ${this.refreshSec}s` : this.state.ts ? 'PAUSED' : 'READY';
+    live.querySelector('span').textContent = on ? `LIVE · ${this.refreshSec}s` : this.state.loading ? 'SCANNING' : this.state.ts ? 'PAUSED' : 'READY';
   }
   async tick() {
     if (document.hidden || (!this.inline && !this.isOpen)) return;
@@ -1491,10 +1495,10 @@ class Radar {
   }
 
   renderFoot() {
-    const ts = this.state.ts;
-    this.footEl.innerHTML = `<span>DexScreener · RugCheck · Larpcheck</span><span data-ago>${ts ? 'updated just now' : 'not scanned'}</span>`;
+    const { ts, loading } = this.state;
+    this.footEl.innerHTML = `<span>DexScreener · RugCheck · Larpcheck</span><span data-ago>${loading ? 'scanning' : ts ? 'updated just now' : 'not scanned'}</span>`;
     clearInterval(this.agoTimer);
-    if (ts) this.agoTimer = setInterval(() => {
+    if (ts && !loading) this.agoTimer = setInterval(() => {
       const s = Math.round((Date.now() - this.state.ts) / 1000);
       const el = this.footEl.querySelector('[data-ago]');
       if (el) el.textContent = s < 3 ? 'updated just now' : `updated ${s}s ago`;
