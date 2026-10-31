@@ -3,9 +3,10 @@
 export const WATCHLIST_KEY = 'radar-watchlist';
 export const MAX_STARS = 20;
 
-export const starOf = (t, now = Date.now()) => ({
+// post: the post it was found on, when there was one. liq: its pool's liquidity then, none on a launch curve (Radar Guard reads these).
+export const starOf = (t, post = null, now = Date.now()) => ({
   address: t.address, chain: t.chain, symbol: String(t.symbol || '').slice(0, 20), name: String(t.name || '').slice(0, 60),
-  image: t.image || null, cap: t.marketCap || 0, t: now,
+  image: t.image || null, cap: t.marketCap || 0, liq: t.onCurve ? 0 : t.liquidity || 0, post: post || null, t: now,
 });
 
 // Starred already: taken off. A full list stays as it is.

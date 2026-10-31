@@ -4,6 +4,8 @@ import { marketBlock, reportBlock } from './holdercheck.js';
 import { recentItem } from './recent.js';
 import { MAX_STARS, starOf, toggleStar, sinceStar } from './watchlist.js';
 
+const GUARD_MINUTES = 5; // lib/guard.js; the panel can only load files from ui/
+
 import { lcButtonHtml, lcStoryHtml, lcCheckItHtml, lcStamp } from './larpcheck.js';
 
 // Radar panel — shared by the X overlay (floating) and the toolbar popup (inline).
@@ -969,7 +971,7 @@ class Radar {
     if (!t) return;
     const was = this.isStarred(addr);
     if (!was && this.stars.length >= MAX_STARS) { this.toast(`Your watchlist is full (${MAX_STARS})`); return; }
-    const star = starOf(t);
+    const star = starOf(t, isPostLink(this.lastPost?.url) ? this.lastPost.url : null);
     this.stars = toggleStar(this.stars, star);
     this.syncStarButtons();
     this.renderHead();
@@ -988,6 +990,7 @@ class Radar {
 
   toggleStarsView() {
     this.view = this.view === 'stars' ? 'scan' : 'stars';
+    if (this.view === 'stars' && this.alerts === undefined) this.loadAlerts();
     this.renderHead();
     this.renderBody();
     this.refreshStars();
@@ -1013,8 +1016,17 @@ class Radar {
     this.starTimer = setTimeout(() => this.refreshStars(), 30_000);
   }
 
+  // Radar Guard runs in the extension's background, so the web and the userscript (no alerts there) don't offer it.
+  guardHtml() {
+    if (!this.alerts || !this.holder?.on) return '';
+    const what = "the post behind a starred coin is gone, Larpcheck's verdict turns bad, or liquidity falls 30%";
+    return this.holder.holder
+      ? `<div class="guard on">${I.bell}<div><b>Radar Guard is on</b><p>Radar checks every ${GUARD_MINUTES} minutes and alerts you if ${what}.</p></div></div>`
+      : `<div class="guard">${I.bell}<div><b>Radar Guard is for $RADAR holders</b><p>Hold $10 of $RADAR and Radar alerts you if ${what}.</p><button type="button" data-holder-connect>Check my wallet</button></div></div>`;
+  }
+
   starsHtml() {
-    const top = `<div class="recent-top"><span>Watchlist${this.stars.length ? ` · ${this.stars.length}` : ''}</span><button data-act-back>Back</button></div>`;
+    const top = `<div class="recent-top"><span>Watchlist${this.stars.length ? ` · ${this.stars.length}` : ''}</span><button data-act-back>Back</button></div>${this.guardHtml()}`;
     if (!this.stars.length) return `<div class="star-list">${top}<div class="empty"><div class="big">Nothing starred yet</div><p>Tap the star on a coin card to keep it here, with its change since you starred it.</p></div></div>`;
     return `<div class="star-list">${top}${this.stars.map((s) => {
       const live = this.starLive?.[s.address];
@@ -1408,7 +1420,7 @@ class Radar {
       <em>${left(w)}</em><button type="button" data-act="unwatch" data-id="${esc(w.id)}">Stop</button></div>`).join('');
     const hits = a.feed.slice(0, 5).map((f) => {
       const c = f.coin;
-      const larp = f.larp ? `${f.larp.by === 'Larpcheck' ? 'Larpcheck' : 'Larp check'} ${esc(f.larp.word)}${f.larp.score != null ? ` ${esc(f.larp.score)}` : ''}` : '';
+      const larp = f.kind === 'guard' ? esc(f.text) : f.larp ? `${f.larp.by === 'Larpcheck' ? 'Larpcheck' : 'Larp check'} ${esc(f.larp.word)}${f.larp.score != null ? ` ${esc(f.larp.score)}` : ''}` : '';
       const link = f.buy || f.chart;
       return `<a class="al-hit" href="${esc(link)}" target="_blank" rel="noopener noreferrer"><b>$${esc(String(c.symbol || '').trim())}</b>
         <span>${esc([CHAIN_LABEL[c.chain] || c.chain, usd(c.marketCap), age(f.at)].filter(Boolean).join(' · '))}</span>${larp ? `<em>${larp}</em>` : ''}</a>`;

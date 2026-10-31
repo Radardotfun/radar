@@ -1,4 +1,4 @@
-// Radar 1.7.34 on the web: built from the extension source at https://tryradar.fun. Not financial advice.
+// Radar 1.7.35 on the web: built from the extension source at https://tryradar.fun. Not financial advice.
 (() => {
   // extension/src/lib/keywords.js
   var STOP = new Set(`a about above after again against all almost also am an and any are aren as at be because been before
@@ -1050,13 +1050,15 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
   // extension/src/ui/watchlist.js
   var WATCHLIST_KEY = "radar-watchlist";
   var MAX_STARS = 20;
-  var starOf = (t, now = Date.now()) => ({
+  var starOf = (t, post = null, now = Date.now()) => ({
     address: t.address,
     chain: t.chain,
     symbol: String(t.symbol || "").slice(0, 20),
     name: String(t.name || "").slice(0, 60),
     image: t.image || null,
     cap: t.marketCap || 0,
+    liq: t.onCurve ? 0 : t.liquidity || 0,
+    post: post || null,
     t: now
   });
   function toggleStar(list, star) {
@@ -1508,6 +1510,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
   }
 
   // extension/src/ui/radar.js
+  var GUARD_MINUTES = 5;
   var backend = null;
   var cssUrl = null;
   var cssInline = null;
@@ -2481,7 +2484,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
         this.toast(`Your watchlist is full (${MAX_STARS})`);
         return;
       }
-      const star = starOf(t);
+      const star = starOf(t, isPostLink(this.lastPost?.url) ? this.lastPost.url : null);
       this.stars = toggleStar(this.stars, star);
       this.syncStarButtons();
       this.renderHead();
@@ -2504,6 +2507,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     }
     toggleStarsView() {
       this.view = this.view === "stars" ? "scan" : "stars";
+      if (this.view === "stars" && this.alerts === void 0) this.loadAlerts();
       this.renderHead();
       this.renderBody();
       this.refreshStars();
@@ -2528,8 +2532,14 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       }
       this.starTimer = setTimeout(() => this.refreshStars(), 3e4);
     }
+    // Radar Guard runs in the extension's background, so the web and the userscript (no alerts there) don't offer it.
+    guardHtml() {
+      if (!this.alerts || !this.holder?.on) return "";
+      const what = "the post behind a starred coin is gone, Larpcheck's verdict turns bad, or liquidity falls 30%";
+      return this.holder.holder ? `<div class="guard on">${I.bell}<div><b>Radar Guard is on</b><p>Radar checks every ${GUARD_MINUTES} minutes and alerts you if ${what}.</p></div></div>` : `<div class="guard">${I.bell}<div><b>Radar Guard is for $RADAR holders</b><p>Hold $10 of $RADAR and Radar alerts you if ${what}.</p><button type="button" data-holder-connect>Check my wallet</button></div></div>`;
+    }
     starsHtml() {
-      const top = `<div class="recent-top"><span>Watchlist${this.stars.length ? ` \xB7 ${this.stars.length}` : ""}</span><button data-act-back>Back</button></div>`;
+      const top = `<div class="recent-top"><span>Watchlist${this.stars.length ? ` \xB7 ${this.stars.length}` : ""}</span><button data-act-back>Back</button></div>${this.guardHtml()}`;
       if (!this.stars.length) return `<div class="star-list">${top}<div class="empty"><div class="big">Nothing starred yet</div><p>Tap the star on a coin card to keep it here, with its change since you starred it.</p></div></div>`;
       return `<div class="star-list">${top}${this.stars.map((s) => {
         const live = this.starLive?.[s.address];
@@ -2901,7 +2911,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       <em>${left(w)}</em><button type="button" data-act="unwatch" data-id="${esc2(w.id)}">Stop</button></div>`).join("");
       const hits = a.feed.slice(0, 5).map((f) => {
         const c = f.coin;
-        const larp = f.larp ? `${f.larp.by === "Larpcheck" ? "Larpcheck" : "Larp check"} ${esc2(f.larp.word)}${f.larp.score != null ? ` ${esc2(f.larp.score)}` : ""}` : "";
+        const larp = f.kind === "guard" ? esc2(f.text) : f.larp ? `${f.larp.by === "Larpcheck" ? "Larpcheck" : "Larp check"} ${esc2(f.larp.word)}${f.larp.score != null ? ` ${esc2(f.larp.score)}` : ""}` : "";
         const link = f.buy || f.chart;
         return `<a class="al-hit" href="${esc2(link)}" target="_blank" rel="noopener noreferrer"><b>$${esc2(String(c.symbol || "").trim())}</b>
         <span>${esc2([CHAIN_LABEL[c.chain] || c.chain, usd(c.marketCap), age(f.at)].filter(Boolean).join(" \xB7 "))}</span>${larp ? `<em>${larp}</em>` : ""}</a>`;
@@ -4193,6 +4203,13 @@ svg { display: block; }\r
 .star-remove:hover { color: var(--text); background: var(--card-2); }\r
 .star-lc { grid-column: 1 / -1; margin-top: 4px; }\r
 .star-lc .lc-btn { min-height: 30px; padding-block: 5px; font-size: 11px; }\r
+.guard { display: flex; gap: 8px; margin: 6px 0 10px; padding: 10px; border: 1px solid var(--line-2); border-radius: 10px; font-size: 12px; color: var(--muted); }\r
+.guard svg { flex: none; margin-top: 1px; }\r
+.guard b { display: block; color: var(--text); font-weight: 700; }\r
+.guard p { margin: 3px 0 0; line-height: 1.4; }\r
+.guard button { margin-top: 8px; padding: 6px 10px; min-height: 30px; border: 1px solid var(--line-2); border-radius: 8px; color: var(--text); font-weight: 600; }\r
+.guard button:hover { background: var(--card-2); }\r
+.guard.on { border-color: color-mix(in srgb, var(--violet) 55%, transparent); background: color-mix(in srgb, var(--violet) 8%, transparent); }\r
 `;
 
   // webapp/main.js

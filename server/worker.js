@@ -7,7 +7,7 @@ import { lcBoard, lcHolders, lcSettings, lcStart, lcPoll, lcAsk, lcHandle } from
 import { launchState, launchMeta, launchMetaFile, launchRecord, launchList } from './launch.js';
 import { engine, interpret, judge, storyCheck, transcribe, watchVideo, sameImage, LOGO_HOST } from './narrative.js';
 import { holderOn, holderConfig, holderVerify, holderWho } from './holder.js';
-import { recordPost } from './ledger.js';
+import { recordPost, readStatus } from './ledger.js';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -320,6 +320,13 @@ export default {
     // Swap x.com for this site in any post link to scan it: /<user>/status/<id> opens the radar on it.
     const post = request.method === 'GET' && pathname.match(/^\/(\w{1,15})\/status\/(\d+)/);
     if (post) return Response.redirect(new URL(`/?url=${encodeURIComponent(`https://x.com/${post[1]}/status/${post[2]}`)}`, request.url), 302);
+    // Radar Guard: does a starred coin's post still open? Only a real 404 counts as gone.
+    if (pathname === '/post-gone' && request.method === 'GET') {
+      const id = new URL(request.url).searchParams.get('id') || '';
+      if (!/^\d{5,25}$/.test(id)) return json(400, { error: 'Not a post id' });
+      if (limited(`gone:${request.headers.get('cf-connecting-ip') || 'anon'}`, 120)) return json(429, { error: 'Too many requests' });
+      return cachedJson(ctx, `g/${id}`, 300, async () => ({ gone: await readStatus(id).then((s) => s === 'gone').catch(() => false) }), false);
+    }
     if (pathname === '/tweet' && request.method === 'GET') return readTweet(new URL(request.url).searchParams.get('url'), ctx);
     if (pathname === '/larpcheck' && request.method === 'GET') return larpcheck(request, env, ctx);
     // More of Larpcheck's API (server/lc.js).

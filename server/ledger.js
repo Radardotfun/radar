@@ -25,7 +25,7 @@ export const writtenBy = (text) => String(text || '').replace(LINKED, ' ');
 export const addressesIn = (text) => [...new Set(String(text || '').match(CA) || [])].filter(isAddress).slice(0, 3);
 
 // 'gone' only on a real 404: a busy FxTwitter says nothing about the post.
-async function readStatus(id) {
+export async function readStatus(id) {
   const r = await fetch(`https://api.fxtwitter.com/status/${id}`, { headers: { 'user-agent': 'NarrativeRadar/1.0' }, signal: AbortSignal.timeout(8000) });
   if (r.status === 404) return 'gone';
   if (!r.ok) return null;

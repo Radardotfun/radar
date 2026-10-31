@@ -775,3 +775,10 @@ svg { display: block; }
 .star-remove:hover { color: var(--text); background: var(--card-2); }
 .star-lc { grid-column: 1 / -1; margin-top: 4px; }
 .star-lc .lc-btn { min-height: 30px; padding-block: 5px; font-size: 11px; }
+.guard { display: flex; gap: 8px; margin: 6px 0 10px; padding: 10px; border: 1px solid var(--line-2); border-radius: 10px; font-size: 12px; color: var(--muted); }
+.guard svg { flex: none; margin-top: 1px; }
+.guard b { display: block; color: var(--text); font-weight: 700; }
+.guard p { margin: 3px 0 0; line-height: 1.4; }
+.guard button { margin-top: 8px; padding: 6px 10px; min-height: 30px; border: 1px solid var(--line-2); border-radius: 8px; color: var(--text); font-weight: 600; }
+.guard button:hover { background: var(--card-2); }
+.guard.on { border-color: color-mix(in srgb, var(--violet) 55%, transparent); background: color-mix(in srgb, var(--violet) 8%, transparent); }

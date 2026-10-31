@@ -1,6 +1,7 @@
 import { makeHandlers, API_BASE, DEFAULTS } from './lib/handlers.js';
 import { listWallets, buy, KEY_RE, FRONTRUN_ORIGIN } from './lib/frontrun.js';
-import { newWatch, verdictTurned, checkWatch, buyUrl, chartUrl, MAX_WATCHES } from './lib/alerts.js';
+import { newWatch, verdictTurned, checkWatch, buyUrl, chartUrl, MAX_WATCHES, coinOf, statusOf } from './lib/alerts.js';
+import { GUARD_KEY, GUARD_MINUTES, lookAtStar } from './lib/guard.js';
 import { reportBlock } from './ui/holdercheck.js';
 
 export { API_BASE, DEFAULTS };
@@ -192,7 +193,7 @@ async function notify(item) {
   const opts = {
     type: 'basic',
     iconUrl: ext.runtime.getURL('icons/icon128.png'),
-    title: item.kind === 'verdict' ? `Larpcheck now says ${item.larp.word}: $${String(c.symbol || '').slice(0, 14)}` : `New coin off ${item.watch.author ? `@${item.watch.author}'s` : 'a watched'} post: $${String(c.symbol || '').slice(0, 14)}`,
+    title: item.kind === 'guard' ? `Radar Guard: ${item.text}` : item.kind === 'verdict' ? `Larpcheck now says ${item.larp.word}: $${String(c.symbol || '').slice(0, 14)}` : `New coin off ${item.watch.author ? `@${item.watch.author}'s` : 'a watched'} post: $${String(c.symbol || '').slice(0, 14)}`,
     message: [line, [larp, item.holders?.text].filter(Boolean).join(' · ')].filter(Boolean).join('\n'),
     priority: 2,
     buttons: [{ title: item.buy ? (c.chain === 'solana' ? 'Buy on Radar' : 'Trade on Uniswap') : 'Open the chart' }, { title: 'Open the post' }],
@@ -290,6 +291,59 @@ async function runAlertChecks() {
   }
 }
 ext.alarms.onAlarm.addListener((alarm) => { if (alarm.name === ALARM) runAlertChecks(); });
+
+// Radar Guard: every few minutes, one look at each starred coin, for holders. Its alarm is left alone once set, because setting
+// it again would restart the wait each time the worker wakes.
+const GUARD_ALARM = 'radar-guard';
+ext.alarms.get(GUARD_ALARM).then((a) => a || ext.alarms.create(GUARD_ALARM, { periodInMinutes: GUARD_MINUTES })).catch(() => {});
+const postIsGone = async (url) => {
+  const id = statusOf(url);
+  if (!id) return null;
+  const res = await fetch(`${API_BASE}/post-gone?id=${id}`, { signal: AbortSignal.timeout(10_000) }).catch(() => null);
+  return res?.ok ? (await res.json()).gone === true : null;
+};
+let guarding = false;
+async function runGuard() {
+  if (guarding) return;
+  guarding = true;
+  try {
+    if (!(await handlers.holderActive())) return;
+    const stars = await handlers.starList();
+    if (!stars.length) return;
+    const was = (await ext.storage.local.get(GUARD_KEY))[GUARD_KEY] || {};
+    const fresh = await handlers.refresh({ tokens: stars.map((s) => ({ chain: s.chain, address: s.address })) }).then((r) => r.tokens).catch(() => ({}));
+    const state = {};
+    const items = [];
+    for (const star of stars) {
+      const live = fresh[star.address] || null;
+      const [lc, gone] = await Promise.all([
+        handlers.larpcheck({ address: star.address }).catch(() => null),
+        star.post ? postIsGone(star.post) : null,
+      ]);
+      const look = lookAtStar(star, { live, lc, gone }, was[star.address]);
+      state[star.address] = look.state;
+      for (const e of look.events) {
+        const coin = live ? coinOf(live) : { address: star.address, chain: star.chain, symbol: star.symbol, name: star.name, marketCap: star.cap };
+        const larp = lc?.checked ? { by: 'Larpcheck', word: lc.verdict, score: lc.score ?? null, url: lc.url || lc.page || null } : null;
+        // No buy button here: an alert that something went wrong shouldn't offer one.
+        items.push({ id: `guard:${star.address}:${e.reason}:${e.word || ''}`, at: Date.now(), kind: e.reason === 'verdict' ? 'verdict' : 'guard', text: e.text || '', watch: { url: star.post || chartUrl(coin), author: '', label: `$${star.symbol}` }, coin, larp, holders: null, buy: null, chart: chartUrl(coin) });
+      }
+    }
+    await ext.storage.local.set({ [GUARD_KEY]: state });
+    if (!items.length) return;
+    const added = await withAlerts(async (a) => {
+      const newOnes = items.filter((i) => !a.feed.some((f) => f.id === i.id));
+      a.feed = [...newOnes, ...a.feed].slice(0, 30);
+      a.unread += newOnes.length;
+      if (newOnes.length) showBadge(a.unread);
+      return newOnes;
+    });
+    for (const item of added) await notify(item);
+  } finally {
+    guarding = false;
+  }
+}
+ext.alarms.onAlarm.addListener((alarm) => { if (alarm.name === GUARD_ALARM) runGuard().catch(() => {}); });
 // The badge lives in memory only: put it back when the worker starts again.
 loadAlerts().then((a) => showBadge(a.unread)).catch(() => {});
 
