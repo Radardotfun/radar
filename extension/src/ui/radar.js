@@ -1040,6 +1040,8 @@ class Radar {
 
   hydrateImages() {
     this.bodyEl.querySelectorAll('.ava[data-img]').forEach((el) => {
+      // The panel's style hides logos, so nothing is fetched for one that isn't on screen.
+      if (!el.getClientRects().length) return;
       // DexScreener serves logos at 800px, 166 KB for a 40px circle. Its CDN also has 128px, about 7 KB.
       const url = el.dataset.img.replace(/^(https:\/\/cdn\.dexscreener\.com\/cms\/images\/[^?]+\?)width=800&height=800/, '$1width=128&height=128');
       if (!url) return;

@@ -2662,6 +2662,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     }
     hydrateImages() {
       this.bodyEl.querySelectorAll(".ava[data-img]").forEach((el) => {
+        if (!el.getClientRects().length) return;
         const url = el.dataset.img.replace(/^(https:\/\/cdn\.dexscreener\.com\/cms\/images\/[^?]+\?)width=800&height=800/, "$1width=128&height=128");
         if (!url) return;
         el.removeAttribute("data-img");
