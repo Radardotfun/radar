@@ -295,6 +295,8 @@ ext.alarms.onAlarm.addListener((alarm) => { if (alarm.name === ALARM) runAlertCh
 // Radar Guard: every few minutes, one look at each starred coin, for holders. Its alarm is left alone once set, because setting
 // it again would restart the wait each time the worker wakes.
 const GUARD_ALARM = 'radar-guard';
+const GUARD_ON = 'radar-guard-on';
+const HOLDER_PAGE = 'https://tryradar.fun/holder';
 ext.alarms.get(GUARD_ALARM).then((a) => a || ext.alarms.create(GUARD_ALARM, { periodInMinutes: GUARD_MINUTES })).catch(() => {});
 const postIsGone = async (url) => {
   const id = statusOf(url);
@@ -307,8 +309,19 @@ async function runGuard() {
   if (guarding) return;
   guarding = true;
   try {
-    if (!(await handlers.holderActive())) return;
     const stars = await handlers.starList();
+    const wasOn = (await ext.storage.local.get(GUARD_ON))[GUARD_ON];
+    if (!(await handlers.holderActive())) {
+      // The holder check lasts a day. Guard stopping must never look like nothing happening, so it says so, once.
+      if (!wasOn) return;
+      await ext.storage.local.set({ [GUARD_ON]: false });
+      if (!stars.length) return;
+      const item = { id: `guard:paused:${Date.now()}`, at: Date.now(), kind: 'guard', text: 'Radar Guard has paused. Check your wallet again to keep it on.', watch: { url: HOLDER_PAGE, author: '', label: 'Radar Guard' }, coin: { symbol: 'RADAR', name: 'Holder check' }, larp: null, holders: null, buy: null, chart: HOLDER_PAGE };
+      await withAlerts(async (a) => { a.feed = [item, ...a.feed].slice(0, 30); a.unread += 1; showBadge(a.unread); });
+      await notify(item);
+      return;
+    }
+    if (!wasOn) await ext.storage.local.set({ [GUARD_ON]: true });
     if (!stars.length) return;
     const was = (await ext.storage.local.get(GUARD_KEY))[GUARD_KEY] || {};
     const fresh = await handlers.refresh({ tokens: stars.map((s) => ({ chain: s.chain, address: s.address })) }).then((r) => r.tokens).catch(() => ({}));
