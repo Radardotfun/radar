@@ -11,7 +11,7 @@ export async function standInReport(mint, holders, rpc) {
   if (!lc?.ready) return null;
   const parsed = info?.value?.data?.parsed?.info;
   return {
-    source: 'larpcheck', page: lc.page, line: lc.line, ok: !!lc.ok,
+    source: 'larpcheck', page: lc.page, line: lc.line, ok: !!lc.ok, holdersAt: lc.at || null,
     authorityKnown: !!parsed, mintAuthority: parsed?.mintAuthority || null, freezeAuthority: parsed?.freezeAuthority || null,
     holders: lc.holders ?? null, top10Pct: lc.top10 ?? null,
     score: null, rugged: false, risks: [], topHolder: null, insiderWallets: 0, insiderPct: null,

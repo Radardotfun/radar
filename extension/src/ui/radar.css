@@ -365,6 +365,10 @@ svg { display: block; }
 .tag.twins { border-style: solid; color: var(--text); }
 .hc { display: flex; align-items: center; gap: 8px; margin-top: 8px; padding: 7px 10px; border-radius: 10px; font: 600 11.5px var(--font); color: var(--muted); background: var(--card-2); border: 1px solid var(--line); }
 .hc em { margin-left: auto; font: 600 10px var(--mono); letter-spacing: 0.06em; text-transform: uppercase; font-style: normal; color: var(--faint); }
+.hc-text { min-width: 0; }
+.hc-text small, .src-line { display: block; font: 500 10.5px/1.35 var(--mono); color: var(--faint); }
+.hc-text small { margin-top: 2px; }
+.src-line { margin-top: 6px; }
 .hc-mark { width: 18px; height: 18px; flex: none; border-radius: 50%; display: grid; place-items: center; font: 900 11px var(--font); }
 .hc-mark.wait { border: 2px solid var(--line-2); border-top-color: var(--muted); animation: sweep 0.9s linear infinite; }
 .hc.ok { color: var(--text); }

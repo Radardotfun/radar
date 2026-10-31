@@ -93,6 +93,8 @@ export function holdersView(d, address) {
     line: clip(h.reading?.line, 140),
     ok: verdict === 'organic',
     page: `https://larpcheck.app/${address}`,
+    // When Radar read it, which the edge cache can make a few minutes before the panel shows it.
+    at: Date.now(),
   };
 }
 export async function lcHolders(address, chain, env, ctx) {

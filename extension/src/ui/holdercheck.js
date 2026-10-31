@@ -24,6 +24,27 @@ export const quiet =(t, now = Date.now()) => !!t?.txns?.h24 && tradesDay(t) < 50
 
 const pct = (v) => `${v < 10 ? v.toFixed(1) : Math.round(v)}%`;
 
+// When Radar read something. Empty when it can't say, rather than a guess.
+export function since(at, now = Date.now()) {
+  if (!at) return '';
+  const m = Math.floor((now - at) / 60000);
+  return m < 1 ? 'just now' : m < 60 ? `${m}m ago` : m < 1440 ? `${Math.floor(m / 60)}h ago` : `${Math.floor(m / 1440)}d ago`;
+}
+const from = (name, at, now) => [name, since(at, now)].filter(Boolean).join(' · ');
+
+// Where a holder report's numbers came from and when, so a fallback can't be read as the full picture.
+export function reportSource(r, now = Date.now()) {
+  if (!r) return null;
+  if (r.source !== 'larpcheck') {
+    const rug = from('RugCheck', r.readAt, now);
+    return { fallback: false, holders: rug, authority: rug, line: rug };
+  }
+  const holders = from('Larpcheck', r.holdersAt, now);
+  const authority = r.authorityKnown ? from('Solana chain', r.readAt, now) : "couldn't be read";
+  const when = (name, at) => [name, since(at, now)].filter(Boolean).join(' ');
+  return { fallback: true, holders, authority, line: `Fallback · ${when('Larpcheck', r.holdersAt)} · ${r.authorityKnown ? when('chain', r.readAt) : "mint/freeze unread"} · no LP or insider data` };
+}
+
 // Market side: is the coin something Axiom can open and people are actually trading?
 export function marketBlock(token) {
   if (token?.chain !== 'solana') return 'not on Solana';

@@ -1,6 +1,6 @@
 import { TERMINAL_ICONS } from './terminal-icons.js';
 import { coinCheck } from './coincheck.js';
-import { marketBlock, reportBlock, quiet, tradesLine } from './holdercheck.js';
+import { marketBlock, reportBlock, reportSource, since, quiet, tradesLine } from './holdercheck.js';
 import { recentItem } from './recent.js';
 import { MAX_STARS, starOf, toggleStar, sinceStar } from './watchlist.js';
 
@@ -505,7 +505,7 @@ class Radar {
     if (!el || !v.line) return;
     el.hidden = false;
     el.className = `hc ${v.ok ? 'ok' : 'no'}`;
-    el.innerHTML = `<span class="hc-mark">${v.ok ? '✓' : '✕'}</span><span>${esc(v.line)}</span><a class="hc-by" href="${esc(v.page)}" target="_blank" rel="noopener noreferrer">Larpcheck ↗</a>`;
+    el.innerHTML = `<span class="hc-mark">${v.ok ? '✓' : '✕'}</span><span class="hc-text">${esc(v.line)}<small>${esc(['Larpcheck', since(v.at)].filter(Boolean).join(' · '))}</small></span><a class="hc-by" href="${esc(v.page)}" target="_blank" rel="noopener noreferrer">Larpcheck ↗</a>`;
   }
 
   async loadAudit(t, { force = false } = {}) {
@@ -519,7 +519,7 @@ class Radar {
       .catch((e) => { a.rugErr = e.message; })
       .finally(() => this.renderAudit(t.address));
     const bundle = send('bundle', { mint: t.address, launchMs: t.createdAt, pairs: t.pairAddresses, launchPair: t.launchPair, launchDex: t.launchDex })
-      .then((b) => { a.bundle = b; a.bundleErr = null; })
+      .then((b) => { a.bundle = b; a.bundleAt = Date.now(); a.bundleErr = null; })
       .catch((e) => { a.bundleErr = e.message; })
       .finally(() => this.renderAudit(t.address));
     await Promise.allSettled([rug, bundle]);
@@ -1173,7 +1173,7 @@ class Radar {
             ${t.chain === 'solana' ? `<div class="supply" data-k="supply">${this.supplyHtml(null)}</div>` : ''}
             ${t.chain === 'solana' ? '<section class="coin-check" data-k="check"></section>' : ''}
             <section class="audit">
-              <h4>Launch audit <em data-k="audit-src">${t.chain === 'solana' ? 'on-chain' : ''}</em></h4>
+              <h4>Launch audit</h4>
               <div class="rows" data-k="audit"></div>
             </section>
             <div class="links">${links(t).map(([l, u]) => `<a href="${esc(u)}" target="_blank" rel="noopener noreferrer">${l}</a>`).join('')}${BUBBLE_CHAIN[t.chain] ? `<button data-bubble="${t.address}" data-chain="${t.chain}">Bubblemaps</button>` : ''}</div>
@@ -1183,7 +1183,7 @@ class Radar {
   }
 
   // How much of the supply went to the launch block, and how much of it is still sitting there.
-  supplyHtml(b) {
+  supplyHtml(b, at) {
     if (!b) {
       return `<div class="supply-head"><span>Bundled supply</span><b class="skel" style="width:54px;height:18px"></b></div>
         <div class="supply-bar"></div><div class="supply-legend"><span class="scanning"><span class="spinner"></span>Scanning the launch block…</span></div>`;
@@ -1201,7 +1201,8 @@ class Radar {
       <div class="supply-legend">
         <span>${b.bundleWallets} wallet${b.bundleWallets === 1 ? '' : 's'} · sold ${pctPlain(soldPct(b.bundledPct, b.bundleHeldPct), 0)}</span>
         <span>DB ${pctPlain(b.devBoughtPct)} · DS ${pctPlain(soldPct(b.devBoughtPct, b.devHeldPct), 0)}</span>
-      </div>`;
+      </div>
+      <div class="src-line">${esc(['Launch block, Solana chain', since(at)].filter(Boolean).join(' · '))}</div>`;
   }
 
   renderAudit(addr) {
@@ -1216,7 +1217,7 @@ class Radar {
     }
     const a = this.audits.get(addr) || {};
     const supplyEl = card.querySelector('[data-k="supply"]');
-    if (supplyEl && (a.bundle || a.bundleErr)) supplyEl.innerHTML = this.supplyHtml(a.bundle || { ok: false, reason: a.bundleErr });
+    if (supplyEl && (a.bundle || a.bundleErr)) supplyEl.innerHTML = this.supplyHtml(a.bundle || { ok: false, reason: a.bundleErr }, a.bundleAt);
     const tileB = this.bodyEl.querySelector(`[data-tile-b="${addr}"]`);
     if (tileB && a.bundle?.ok) {
       tileB.textContent = `bundled ${pctPlain(a.bundle.bundledPct, 0)}`;
@@ -1250,19 +1251,22 @@ class Radar {
       if (ageEl) ageEl.textContent = `~${age(Date.parse(r.detectedAt))}`;
     }
     if (r) {
+      const src = reportSource(r);
+      const withSrc = (...bits) => bits.filter(Boolean).map(esc).join(' · ');
       // Top 10 and insiders are in the coin check above once it has enough to say; listed here only until then.
       if (!coinCheck(t, a.rug, a.bundle)) {
-        html += row(level(r.top10Pct, 30, 50), 'Top 10 holders', pctPlain(r.top10Pct), r.topHolder ? `largest ${pctPlain(r.topHolder.pct)}` : '');
-        if (r.insiderWallets) html += row(level(r.insiderPct ?? 0, 8, 20), 'Insider wallets', `${r.insiderWallets}`, r.insiderPct != null ? `hold ${pctPlain(r.insiderPct)}` : 'linked by transfers');
+        html += row(level(r.top10Pct, 30, 50), 'Top 10 holders', pctPlain(r.top10Pct), withSrc(r.topHolder ? `largest ${pctPlain(r.topHolder.pct)}` : '', src.holders));
+        if (r.insiderWallets) html += row(level(r.insiderPct ?? 0, 8, 20), 'Insider wallets', `${r.insiderWallets}`, withSrc(r.insiderPct != null ? `hold ${pctPlain(r.insiderPct)}` : 'linked by transfers', src.holders));
       }
       const auth = !r.mintAuthority && !r.freezeAuthority;
-      if (r.authorityKnown !== false) html += row(auth ? 'good' : 'bad', 'Mint / freeze', `${r.mintAuthority ? 'Mintable' : 'Renounced'} / ${r.freezeAuthority ? 'Freezable' : 'Renounced'}`);
+      if (r.authorityKnown !== false) html += row(auth ? 'good' : 'bad', 'Mint / freeze', `${r.mintAuthority ? 'Mintable' : 'Renounced'} / ${r.freezeAuthority ? 'Freezable' : 'Renounced'}`, withSrc(src.authority));
       if (r.source === 'larpcheck') {
-        html += `<div class="row note"><span class="dot"></span><span class="k">Holder data</span><span class="v"><a href="${esc(r.page)}" target="_blank" rel="noopener noreferrer">Larpcheck ↗</a></span></div>`;
+        html += `<div class="row note"><span class="dot"></span><span class="k">Holder data</span><span class="v"><a href="${esc(r.page)}" target="_blank" rel="noopener noreferrer">Larpcheck ↗</a>${since(r.holdersAt) ? `<small>${esc(since(r.holdersAt))}</small>` : ''}</span></div>`;
+        html += `<div class="row note"><span class="dot"></span><span class="k">LP lock, insiders</span><span class="v">Not checked: RugCheck didn't answer</span></div>`;
       } else {
-        if (!t.onCurve) html += row(r.lpLockedPct >= 90 ? 'good' : r.lpLockedPct >= 50 ? 'warn' : 'bad', 'LP locked / burned', pctPlain(r.lpLockedPct, 0));
+        if (!t.onCurve) html += row(r.lpLockedPct >= 90 ? 'good' : r.lpLockedPct >= 50 ? 'warn' : 'bad', 'LP locked / burned', pctPlain(r.lpLockedPct, 0), withSrc(src.holders));
         const danger = r.risks.filter((x) => x.level === 'danger');
-        html += row(r.rugged ? 'bad' : level(r.score, 20, 50), 'RugCheck', r.rugged ? 'RUGGED' : `${r.score ?? '—'}/100 risk`, danger[0]?.name || (r.risks[0]?.name ?? 'no flags'));
+        html += row(r.rugged ? 'bad' : level(r.score, 20, 50), 'RugCheck', r.rugged ? 'RUGGED' : `${r.score ?? '—'}/100 risk`, withSrc(danger[0]?.name || (r.risks[0]?.name ?? 'no flags'), since(r.readAt)));
       }
       const h = card.querySelector('[data-k="holders"]');
       if (h) h.textContent = num(r.holders);
@@ -1482,15 +1486,19 @@ class Radar {
     const el = card.querySelector(`[data-hc="${t.address}"]`);
     if (!el) return;
     if (!a.rug && !a.rugErr) return;
-    const why = marketBlock(t) || reportBlock(a.rug);
+    const market = marketBlock(t);
+    const why = market || reportBlock(a.rug);
     el.className = `hc ${why ? 'no' : 'ok'}`;
     // Larpcheck's own line, credited and linked, when its read stands in for RugCheck's.
     const by = a.rug?.source === 'larpcheck' ? `<a class="hc-by" href="${esc(a.rug.page)}" target="_blank" rel="noopener noreferrer">Larpcheck ↗</a>` : '';
+    // Where the deciding answer came from. A fallback says so, and says what it can't see.
+    const src = market ? ['DexScreener', since(t.updatedAt)].filter(Boolean).join(' · ') : a.rug ? reportSource(a.rug).line : 'RugCheck and Larpcheck had no answer';
+    const text = (s) => `<span class="hc-text">${esc(s)}<small>${esc(src)}</small></span>`;
     el.innerHTML = why
-      ? `<span class="hc-mark">✕</span><span>${esc(why.charAt(0).toUpperCase() + why.slice(1))}</span>${by || '<em>Reroute skips it</em>'}`
+      ? `<span class="hc-mark">✕</span>${text(why.charAt(0).toUpperCase() + why.slice(1))}${by || '<em>Reroute skips it</em>'}`
       : by
-        ? `<span class="hc-mark">✓</span><span>${esc(a.rug.line || `Real holders · ${num(a.rug.holders)}`)}</span>${by}`
-        : `<span class="hc-mark">✓</span><span>Real holders · ${num(a.rug.holders)}</span><em>Passes the check</em>`;
+        ? `<span class="hc-mark">✓</span>${text(a.rug.line || `Real holders · ${num(a.rug.holders)}`)}${by}`
+        : `<span class="hc-mark">✓</span>${text(`Real holders · ${num(a.rug.holders)}`)}<em>Passes the check</em>`;
   }
 
   // Coins on the post that share this one's ticker: copycats are the usual trap on a hot narrative.
@@ -1543,14 +1551,18 @@ class Radar {
       if (box) box.innerHTML = '';
       return;
     }
-    const tone = c.word === 'OK' ? 'ok' : c.word === 'NEUTRAL' ? 'mid' : 'risk';
-    if (chip) chip.innerHTML = `<span class="verdict ${tone}" title="Coin check: ${esc(c.call)}">${c.word} <b>${c.score}</b></span>`;
+    // A fallback can't see LP locks or insiders, so it never says a plain OK. A bad result stands: what it did see was bad.
+    const partial = c.word === 'OK' && reportSource(a.rug)?.fallback;
+    const word = partial ? 'PARTIAL' : c.word;
+    const tone = partial ? 'mid' : c.word === 'OK' ? 'ok' : c.word === 'NEUTRAL' ? 'mid' : 'risk';
+    if (chip) chip.innerHTML = `<span class="verdict ${tone}" title="Coin check: ${esc(c.call)}${partial ? '. Fallback read: no LP lock or insider data' : ''}">${word} <b>${c.score}</b></span>`;
     if (!box) return;
     const lvl = { ok: 'good', watch: 'warn', risk: 'bad' };
     const val = (f) => (f.text ? esc(f.text) : f.unit === 'price' ? pctPlain(f.v, 0) : pctPlain(f.v));
-    box.innerHTML = `<h4>Coin check <span class="verdict ${tone}">${c.word} <b>${c.score}</b></span></h4>
+    box.innerHTML = `<h4>Coin check <span class="verdict ${tone}">${word} <b>${c.score}</b></span></h4>
       ${c.call ? `<p class="cc-call">${esc(c.call)}</p>` : ''}
-      <div class="rows">${c.facts.map((f) => `<div class="row ${lvl[f.lvl] || ''}"><span class="dot"></span><span class="k">${esc(f.k)}</span><span class="v">${val(f)}${f.sub ? `<small>${esc(f.sub)}</small>` : ''}</span></div>`).join('')}</div>`;
+      <div class="rows">${c.facts.map((f) => `<div class="row ${lvl[f.lvl] || ''}"><span class="dot"></span><span class="k">${esc(f.k)}</span><span class="v">${val(f)}${f.sub ? `<small>${esc(f.sub)}</small>` : ''}</span></div>`).join('')}</div>
+      <div class="src-line">${esc([a.rug && reportSource(a.rug).line, a.bundle?.ok && ['Launch block', since(a.bundleAt)].filter(Boolean).join(' · ')].filter(Boolean).join(' · '))}</div>`;
   }
 
   patchCard(prev, t) {

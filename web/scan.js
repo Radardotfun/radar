@@ -1,4 +1,4 @@
-// Radar 1.7.36 on the web: built from the extension source at https://tryradar.fun. Not financial advice.
+// Radar 1.7.37 on the web: built from the extension source at https://tryradar.fun. Not financial advice.
 (() => {
   // extension/src/lib/keywords.js
   var STOP = new Set(`a about above after again against all almost also am an and any are aren as at be because been before
@@ -83,6 +83,23 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
   var tradesLine = (t) => `${tradesDay(t)} trade${tradesDay(t) === 1 ? "" : "s"} 24h`;
   var quiet = (t, now = Date.now()) => !!t?.txns?.h24 && tradesDay(t) < 50 && (t.volume?.h24 || 0) < 2500 && !!t.createdAt && now - t.createdAt > 864e5;
   var pct = (v) => `${v < 10 ? v.toFixed(1) : Math.round(v)}%`;
+  function since(at, now = Date.now()) {
+    if (!at) return "";
+    const m = Math.floor((now - at) / 6e4);
+    return m < 1 ? "just now" : m < 60 ? `${m}m ago` : m < 1440 ? `${Math.floor(m / 60)}h ago` : `${Math.floor(m / 1440)}d ago`;
+  }
+  var from = (name, at, now) => [name, since(at, now)].filter(Boolean).join(" \xB7 ");
+  function reportSource(r, now = Date.now()) {
+    if (!r) return null;
+    if (r.source !== "larpcheck") {
+      const rug = from("RugCheck", r.readAt, now);
+      return { fallback: false, holders: rug, authority: rug, line: rug };
+    }
+    const holders = from("Larpcheck", r.holdersAt, now);
+    const authority = r.authorityKnown ? from("Solana chain", r.readAt, now) : "couldn't be read";
+    const when = (name, at) => [name, since(at, now)].filter(Boolean).join(" ");
+    return { fallback: true, holders, authority, line: `Fallback \xB7 ${when("Larpcheck", r.holdersAt)} \xB7 ${r.authorityKnown ? when("chain", r.readAt) : "mint/freeze unread"} \xB7 no LP or insider data` };
+  }
   function marketBlock(token) {
     if (token?.chain !== "solana") return "not on Solana";
     if (!alive(token)) return "not trading";
@@ -387,6 +404,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       page: lc.page,
       line: lc.line,
       ok: !!lc.ok,
+      holdersAt: lc.at || null,
       authorityKnown: !!parsed,
       mintAuthority: parsed?.mintAuthority || null,
       freezeAuthority: parsed?.freezeAuthority || null,
@@ -1200,7 +1218,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
         try {
           const report2 = await rugReport(mint, pairs);
           rugFails = 0;
-          return report2;
+          return { ...report2, readAt: Date.now() };
         } catch {
           if (++rugFails >= 3) {
             rugFails = 0;
@@ -1211,7 +1229,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       const s = await host.settings();
       const report = await standInReport(mint, () => lcHolders({ address: mint, chain: "solana" }), rpcFor(await host.rpcUrl(s)));
       if (!report) throw new Error("Holder data isn't available right now");
-      return report;
+      return { ...report, readAt: Date.now() };
     }
     async function safety({ mint, pairs }) {
       return cached(`rc:${mint}`, 6e4, () => holderReport(mint, pairs));
@@ -2019,7 +2037,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       if (!el || !v.line) return;
       el.hidden = false;
       el.className = `hc ${v.ok ? "ok" : "no"}`;
-      el.innerHTML = `<span class="hc-mark">${v.ok ? "\u2713" : "\u2715"}</span><span>${esc2(v.line)}</span><a class="hc-by" href="${esc2(v.page)}" target="_blank" rel="noopener noreferrer">Larpcheck \u2197</a>`;
+      el.innerHTML = `<span class="hc-mark">${v.ok ? "\u2713" : "\u2715"}</span><span class="hc-text">${esc2(v.line)}<small>${esc2(["Larpcheck", since(v.at)].filter(Boolean).join(" \xB7 "))}</small></span><a class="hc-by" href="${esc2(v.page)}" target="_blank" rel="noopener noreferrer">Larpcheck \u2197</a>`;
     }
     async loadAudit(t, { force = false } = {}) {
       if (t.chain !== "solana") return this.loadLcHolders(t);
@@ -2035,6 +2053,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       }).finally(() => this.renderAudit(t.address));
       const bundle = send("bundle", { mint: t.address, launchMs: t.createdAt, pairs: t.pairAddresses, launchPair: t.launchPair, launchDex: t.launchDex }).then((b) => {
         a.bundle = b;
+        a.bundleAt = Date.now();
         a.bundleErr = null;
       }).catch((e) => {
         a.bundleErr = e.message;
@@ -2560,13 +2579,13 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       return `<div class="star-list">${top}${this.stars.map((s) => {
         const live = this.starLive?.[s.address];
         const cap = live?.marketCap ?? s.cap;
-        const since = live ? sinceStar(s, live.marketCap) : null;
+        const since2 = live ? sinceStar(s, live.marketCap) : null;
         const lc = this.starLc?.get(s.address);
         return `<div class="star-row">
         <button class="star-open" data-star-open="${esc2(s.address)}" data-star-sym="${esc2(s.symbol)}" title="Scan $${esc2(s.symbol)}">
           ${this.avatarHtml({ address: s.address, symbol: s.symbol, image: live?.image || s.image })}
           <span class="star-names"><b>$${esc2(s.symbol)}</b><span>${esc2(s.name)}</span></span>
-          <span class="star-nums"><b>${usd(cap)}${live && !live.mcapBacked && !live.onCurve ? ' <i title="Market cap not backed by real liquidity">\xB7 thin</i>' : ""}</b><em class="${since == null ? "" : since >= 0 ? "up" : "down"}">${since == null ? "\u2014" : `${pct2(since, Math.abs(since) >= 100 ? 0 : 1)} since star`}</em></span>
+          <span class="star-nums"><b>${usd(cap)}${live && !live.mcapBacked && !live.onCurve ? ' <i title="Market cap not backed by real liquidity">\xB7 thin</i>' : ""}</b><em class="${since2 == null ? "" : since2 >= 0 ? "up" : "down"}">${since2 == null ? "\u2014" : `${pct2(since2, Math.abs(since2) >= 100 ? 0 : 1)} since star`}</em></span>
         </button>
         <button class="star-remove" data-star-remove="${esc2(s.address)}" title="Take off the watchlist">${I.xs}</button>
         ${lc?.checked ? `<div class="star-lc">${lcButtonHtml(lc)}</div>` : ""}
@@ -2697,7 +2716,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
             ${t.chain === "solana" ? `<div class="supply" data-k="supply">${this.supplyHtml(null)}</div>` : ""}
             ${t.chain === "solana" ? '<section class="coin-check" data-k="check"></section>' : ""}
             <section class="audit">
-              <h4>Launch audit <em data-k="audit-src">${t.chain === "solana" ? "on-chain" : ""}</em></h4>
+              <h4>Launch audit</h4>
               <div class="rows" data-k="audit"></div>
             </section>
             <div class="links">${links(t).map(([l, u]) => `<a href="${esc2(u)}" target="_blank" rel="noopener noreferrer">${l}</a>`).join("")}${BUBBLE_CHAIN[t.chain] ? `<button data-bubble="${t.address}" data-chain="${t.chain}">Bubblemaps</button>` : ""}</div>
@@ -2706,7 +2725,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       </article>`;
     }
     // How much of the supply went to the launch block, and how much of it is still sitting there.
-    supplyHtml(b) {
+    supplyHtml(b, at) {
       if (!b) {
         return `<div class="supply-head"><span>Bundled supply</span><b class="skel" style="width:54px;height:18px"></b></div>
         <div class="supply-bar"></div><div class="supply-legend"><span class="scanning"><span class="spinner"></span>Scanning the launch block\u2026</span></div>`;
@@ -2724,7 +2743,8 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       <div class="supply-legend">
         <span>${b.bundleWallets} wallet${b.bundleWallets === 1 ? "" : "s"} \xB7 sold ${pctPlain(soldPct(b.bundledPct, b.bundleHeldPct), 0)}</span>
         <span>DB ${pctPlain(b.devBoughtPct)} \xB7 DS ${pctPlain(soldPct(b.devBoughtPct, b.devHeldPct), 0)}</span>
-      </div>`;
+      </div>
+      <div class="src-line">${esc2(["Launch block, Solana chain", since(at)].filter(Boolean).join(" \xB7 "))}</div>`;
     }
     renderAudit(addr) {
       this.renderLcHolders(addr);
@@ -2738,7 +2758,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       }
       const a = this.audits.get(addr) || {};
       const supplyEl = card.querySelector('[data-k="supply"]');
-      if (supplyEl && (a.bundle || a.bundleErr)) supplyEl.innerHTML = this.supplyHtml(a.bundle || { ok: false, reason: a.bundleErr });
+      if (supplyEl && (a.bundle || a.bundleErr)) supplyEl.innerHTML = this.supplyHtml(a.bundle || { ok: false, reason: a.bundleErr }, a.bundleAt);
       const tileB = this.bodyEl.querySelector(`[data-tile-b="${addr}"]`);
       if (tileB && a.bundle?.ok) {
         tileB.textContent = `bundled ${pctPlain(a.bundle.bundledPct, 0)}`;
@@ -2767,18 +2787,21 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
         if (ageEl) ageEl.textContent = `~${age(Date.parse(r.detectedAt))}`;
       }
       if (r) {
+        const src = reportSource(r);
+        const withSrc = (...bits) => bits.filter(Boolean).map(esc2).join(" \xB7 ");
         if (!coinCheck(t, a.rug, a.bundle)) {
-          html += row(level2(r.top10Pct, 30, 50), "Top 10 holders", pctPlain(r.top10Pct), r.topHolder ? `largest ${pctPlain(r.topHolder.pct)}` : "");
-          if (r.insiderWallets) html += row(level2(r.insiderPct ?? 0, 8, 20), "Insider wallets", `${r.insiderWallets}`, r.insiderPct != null ? `hold ${pctPlain(r.insiderPct)}` : "linked by transfers");
+          html += row(level2(r.top10Pct, 30, 50), "Top 10 holders", pctPlain(r.top10Pct), withSrc(r.topHolder ? `largest ${pctPlain(r.topHolder.pct)}` : "", src.holders));
+          if (r.insiderWallets) html += row(level2(r.insiderPct ?? 0, 8, 20), "Insider wallets", `${r.insiderWallets}`, withSrc(r.insiderPct != null ? `hold ${pctPlain(r.insiderPct)}` : "linked by transfers", src.holders));
         }
         const auth = !r.mintAuthority && !r.freezeAuthority;
-        if (r.authorityKnown !== false) html += row(auth ? "good" : "bad", "Mint / freeze", `${r.mintAuthority ? "Mintable" : "Renounced"} / ${r.freezeAuthority ? "Freezable" : "Renounced"}`);
+        if (r.authorityKnown !== false) html += row(auth ? "good" : "bad", "Mint / freeze", `${r.mintAuthority ? "Mintable" : "Renounced"} / ${r.freezeAuthority ? "Freezable" : "Renounced"}`, withSrc(src.authority));
         if (r.source === "larpcheck") {
-          html += `<div class="row note"><span class="dot"></span><span class="k">Holder data</span><span class="v"><a href="${esc2(r.page)}" target="_blank" rel="noopener noreferrer">Larpcheck \u2197</a></span></div>`;
+          html += `<div class="row note"><span class="dot"></span><span class="k">Holder data</span><span class="v"><a href="${esc2(r.page)}" target="_blank" rel="noopener noreferrer">Larpcheck \u2197</a>${since(r.holdersAt) ? `<small>${esc2(since(r.holdersAt))}</small>` : ""}</span></div>`;
+          html += `<div class="row note"><span class="dot"></span><span class="k">LP lock, insiders</span><span class="v">Not checked: RugCheck didn't answer</span></div>`;
         } else {
-          if (!t.onCurve) html += row(r.lpLockedPct >= 90 ? "good" : r.lpLockedPct >= 50 ? "warn" : "bad", "LP locked / burned", pctPlain(r.lpLockedPct, 0));
+          if (!t.onCurve) html += row(r.lpLockedPct >= 90 ? "good" : r.lpLockedPct >= 50 ? "warn" : "bad", "LP locked / burned", pctPlain(r.lpLockedPct, 0), withSrc(src.holders));
           const danger = r.risks.filter((x) => x.level === "danger");
-          html += row(r.rugged ? "bad" : level2(r.score, 20, 50), "RugCheck", r.rugged ? "RUGGED" : `${r.score ?? "\u2014"}/100 risk`, danger[0]?.name || (r.risks[0]?.name ?? "no flags"));
+          html += row(r.rugged ? "bad" : level2(r.score, 20, 50), "RugCheck", r.rugged ? "RUGGED" : `${r.score ?? "\u2014"}/100 risk`, withSrc(danger[0]?.name || (r.risks[0]?.name ?? "no flags"), since(r.readAt)));
         }
         const h = card.querySelector('[data-k="holders"]');
         if (h) h.textContent = num(r.holders);
@@ -2995,10 +3018,13 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       const el = card.querySelector(`[data-hc="${t.address}"]`);
       if (!el) return;
       if (!a.rug && !a.rugErr) return;
-      const why = marketBlock(t) || reportBlock(a.rug);
+      const market = marketBlock(t);
+      const why = market || reportBlock(a.rug);
       el.className = `hc ${why ? "no" : "ok"}`;
       const by = a.rug?.source === "larpcheck" ? `<a class="hc-by" href="${esc2(a.rug.page)}" target="_blank" rel="noopener noreferrer">Larpcheck \u2197</a>` : "";
-      el.innerHTML = why ? `<span class="hc-mark">\u2715</span><span>${esc2(why.charAt(0).toUpperCase() + why.slice(1))}</span>${by || "<em>Reroute skips it</em>"}` : by ? `<span class="hc-mark">\u2713</span><span>${esc2(a.rug.line || `Real holders \xB7 ${num(a.rug.holders)}`)}</span>${by}` : `<span class="hc-mark">\u2713</span><span>Real holders \xB7 ${num(a.rug.holders)}</span><em>Passes the check</em>`;
+      const src = market ? ["DexScreener", since(t.updatedAt)].filter(Boolean).join(" \xB7 ") : a.rug ? reportSource(a.rug).line : "RugCheck and Larpcheck had no answer";
+      const text = (s) => `<span class="hc-text">${esc2(s)}<small>${esc2(src)}</small></span>`;
+      el.innerHTML = why ? `<span class="hc-mark">\u2715</span>${text(why.charAt(0).toUpperCase() + why.slice(1))}${by || "<em>Reroute skips it</em>"}` : by ? `<span class="hc-mark">\u2713</span>${text(a.rug.line || `Real holders \xB7 ${num(a.rug.holders)}`)}${by}` : `<span class="hc-mark">\u2713</span>${text(`Real holders \xB7 ${num(a.rug.holders)}`)}<em>Passes the check</em>`;
     }
     // Coins on the post that share this one's ticker: copycats are the usual trap on a hot narrative.
     nameTwins(t) {
@@ -3047,14 +3073,17 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
         if (box) box.innerHTML = "";
         return;
       }
-      const tone = c.word === "OK" ? "ok" : c.word === "NEUTRAL" ? "mid" : "risk";
-      if (chip) chip.innerHTML = `<span class="verdict ${tone}" title="Coin check: ${esc2(c.call)}">${c.word} <b>${c.score}</b></span>`;
+      const partial = c.word === "OK" && reportSource(a.rug)?.fallback;
+      const word = partial ? "PARTIAL" : c.word;
+      const tone = partial ? "mid" : c.word === "OK" ? "ok" : c.word === "NEUTRAL" ? "mid" : "risk";
+      if (chip) chip.innerHTML = `<span class="verdict ${tone}" title="Coin check: ${esc2(c.call)}${partial ? ". Fallback read: no LP lock or insider data" : ""}">${word} <b>${c.score}</b></span>`;
       if (!box) return;
       const lvl = { ok: "good", watch: "warn", risk: "bad" };
       const val = (f) => f.text ? esc2(f.text) : f.unit === "price" ? pctPlain(f.v, 0) : pctPlain(f.v);
-      box.innerHTML = `<h4>Coin check <span class="verdict ${tone}">${c.word} <b>${c.score}</b></span></h4>
+      box.innerHTML = `<h4>Coin check <span class="verdict ${tone}">${word} <b>${c.score}</b></span></h4>
       ${c.call ? `<p class="cc-call">${esc2(c.call)}</p>` : ""}
-      <div class="rows">${c.facts.map((f) => `<div class="row ${lvl[f.lvl] || ""}"><span class="dot"></span><span class="k">${esc2(f.k)}</span><span class="v">${val(f)}${f.sub ? `<small>${esc2(f.sub)}</small>` : ""}</span></div>`).join("")}</div>`;
+      <div class="rows">${c.facts.map((f) => `<div class="row ${lvl[f.lvl] || ""}"><span class="dot"></span><span class="k">${esc2(f.k)}</span><span class="v">${val(f)}${f.sub ? `<small>${esc2(f.sub)}</small>` : ""}</span></div>`).join("")}</div>
+      <div class="src-line">${esc2([a.rug && reportSource(a.rug).line, a.bundle?.ok && ["Launch block", since(a.bundleAt)].filter(Boolean).join(" \xB7 ")].filter(Boolean).join(" \xB7 "))}</div>`;
     }
     patchCard(prev, t) {
       const card = this.bodyEl.querySelector(`.card[data-addr="${t.address}"]`);
@@ -3810,6 +3839,10 @@ svg { display: block; }\r
 .tag.twins { border-style: solid; color: var(--text); }\r
 .hc { display: flex; align-items: center; gap: 8px; margin-top: 8px; padding: 7px 10px; border-radius: 10px; font: 600 11.5px var(--font); color: var(--muted); background: var(--card-2); border: 1px solid var(--line); }\r
 .hc em { margin-left: auto; font: 600 10px var(--mono); letter-spacing: 0.06em; text-transform: uppercase; font-style: normal; color: var(--faint); }\r
+.hc-text { min-width: 0; }\r
+.hc-text small, .src-line { display: block; font: 500 10.5px/1.35 var(--mono); color: var(--faint); }\r
+.hc-text small { margin-top: 2px; }\r
+.src-line { margin-top: 6px; }\r
 .hc-mark { width: 18px; height: 18px; flex: none; border-radius: 50%; display: grid; place-items: center; font: 900 11px var(--font); }\r
 .hc-mark.wait { border: 2px solid var(--line-2); border-top-color: var(--muted); animation: sweep 0.9s linear infinite; }\r
 .hc.ok { color: var(--text); }\r

@@ -168,7 +168,7 @@ export function makeHandlers(host) {
       try {
         const report = await rugReport(mint, pairs);
         rugFails = 0;
-        return report;
+        return { ...report, readAt: Date.now() };
       } catch {
         if (++rugFails >= 3) { rugFails = 0; rugOffUntil = Date.now() + 300_000; }
       }
@@ -176,7 +176,7 @@ export function makeHandlers(host) {
     const s = await host.settings();
     const report = await standInReport(mint, () => lcHolders({ address: mint, chain: 'solana' }), rpcFor(await host.rpcUrl(s)));
     if (!report) throw new Error("Holder data isn't available right now");
-    return report;
+    return { ...report, readAt: Date.now() };
   }
   async function safety({ mint, pairs }) {
     return cached(`rc:${mint}`, 60_000, () => holderReport(mint, pairs));

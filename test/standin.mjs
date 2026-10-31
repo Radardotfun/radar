@@ -1,7 +1,7 @@
 // Offline: Larpcheck's holder read standing in for RugCheck, and an account's own coin in the bot's reply. node test/standin.mjs
 import assert from 'node:assert/strict';
 import { standInReport } from '../extension/src/lib/rugcheck.js';
-import { reportBlock } from '../extension/src/ui/holdercheck.js';
+import { reportBlock, reportSource, since } from '../extension/src/ui/holdercheck.js';
 import { coinCheck } from '../extension/src/ui/coincheck.js';
 import { botCoins, ownCoin } from '../bot/coins.js';
 
@@ -28,6 +28,25 @@ assert.equal(checked.score, 100, 'an LP lock nobody reported costs nothing');
 assert.ok(!checked.facts.some((f) => f.k === 'Liquidity'), 'and is not shown as 0%');
 assert.ok(coinCheck({ onCurve: false, liquidity: 80_000 }, { ...good, lpLockedPct: 10 }, null).facts.some((f) => f.k === 'Liquidity'), 'a real low lock still shows');
 console.log('PASS holder data: Larpcheck stands in for RugCheck, and an unknown still never passes');
+
+// Each check says where it came from and when, and a fallback says what it can't see.
+const at = Date.parse('2026-10-31T19:00:00Z');
+assert.equal(since(at, at + 20_000), 'just now');
+assert.equal(since(at, at + 5 * 60_000), '5m ago');
+assert.equal(since(at, at + 3 * 3600_000), '3h ago');
+assert.equal(since(null, at), '', 'no time is no time, not a guess');
+assert.equal(reportSource({ score: 1, readAt: at }, at + 120_000).line, 'RugCheck · 2m ago');
+assert.equal(reportSource({ score: 1, readAt: at }, at).fallback, false);
+const standIn = await standInReport('m', async () => ({ ...organic, at }), rpc(clean));
+assert.equal(standIn.holdersAt, at);
+const fb = reportSource({ ...standIn, readAt: at + 180_000 }, at + 240_000);
+assert.ok(fb.fallback);
+assert.equal(fb.line, 'Fallback · Larpcheck 4m ago · chain 1m ago · no LP or insider data');
+assert.equal(fb.holders, 'Larpcheck · 4m ago');
+assert.equal(fb.authority, 'Solana chain · 1m ago');
+assert.equal(reportSource({ ...standIn, authorityKnown: false, readAt: at }, at).authority, "couldn't be read");
+assert.equal(reportSource(null), null);
+console.log('PASS holder data: every check names its source and time, and a fallback says it is one');
 
 const coin = (symbol, name, marketCap, extra = {}) => ({ symbol, name, address: `${symbol}${marketCap}mint`, chain: 'solana', marketCap, mcapBacked: true, liquidity: 9000, volume: { h24: 5000 }, relevance: 0, ...extra });
 const hackinu = coin('Hackinu', 'Hack Inu', 3900);
