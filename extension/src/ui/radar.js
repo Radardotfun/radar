@@ -1,6 +1,6 @@
 import { TERMINAL_ICONS } from './terminal-icons.js';
 import { coinCheck } from './coincheck.js';
-import { marketBlock, reportBlock } from './holdercheck.js';
+import { marketBlock, reportBlock, quiet, tradesLine } from './holdercheck.js';
 import { recentItem } from './recent.js';
 import { MAX_STARS, starOf, toggleStar, sinceStar } from './watchlist.js';
 
@@ -1124,6 +1124,7 @@ class Radar {
     const twins = this.nameTwins(t);
     if (launchedWithRadar(t)) tags.unshift('launched with Radar, not by the poster');
     if (twins) tags.push(twins.oldest ? `oldest of ${twins.n}` : `${twins.n} named $${String(t.symbol).trim()}`);
+    if (quiet(t)) tags.push(`quiet · ${tradesLine(t)}`);
     const matched = t.reason ? esc(t.reason) : t.matched?.length ? `matches “${esc(t.matched.slice(0, 2).join('”, “'))}”` : '';
     const open = this.openCards.has(t.address);
     const tx24 = t.txns.h24.buys + t.txns.h24.sells;

@@ -186,6 +186,14 @@ import { alive } from '../ui/holdercheck.js';
 
 export { alive };
 
+// The OG may trade quietly if it's really old: a real pool behind a coin past 30 days is enough. A coin days old with a pool
+// and no trades is just dead ($RAYPAD: 5 days, 4 trades, the OG on a $FOBO post).
+const ogExists = (t) => alive(t) || (t.liquidity >= 3000 && Date.now() - t.createdAt > 30 * 864e5);
+
+// The oldest live coin with this one's ticker or name among the coins searched, judged or not, if it's older than this one.
+const sameName = (a, b) => String(a.symbol).toLowerCase() === String(b.symbol).toLowerCase() || (String(a.name).length >= 3 && String(a.name).toLowerCase() === String(b.name).toLowerCase());
+export const olderTwinOf = (t, pool = []) => (t?.createdAt ? pool.filter((x) => x?.createdAt && x.address !== t.address && x.createdAt < t.createdAt && sameName(x, t) && ogExists(x)).sort((a, b) => a.createdAt - b.createdAt)[0] || null : null);
+
 /**
  * Pick the three narrative coins:
  *   top   — highest real (liquidity-backed) market cap
@@ -209,11 +217,13 @@ export function pickThree(tokens, { cuts = [0.3, 0.15, 0], allowFallback = true 
   const top = [...live].filter((t) => t.mcapBacked).sort((a, b) => b.marketCap - a.marketCap)[0];
   const picks = [take(top, 'top')];
 
-  // The OG may trade quietly; a real pool behind it is enough.
-  const exists = (t) => alive(t) || t.liquidity >= 3000;
-  const og = tokens.filter((t) => t.createdAt && !used.has(t.address) && (t.relevance || 0) >= maxRel * cutUsed && exists(t))
+  // The oldest of them all, or nobody: when Highest MC is the oldest, it's "also the OG" and a newer coin doesn't get the
+  // title (a 1-day-old $LC was the OG beside the 21-day-old $LARPCHECK). An older twin the judge left out is the real one
+  // (a 2-month-old $LUMI beside the 1-day-old one); olderTwin: true means there is one, but it's not to be shown.
+  const oldest = tokens.filter((t) => t.createdAt && (t.relevance || 0) >= maxRel * cutUsed && ogExists(t))
     .sort((a, b) => a.createdAt - b.createdAt)[0];
-  picks.push(take(og, 'og'));
+  const og = oldest?.olderTwin === true ? null : oldest?.olderTwin ? { ...oldest.olderTwin, relevance: oldest.relevance } : oldest;
+  picks.push(og && !used.has(og.address) ? take(og, 'og') : null);
 
   const momentum = (t) => {
     const ch = n(t.priceChange.h1 ?? t.priceChange.h6);
@@ -223,21 +233,23 @@ export function pickThree(tokens, { cuts = [0.3, 0.15, 0], allowFallback = true 
   };
   // The mover has to actually be trading; no pick beats a dead one.
   const movers = live.filter((t) => !used.has(t.address) && t.volume.h1 >= 1000);
-  const mover = (movers.length ? movers : live.filter((t) => !used.has(t.address) && t.volume.h24 >= 250))
+  const mover = (movers.length ? movers : live.filter((t) => !used.has(t.address) && t.volume.h24 >= 250 && t.volume.h1 > 0))
     .sort((a, b) => momentum(b) - momentum(a) || b.volume.h24 - a.volume.h24)[0];
   picks.push(take(mover, 'mover'));
 
   // Tag every role a token would have won so the UI can show "also the OG", etc.
   const best = {
     top: [...live].filter((t) => t.mcapBacked).sort((a, b) => b.marketCap - a.marketCap)[0]?.address,
-    og: tokens.filter((t) => t.createdAt && (t.relevance || 0) >= maxRel * cutUsed && exists(t)).sort((a, b) => a.createdAt - b.createdAt)[0]?.address,
+    og: og?.address,
     mover: live.filter((t) => t.volume.h1 >= 1000).sort((a, b) => momentum(b) - momentum(a))[0]?.address,
   };
+  // The only coin holds every title by default, which says nothing.
+  const contest = tokens.length > 1;
   for (const p of picks) {
     if (!p) continue;
-    p.alsoTop = p.role !== 'top' && best.top === p.token.address;
-    p.alsoOg = p.role !== 'og' && best.og === p.token.address;
-    p.alsoMover = p.role !== 'mover' && best.mover === p.token.address && momentum(p.token) > 0;
+    p.alsoTop = contest && p.role !== 'top' && best.top === p.token.address;
+    p.alsoOg = contest && p.role !== 'og' && best.og === p.token.address;
+    p.alsoMover = contest && p.role !== 'mover' && best.mover === p.token.address && momentum(p.token) > 0;
   }
 
   const others = tokens

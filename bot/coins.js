@@ -8,8 +8,8 @@
 // - leaves out copies of our own coin, anything else called Radar, unless the post gives its contract;
 // - keeps the story's main runner (its biggest real coin, carrying a name the post uses) even when the judge rates it
 //   low, so a pile of small copies can't take Highest MC from it.
-import { aggregate, pickThree, alive } from '../extension/src/lib/market.js';
-import { sym, lower, key, telling, tiedToPost, bioCas, tiedToBio } from '../extension/src/lib/bio.js';
+import { aggregate, pickThree, alive, olderTwinOf } from '../extension/src/lib/market.js';
+import { sym, lower, key, telling, tiedToPost, bioCas, tiedToBio, chainInPost } from '../extension/src/lib/bio.js';
 
 export { tiedToPost, bioCas, tiedToBio };
 
@@ -213,9 +213,11 @@ export async function botCoins(res, post, { search, lookupCa, lookupBio = lookup
   const onStory = (t) => (t.relevance || 0) >= 90 || ((t.relevance || 0) >= ON_STORY && (t.marketCap || 0) >= 10_000 && tiedToPost(t, postWords));
   const seen = new Set();
   const isOwn = (t) => ownCoin(t, post) && live(t);
+  const onlyChain = chainInPost(post?.text);
   let story = [...scanned, ...(res?.pool || []).filter((t) => t?.address && isOwn(t))].filter((t) => {
     if (seen.has(t.address)) return false;
     seen.add(t.address);
+    if (onlyChain && chains.includes(onlyChain) && t.chain !== onlyChain && !isOwn(t) && !t.fromPost) return false;
     return (onStory(t) || isOwn(t) || t.address === runner?.address) && !isMajor(t) && !isRadarCopy(t) && (isOwn(t) || !namedAfterPoster(t, post, post?.text)) && !elsewhere.has(sym(t)) && !(named && sameCoin(t, named));
   }).map((t) => (t.address === runner?.address || isOwn(t) ? { ...t, relevance: Math.max(t.relevance || 0, 90) } : t));
   // With the account's own coin found, dust that only the judge tied to the story is noise beside it.
@@ -229,6 +231,11 @@ export async function botCoins(res, post, { search, lookupCa, lookupBio = lookup
   if (named) story.push({ ...named, relevance: Math.max(100, ...story.map((t) => t.relevance || 0)) });
   // The panel's tiers (narrative.js findCoins) without its last fallback to every judged coin, so Highest MC is the
   // biggest coin on the story itself.
+  // Beside a coin the post names, or the account's own, an older namesake is no OG to send people to: the title just isn't
+  // claimed (a 1.4-year-old "C" on BNB was the OG on @thecapytoken's own post).
+  const twins = (res?.pool || []).filter((t) => !isRadarCopy(t) && !(onlyChain && chains.includes(onlyChain) && t.chain !== onlyChain));
+  const postsOwn = named || story.some(isOwn);
+  story = story.map((t) => { const twin = olderTwinOf(t, twins); return { ...t, olderTwin: postsOwn ? !!twin : twin }; });
   const { picks } = story.length ? pickThree(story, { cuts: [0.85, 0.7], allowFallback: false }) : { picks: [] };
   return { named, how, picks };
 }

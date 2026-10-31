@@ -3,8 +3,8 @@
 // Two stages so the panel can show the narrative as soon as it's read:
 //   readPost()  -> narrative + search terms (+ coins written in the post, video speech)
 //   findCoins() -> candidates from DexScreener, judged, picked
-import { searchPairs, aggregate, relevance, pickThree, fullTokens, mentionedTokens, isMemecoin, SOL_CA, EVM_CA } from './market.js';
-import { bioCas, tiedToBio, tickersIn, sym } from './bio.js';
+import { searchPairs, aggregate, relevance, pickThree, olderTwinOf, fullTokens, mentionedTokens, isMemecoin, SOL_CA, EVM_CA } from './market.js';
+import { bioCas, tiedToBio, tickersIn, sym, chainInPost } from './bio.js';
 import { extractKeywords, norm } from './keywords.js';
 
 const passthrough = (_k, _ttl, fn) => fn();
@@ -220,6 +220,11 @@ export async function findCoins({ narrative, coinable, terms, anchors = [], judg
   tokens = tokens.filter((t) => scores.has(t.address)).map((t) => ({
     ...t, relevance: scores.get(t.address).score, reason: scores.get(t.address).reason, fromPost: fromPost.has(t.address),
   }));
+  const onlyChain = chainInPost(post?.text);
+  if (onlyChain && chains.includes(onlyChain)) tokens = tokens.filter((t) => t.chain === onlyChain || t.fromPost);
+  const twins = onlyChain && chains.includes(onlyChain) ? pool.filter((t) => t.chain === onlyChain) : pool;
+  // A coin the post gives the address of has its own card, so an older one takes the OG title away without replacing it.
+  tokens = tokens.map((t) => ({ ...t, olderTwin: olderTwinOf(t, twins) || mentioned.some((m) => m.createdAt && t.createdAt && m.createdAt < t.createdAt) }));
   // Judge scores are absolute: made-for-this-story coins first, the subject's own coin next.
   const { picks, others, roleCandidates, roleCut } = pickThree(tokens, { cuts: [0.85, 0.7, 0] });
   const techMatch = findTechMatch(tokens, mentioned, anchors, scores, narrative, post);

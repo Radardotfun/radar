@@ -16,6 +16,12 @@ export const RULES = {
 // Still trading: a curve with real volume, or a pool with liquidity and volume.
 export const alive = (t) => (t.onCurve ? t.volume?.h24 >= 500 : t.liquidity >= 2000 && t.volume?.h24 >= 250);
 
+// Past its first day and barely trading: a cap like this is a number on a page more than a market. Cards and the bot's
+// replies show the trade count beside it ($ELON at $285K had 17 trades that day).
+const tradesDay = (t) => (t?.txns?.h24?.buys || 0) + (t?.txns?.h24?.sells || 0);
+export const tradesLine = (t) => `${tradesDay(t)} trade${tradesDay(t) === 1 ? '' : 's'} 24h`;
+export const quiet =(t, now = Date.now()) => !!t?.txns?.h24 && tradesDay(t) < 50 && (t.volume?.h24 || 0) < 2500 && !!t.createdAt && now - t.createdAt > 864e5;
+
 const pct = (v) => `${v < 10 ? v.toFixed(1) : Math.round(v)}%`;
 
 // Market side: is the coin something Axiom can open and people are actually trading?

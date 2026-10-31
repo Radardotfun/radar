@@ -60,6 +60,9 @@ console.log('PASS bot: answers typed tags, ignores replies under our posts and c
 
 // The coin the post names leads the reply; its copycats and major-ticker coins are left out of the picks.
 import { cashtags, pickNamed, botCoins } from '../bot/coins.js';
+import { pickThree } from '../extension/src/lib/market.js';
+import { quiet } from '../extension/src/ui/holdercheck.js';
+import { chainInPost } from '../extension/src/lib/bio.js';
 assert.deepEqual(cashtags('Just aped $PURR - $HYPE rewards, up to $104K, $purr again'), ['PURR']);
 assert.deepEqual(cashtags('$VI — Welcome to Vice City'), ['VI']);
 const tok = (symbol, name, address, marketCap, extra = {}) => ({ symbol, name, address, chain: 'solana', marketCap, liquidity: marketCap / 10, mcapBacked: true, createdAt: Date.parse('2026-10-01'), volume: { h1: 5000, h24: 50_000 }, txns: { h1: { buys: 10, sells: 5 }, h24: { buys: 100, sells: 50 } }, priceChange: { h1: 5 }, relevance: 95, ...extra });
@@ -78,7 +81,7 @@ const coins = await botCoins(scan, { text: 'Just aped $PURR' }, { search: async 
 assert.equal(coins.named, purr);
 assert.deepEqual(coins.picks.map((p) => `${p.role}=${p.token.symbol}`), ['top=PURR', 'og=HCAT'], "no fake PURRs, no $HYPE, nothing under the on-story bar; the post's own coin is the Highest MC");
 const named = botReply({ ...coins, picks: coins.picks }, 'x', now);
-assert.match(named, /^Coins on this post \(\d\d:\d\d UTC\):\n\n📌 In the post \(Highest MC\): \$PURR · \$3\.80M\n8RNUw4N655VSrZKuhGdywhbSMDTrheguFPfxbpE2NZHQ\n\n🥇 OG: HCAT · launched/);
+assert.match(named, /^Coins on this post \(\d\d:\d\d UTC\):\n\n📌 In the post \(Highest MC\): \$PURR · \$3\.80M\n8RNUw4N655VSrZKuhGdywhbSMDTrheguFPfxbpE2NZHQ\n\n🥇 OG, Mover: HCAT · launched/);
 assert.ok((named.match(/\$[A-Za-z]/g) || []).length <= 1, 'still one cashtag');
 // A ticker the scan didn't judge is looked up on DexScreener.
 const pair = (t) => ({ chainId: 'solana', dexId: 'raydium', pairAddress: `${t.address.slice(0, 20)}pool`, baseToken: { address: t.address, name: t.name, symbol: t.symbol }, quoteToken: { address: 'So11111111111111111111111111111111111111112' }, priceUsd: '1', priceNative: '0.005', liquidity: { usd: t.marketCap / 10, quote: t.marketCap / 2000 }, marketCap: t.marketCap, fdv: t.marketCap, volume: { h24: 50_000 } });
@@ -245,6 +248,58 @@ assert.ok(!purpsPicks.some((p) => p.token.address === purpsNew.address), 'the ne
 assert.equal(purpsPicks.find((p) => p.role === 'top')?.token.address, purpsReal.address);
 assert.equal(purpsPicks.find((p) => p.role === 'og')?.token.address, purpsOld.address, 'the older one can be the OG');
 console.log('PASS bot: newer copies of the biggest coin are left out');
+// Nobody younger than Highest MC is the OG ($LC, 1 day old, beside the 21-day-old $LARPCHECK), and the replies say it once.
+const larp = tok('LARPCHECK', 'Larpcheck', 'LarpReal111111111111111111111111111111pump', 360_000, { createdAt: now - 21 * 864e5 });
+const lcCopy = tok('LC', 'Larp Check Coin', 'LcCopy2222222222222222222222222222222pump', 40_000, { createdAt: now - 864e5, volume: { h1: 0, h24: 4900 } });
+const larpRes = await botCoins({ mentioned: [larp], picks: [], roleCandidates: [lcCopy] }, { text: 'terminal volume' }, { search: async () => [] });
+assert.deepEqual(larpRes.picks.map((p) => `${p.role}=${p.token.symbol}`), ['top=LARPCHECK'], 'no OG younger than the top, no mover without a trade this hour');
+assert.match(botReply(larpRes, 'x', now), /📌 In the post \(Highest MC, OG, Mover\): \$LARPCHECK/);
+const topOld = tok('TOPOLD', 'Top Old', 'TopOld3333333333333333333333333333333pump', 500_000, { createdAt: now - 90 * 864e5 });
+const newer = tok('NEWER', 'Newer', 'Newer44444444444444444444444444444444pump', 90_000, { createdAt: now - 2 * 864e5, volume: { h1: 5000, h24: 50_000 } });
+const both = pickThree([topOld, newer], { cuts: [0], allowFallback: false });
+assert.deepEqual(both.picks.map((p) => `${p.role}=${p.token.symbol}`), ['top=TOPOLD', 'mover=NEWER']);
+assert.ok(both.picks[0].alsoOg, 'the top wears the title itself');
+assert.match(botReply({ picks: both.picks }, 'x', now), /🏆 Highest MC, OG: \$TOPOLD/);
+// An older twin the judge left out takes the title away; dust or a new dead pool doesn't. Days old with no trades isn't an OG.
+const lumi = tok('LUMI', 'Lumi', 'LumiNew88888888888888888888888888888pump', 280_000, { createdAt: now - 864e5 });
+const lumiOld = tok('LUMI', 'Lumi Robot', 'LumiOld99999999999999999999999999999pump', 50_000, { createdAt: now - 60 * 864e5, relevance: 0 });
+const lumiDust = { ...lumiOld, createdAt: now - 60 * 864e5, liquidity: 100, volume: { h1: 0, h24: 0 } };
+const lumiPick = await botCoins({ mentioned: [], picks: [], roleCandidates: [lumi], pool: [lumi, lumiOld], anchors: ['lumi'], terms: ['LUMI'] }, { text: 'LUMI the robot', author: 'x' }, { search: async () => [] });
+assert.equal(lumiPick.picks.find((p) => p.role === 'top').token.address, lumi.address);
+assert.equal(lumiPick.picks.find((p) => p.role === 'og')?.token.address, lumiOld.address, 'the older LUMI is the OG, judged or not');
+const lumiNamed = await botCoins({ mentioned: [lumi], picks: [], roleCandidates: [], pool: [lumi, lumiOld] }, { text: 'LUMI', author: 'x' }, { search: async () => [] });
+assert.ok(!lumiNamed.picks.some((p) => p.role === 'og' || p.alsoOg), 'the post named its coin: no older namesake, and no OG claim');
+const lumiNews = tok('ROBOT', 'Robot', 'Robot11111111111111111111111111111111pump', 90_000, { createdAt: now - 3600_000 });
+const lumiRes = await botCoins({ mentioned: [], picks: [], roleCandidates: [lumi, lumiNews], pool: [lumi, lumiDust], anchors: ['lumi', 'robot'], terms: ['LUMI', 'Robot'] }, { text: 'LUMI the robot', author: 'x' }, { search: async () => [] });
+assert.ok(lumiRes.picks.find((p) => p.token.address === lumi.address).alsoOg, 'a dead pool from then is not an older twin');
+const raypad = tok('RAYPAD', 'Raypad', 'Raypad0000000000000000000000000000000pump', 560_000, { createdAt: Date.now() - 5 * 864e5, liquidity: 5982, volume: { h1: 0, h24: 3 } });
+const fobo = tok('FOBO', 'Fobo', 'FoboLive000000000000000000000000000000pump', 360_000, { createdAt: Date.now() - 4 * 864e5 });
+assert.deepEqual(pickThree([raypad, fobo], { cuts: [0], allowFallback: false }).picks.filter((p) => p.role === 'og'), []);
+console.log('PASS bot: the OG is never younger than Highest MC or a twin, and a mover has traded this hour');
+// A coin past its first day that barely trades says so. A new one doesn't, however few trades it has so far.
+const sleepy = { ...tok('ELON', 'Elon', 'ElonSleepy555555555555555555555555555pump', 285_000), createdAt: now - 650 * 864e5, volume: { h1: 0, h24: 141 }, txns: { h1: { buys: 0, sells: 0 }, h24: { buys: 7, sells: 10 } } };
+assert.ok(quiet(sleepy, now));
+assert.ok(!quiet({ ...sleepy, createdAt: now - 3600_000 }, now), 'launched an hour ago');
+assert.ok(!quiet({ ...sleepy, volume: { h24: 40_000 } }, now), 'few trades, real money');
+assert.ok(!quiet({ ...sleepy, txns: { h24: { buys: 200, sells: 200 } } }, now), 'lots of small trades');
+assert.ok(!quiet({ ...sleepy, txns: undefined }, now), 'no trade data says nothing');
+assert.match(botReply({ picks: [{ role: 'top', token: sleepy }] }, 'x', now), /🏆 Highest MC: \$ELON · \$285\.0K · 17 trades 24h\n/);
+assert.match(botReply({ named: sleepy, how: 'post', picks: [] }, 'x', now), /📌 In the post: \$ELON · \$285\.0K · 17 trades 24h\n/);
+console.log('PASS bot: a coin that barely trades says so');
+// A post that says which chain it's about: coins elsewhere are out, unless the post links them or it's the account's own.
+assert.equal(chainInPost('Robinhood chain will save the trenches'), 'robinhood');
+assert.equal(chainInPost('RobinhoodChain szn'), 'robinhood');
+assert.equal(chainInPost('$FOBO on robinhood'), null, 'the broker, maybe');
+assert.equal(chainInPost('bought HOOD on Robinhood'), null);
+assert.equal(chainInPost('Robinhood Chain vs BNB Chain'), null, 'two chains say neither');
+assert.equal(chainInPost('Solana chain is back'), null);
+const hoodb = tok('HOODB', 'Robinhood', 'HoodbBnb666666666666666666666666666666666', 4_500_000, { chain: 'bsc', relevance: 90 });
+const hoodr = tok('HOODR', 'Robinhood', 'HoodR77777777777777777777777777777777777', 90_000, { chain: 'robinhood', relevance: 90 });
+const chains = ['solana', 'robinhood', 'base', 'bsc'];
+const hoodScan = { mentioned: [], picks: [], roleCandidates: [hoodb, hoodr], anchors: ['robinhood'], terms: ['Robinhood'] };
+assert.deepEqual((await botCoins(hoodScan, { text: 'Robinhood chain will save the trenches', author: 'x' }, { search: async () => [], chains })).picks.map((p) => p.token.symbol), ['HOODR']);
+assert.equal((await botCoins(hoodScan, { text: 'Robinhood is listing more stocks', author: 'x' }, { search: async () => [], chains })).picks[0].token.symbol, 'HOODB', 'no chain named, nothing changes');
+console.log('PASS bot: a post about one chain gets that chain\'s coins');
 assert.deepEqual(storyWords(['juggernaut', 'robinhood'], { author: 'Juggernautrh' }, 'Robinhood Chain btw'), ['juggernaut', 'robinhood'], "a project's own account keeps its name");
 console.log("PASS bot: a project's own name still counts on its own account");
 const officialElon = tok('ELON', 'Official Elon Coin', 'ElonOfficial3333333333333333333333pump', 291_000, { relevance: 95 });

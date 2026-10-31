@@ -22,6 +22,15 @@ export function tiedToPost(t, words) {
   return [...telling(t.symbol), ...telling(t.name)].some((w) => used.has(w));
 }
 
+// The one chain a post is about, when it says so ("Robinhood chain will save the trenches"): coins on other chains are
+// copies of the idea, not the play ($HOODB on BNB was Highest MC there). A post naming two chains says neither. Solana only
+// counts towards that: its name in a post is usually the market being talked about, not where the coin has to be.
+const CHAIN_WORDS = [['robinhood', /\brobinhood\s*chain\b/i], ['base', /\bbase\s+chain\b/i], ['bsc', /\bbnb\s+chain\b|\bbsc\b/i], ['solana', /\bsolana\s+chain\b/i]];
+export function chainInPost(text) {
+  const said = CHAIN_WORDS.filter(([, re]) => re.test(String(text || ''))).map(([c]) => c);
+  return said.length === 1 && said[0] !== 'solana' ? said[0] : null;
+}
+
 // A contract address in the poster's bio counts only when it's tied to this post: the post uses its ticker or name, the coin's
 // own links name this account, or the account is plainly the coin's (@cashcat_token with $CASHCAT). A bio often pins a coin
 // the post has nothing to do with, and a news account's post isn't about the coin in its bio.

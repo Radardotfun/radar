@@ -1,4 +1,4 @@
-// Radar 1.7.35 on the web: built from the extension source at https://tryradar.fun. Not financial advice.
+// Radar 1.7.36 on the web: built from the extension source at https://tryradar.fun. Not financial advice.
 (() => {
   // extension/src/lib/keywords.js
   var STOP = new Set(`a about above after again against all almost also am an and any are aren as at be because been before
@@ -79,6 +79,9 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     // % held by wallets RugCheck links together
   };
   var alive = (t) => t.onCurve ? t.volume?.h24 >= 500 : t.liquidity >= 2e3 && t.volume?.h24 >= 250;
+  var tradesDay = (t) => (t?.txns?.h24?.buys || 0) + (t?.txns?.h24?.sells || 0);
+  var tradesLine = (t) => `${tradesDay(t)} trade${tradesDay(t) === 1 ? "" : "s"} 24h`;
+  var quiet = (t, now = Date.now()) => !!t?.txns?.h24 && tradesDay(t) < 50 && (t.volume?.h24 || 0) < 2500 && !!t.createdAt && now - t.createdAt > 864e5;
   var pct = (v) => `${v < 10 ? v.toFixed(1) : Math.round(v)}%`;
   function marketBlock(token) {
     if (token?.chain !== "solana") return "not on Solana";
@@ -278,6 +281,9 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     if (majorName && majorTicker || t.marketCap > 1e7 && (majorName || majorTicker)) return false;
     return true;
   }
+  var ogExists = (t) => alive(t) || t.liquidity >= 3e3 && Date.now() - t.createdAt > 30 * 864e5;
+  var sameName = (a, b) => String(a.symbol).toLowerCase() === String(b.symbol).toLowerCase() || String(a.name).length >= 3 && String(a.name).toLowerCase() === String(b.name).toLowerCase();
+  var olderTwinOf = (t, pool = []) => t?.createdAt ? pool.filter((x) => x?.createdAt && x.address !== t.address && x.createdAt < t.createdAt && sameName(x, t) && ogExists(x)).sort((a, b) => a.createdAt - b.createdAt)[0] || null : null;
   function pickThree(tokens, { cuts = [0.3, 0.15, 0], allowFallback = true } = {}) {
     const maxRel = Math.max(0, ...tokens.map((t) => t.relevance || 0));
     let live = [];
@@ -295,9 +301,9 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     };
     const top = [...live].filter((t) => t.mcapBacked).sort((a, b) => b.marketCap - a.marketCap)[0];
     const picks = [take(top, "top")];
-    const exists = (t) => alive(t) || t.liquidity >= 3e3;
-    const og = tokens.filter((t) => t.createdAt && !used.has(t.address) && (t.relevance || 0) >= maxRel * cutUsed && exists(t)).sort((a, b) => a.createdAt - b.createdAt)[0];
-    picks.push(take(og, "og"));
+    const oldest = tokens.filter((t) => t.createdAt && (t.relevance || 0) >= maxRel * cutUsed && ogExists(t)).sort((a, b) => a.createdAt - b.createdAt)[0];
+    const og = oldest?.olderTwin === true ? null : oldest?.olderTwin ? { ...oldest.olderTwin, relevance: oldest.relevance } : oldest;
+    picks.push(og && !used.has(og.address) ? take(og, "og") : null);
     const momentum = (t) => {
       const ch = n(t.priceChange.h1 ?? t.priceChange.h6);
       const flow = Math.log10(10 + t.volume.h1);
@@ -305,18 +311,19 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       return ch * flow * Math.min(buyRatio, 3);
     };
     const movers = live.filter((t) => !used.has(t.address) && t.volume.h1 >= 1e3);
-    const mover = (movers.length ? movers : live.filter((t) => !used.has(t.address) && t.volume.h24 >= 250)).sort((a, b) => momentum(b) - momentum(a) || b.volume.h24 - a.volume.h24)[0];
+    const mover = (movers.length ? movers : live.filter((t) => !used.has(t.address) && t.volume.h24 >= 250 && t.volume.h1 > 0)).sort((a, b) => momentum(b) - momentum(a) || b.volume.h24 - a.volume.h24)[0];
     picks.push(take(mover, "mover"));
     const best = {
       top: [...live].filter((t) => t.mcapBacked).sort((a, b) => b.marketCap - a.marketCap)[0]?.address,
-      og: tokens.filter((t) => t.createdAt && (t.relevance || 0) >= maxRel * cutUsed && exists(t)).sort((a, b) => a.createdAt - b.createdAt)[0]?.address,
+      og: og?.address,
       mover: live.filter((t) => t.volume.h1 >= 1e3).sort((a, b) => momentum(b) - momentum(a))[0]?.address
     };
+    const contest = tokens.length > 1;
     for (const p of picks) {
       if (!p) continue;
-      p.alsoTop = p.role !== "top" && best.top === p.token.address;
-      p.alsoOg = p.role !== "og" && best.og === p.token.address;
-      p.alsoMover = p.role !== "mover" && best.mover === p.token.address && momentum(p.token) > 0;
+      p.alsoTop = contest && p.role !== "top" && best.top === p.token.address;
+      p.alsoOg = contest && p.role !== "og" && best.og === p.token.address;
+      p.alsoMover = contest && p.role !== "mover" && best.mover === p.token.address && momentum(p.token) > 0;
     }
     const others = tokens.filter((t) => !used.has(t.address)).sort((a, b) => b.mcapBacked - a.mcapBacked || b.marketCap - a.marketCap).slice(0, 12);
     return { picks: picks.filter(Boolean), others, roleCandidates: tokens, roleCut: cutUsed };
@@ -462,6 +469,11 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     if (whole.has(key(t.symbol)) || whole.has(key(t.name))) return true;
     const used = new Set(words.flatMap(telling));
     return [...telling(t.symbol), ...telling(t.name)].some((w) => used.has(w));
+  }
+  var CHAIN_WORDS = [["robinhood", /\brobinhood\s*chain\b/i], ["base", /\bbase\s+chain\b/i], ["bsc", /\bbnb\s+chain\b|\bbsc\b/i], ["solana", /\bsolana\s+chain\b/i]];
+  function chainInPost(text) {
+    const said = CHAIN_WORDS.filter(([, re]) => re.test(String(text || ""))).map(([c]) => c);
+    return said.length === 1 && said[0] !== "solana" ? said[0] : null;
   }
   function bioCas(post) {
     return [.../* @__PURE__ */ new Set([...String(post?.bio || "").match(SOL_CA2) || [], ...String(post?.bio || "").match(EVM_CAS) || []])].slice(0, 2);
@@ -653,6 +665,10 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       reason: scores.get(t.address).reason,
       fromPost: fromPost.has(t.address)
     }));
+    const onlyChain = chainInPost(post?.text);
+    if (onlyChain && chains.includes(onlyChain)) tokens = tokens.filter((t) => t.chain === onlyChain || t.fromPost);
+    const twins = onlyChain && chains.includes(onlyChain) ? pool.filter((t) => t.chain === onlyChain) : pool;
+    tokens = tokens.map((t) => ({ ...t, olderTwin: olderTwinOf(t, twins) || mentioned.some((m) => m.createdAt && t.createdAt && m.createdAt < t.createdAt) }));
     const { picks, others, roleCandidates, roleCut } = pickThree(tokens, { cuts: [0.85, 0.7, 0] });
     const techMatch = findTechMatch(tokens, mentioned, anchors, scores, narrative, post);
     const remaining = techMatch ? others.filter((t) => t.address !== techMatch.address) : others;
@@ -2632,6 +2648,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       const twins = this.nameTwins(t);
       if (launchedWithRadar(t)) tags.unshift("launched with Radar, not by the poster");
       if (twins) tags.push(twins.oldest ? `oldest of ${twins.n}` : `${twins.n} named $${String(t.symbol).trim()}`);
+      if (quiet(t)) tags.push(`quiet \xB7 ${tradesLine(t)}`);
       const matched = t.reason ? esc2(t.reason) : t.matched?.length ? `matches \u201C${esc2(t.matched.slice(0, 2).join("\u201D, \u201C"))}\u201D` : "";
       const open = this.openCards.has(t.address);
       const tx24 = t.txns.h24.buys + t.txns.h24.sells;

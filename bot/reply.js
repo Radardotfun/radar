@@ -4,6 +4,7 @@
 // (trading hardest right now). Each carries the number that earned the pick, its chain when that isn't Solana, and its
 // full contract address, so a copycat with the same ticker can't pass for it. No checks.
 // With three addresses a reply runs past 280 characters, which @radardotfunn's Premium allows.
+import { quiet, tradesLine } from '../extension/src/ui/holdercheck.js';
 
 const SITE = 'https://tryradar.fun';
 const ROLES = [
@@ -11,6 +12,7 @@ const ROLES = [
   ['og', '🥇 OG'],
   ['mover', '🔥 Mover'],
 ];
+const ALSO = { top: 'alsoTop', og: 'alsoOg', mover: 'alsoMover' };
 // A 0x contract doesn't say which chain it's on, so coins off Solana name theirs.
 const CHAIN_TAG = { robinhood: 'Robinhood', base: 'Base', bsc: 'BNB' };
 
@@ -37,17 +39,25 @@ export function replyEntries(result, now = Date.now()) {
   // The coin the post names shows whatever its size: it's the one the tagger is asking about.
   const named = result?.named?.address ? result.named : null;
   const entries = [];
-  // The roles the named coin won itself ("📌 In the post (Highest MC, OG)") instead of lines repeating it.
+  // Every role a coin holds ("📌 In the post (Highest MC, OG)") instead of lines repeating it. A role another line holds
+  // isn't claimed too.
+  const won = (address) => {
+    const p = picks.find((x) => x.token.address === address);
+    return ROLES.filter(([role]) => p && (p.role === role || (p[ALSO[role]] && !picks.some((x) => x.role === role && x.token.address !== address)))).map(([, label]) => label.replace(/^\S+ /, ''));
+  };
+  // A coin past its first day that barely trades says so, beside the number that earned its place.
+  const stat = (t, s) => [s, quiet(t, now) && tradesLine(t)].filter(Boolean).join(' · ');
   if (named) {
-    const won = ROLES.filter(([role]) => picks.find((p) => p.role === role)?.token.address === named.address).map(([, label]) => label.replace(/^\S+ /, ''));
-    entries.push({ label: `${result.how === 'picture' ? '🖼 Same picture as the post' : result.how === 'bio' ? '👤 In the poster\'s bio' : '📌 In the post'}${won.length ? ` (${won.join(', ')})` : ''}`, t: named, stat: usd(named.marketCap) });
+    const roles = won(named.address);
+    entries.push({ label: `${result.how === 'picture' ? '🖼 Same picture as the post' : result.how === 'bio' ? '👤 In the poster\'s bio' : '📌 In the post'}${roles.length ? ` (${roles.join(', ')})` : ''}`, t: named, stat: stat(named, usd(named.marketCap)) });
   }
   for (const [role, label] of ROLES) {
     const t = picks.find((p) => p.role === role)?.token;
     if (!t || t.address === named?.address) continue;
-    entries.push({ label, t, stat: role === 'top' ? usd(t.marketCap)
+    const also = won(t.address).filter((r) => !label.endsWith(r));
+    entries.push({ label: [label, ...also].join(', '), t, stat: stat(t, role === 'top' ? usd(t.marketCap)
       : role === 'og' ? (ago(t.createdAt, now) ? `launched ${ago(t.createdAt, now)} ago` : usd(t.marketCap))
-        : usd(t.volume?.h24) ? `${usd(t.volume.h24)} vol 24h` : usd(t.marketCap) });
+        : usd(t.volume?.h24) ? `${usd(t.volume.h24)} vol 24h` : usd(t.marketCap)) });
   }
   return entries;
 }
