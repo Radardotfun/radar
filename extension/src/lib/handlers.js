@@ -301,8 +301,9 @@ export function makeHandlers(host) {
   const recentList = async () => (await host.store.get(RECENT_KEY)) || [];
   const recentAdd = async ({ item }) => { await host.store.set(RECENT_KEY, addRecent(await recentList(), item)); };
   const recentClear = () => host.store.set(RECENT_KEY, []);
+  const launchState = () => cached('launch:state', 600_000, async () => (await fetch(`${API_BASE}/launch/settings`, { signal: AbortSignal.timeout(6000) })).json());
 
-  const handlers = { videoInfo, tweet, read, coins, mentioned, story, larpcheck, refresh, safety, bundle, image, openWindow, reroute, holderStatus, holderSave, holderWho, holderActive, recentList, recentAdd, recentClear, settings: () => host.settings() };
+  const handlers = { videoInfo, tweet, read, coins, mentioned, story, larpcheck, refresh, safety, bundle, image, openWindow, reroute, holderStatus, holderSave, holderWho, holderActive, recentList, recentAdd, recentClear, launchState, settings: () => host.settings() };
   // Changing the RPC drops cached bundle results so they're re-read through the new one.
   handlers.resetBundles = () => memo.forEach((_, k) => k.startsWith('bd:') && memo.delete(k));
   return handlers;

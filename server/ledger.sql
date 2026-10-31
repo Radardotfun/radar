@@ -23,3 +23,28 @@ CREATE TABLE IF NOT EXISTS counts (
   n INTEGER NOT NULL,
   PRIMARY KEY (day, name)
 );
+
+-- Coins launched from a post on tryradar.fun/launch (server/launch.js): what's hosted for each, and what Solana confirmed.
+CREATE TABLE IF NOT EXISTS launch_meta (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  symbol TEXT NOT NULL,
+  description TEXT NOT NULL,
+  post TEXT NOT NULL,
+  wallet TEXT NOT NULL,
+  image BLOB NOT NULL,
+  type TEXT NOT NULL,
+  at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS launches (
+  mint TEXT PRIMARY KEY,
+  id TEXT NOT NULL,
+  post TEXT NOT NULL,
+  wallet TEXT NOT NULL,
+  name TEXT NOT NULL,
+  symbol TEXT NOT NULL,
+  signature TEXT NOT NULL,
+  at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS launches_at ON launches (at DESC);
+CREATE INDEX IF NOT EXISTS launches_post ON launches (post, wallet);

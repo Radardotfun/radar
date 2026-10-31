@@ -21,3 +21,20 @@ const result = await build({
 const code = `// Radar ${version} on the web: built from the extension source at https://tryradar.fun. Not financial advice.\n${result.outputFiles[0].text}`;
 writeFileSync('web/scan.js', code);
 console.log(`scan.js ${version}: ${(code.length / 1024).toFixed(0)} KB`);
+
+// The launch page, with pump's SDK and Solana's web3.js. Minified for size; its source is webapp/launch.js.
+const launch = await build({
+  entryPoints: ['webapp/launch.js'],
+  bundle: true,
+  format: 'iife',
+  platform: 'browser',
+  target: ['chrome110', 'firefox115', 'safari16'],
+  minify: true,
+  inject: ['scripts/node-shim.js'],
+  define: { global: 'globalThis' },
+  legalComments: 'none',
+  write: false,
+  logLevel: 'warning',
+});
+writeFileSync('web/launch.js', `// Radar ${version} launch page, built from webapp/launch.js: https://github.com/Radardotfun/radar\n${launch.outputFiles[0].text}`);
+console.log(`launch.js ${version}: ${(launch.outputFiles[0].text.length / 1024).toFixed(0)} KB`);

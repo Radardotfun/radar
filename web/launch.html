@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Launch a coin · Radar</title>
+  <meta name="description" content="Launch a coin on pump.fun from a post on X, with your own wallet." />
+  <meta name="robots" content="noindex" />
+  <meta name="theme-color" content="#07050f" />
+  <link rel="icon" href="/icons/icon32.png" sizes="32x32" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&family=Geist+Mono:wght@500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/trade.css?v=1.7.26" />
+  <script defer src="/launch.js?v=1.7.26"></script>
+</head>
+<body>
+  <header class="nav">
+    <a class="brand" href="/" aria-label="Radar home"><img src="/icons/icon32.png" width="28" height="28" alt="" /><span>Radar</span></a>
+    <a class="back" href="/launched">Coins launched with Radar</a>
+  </header>
+
+  <main class="trade-page">
+    <p class="eyebrow">Radar Launch · pump.fun</p>
+    <h1>Launch from this post</h1>
+    <p class="lede">Name it, check it, and approve it in your wallet. It goes live on pump.fun, and you're its creator.</p>
+
+    <section class="coin-box launch-post" aria-label="The post">
+      <div>
+        <span class="label">From the post</span>
+        <b id="post-author">Reading the post…</b>
+        <p id="post-text" class="post-text"></p>
+        <a id="post-link" class="text-link" target="_blank" rel="noopener noreferrer">Open the post</a>
+      </div>
+    </section>
+
+    <section class="swap-box" aria-label="Launch">
+      <div class="wallet-row">
+        <div class="wallet-copy">
+          <span class="label">Wallet</span>
+          <span id="wallet-status" class="wallet-status">Not connected</span>
+        </div>
+        <select id="wallet-choice" aria-label="Choose a Solana wallet" hidden></select>
+        <button id="connect-wallet" class="button secondary" type="button">Connect wallet</button>
+      </div>
+
+      <div class="launch-grid">
+        <div class="picture-box">
+          <img id="coin-picture" alt="The coin's picture" width="112" height="112" hidden />
+          <label class="text-button" for="picture-file">Choose picture</label>
+          <input id="picture-file" type="file" accept="image/png,image/jpeg,image/webp" class="visually-hidden" />
+        </div>
+        <div class="launch-fields">
+          <div class="field-head"><label for="coin-name-input">Name</label><span>Up to 32</span></div>
+          <div class="number-input short-text"><input id="coin-name-input" type="text" maxlength="32" autocomplete="off" spellcheck="false" /></div>
+          <div class="field-head"><label for="coin-symbol-input">Ticker</label><span>Up to 10</span></div>
+          <div class="number-input short-text"><input id="coin-symbol-input" type="text" maxlength="11" autocomplete="off" spellcheck="false" /></div>
+          <p id="ticker-twins" class="field-help"></p>
+        </div>
+      </div>
+
+      <div class="field-head"><label for="coin-description">Description</label><span>Optional</span></div>
+      <div class="number-input short-text"><textarea id="coin-description" rows="2" maxlength="280"></textarea></div>
+      <p class="field-help">Radar adds a line saying it was launched with Radar from this post, and that the poster may have nothing to do with it.</p>
+
+      <div class="fee-box">
+        <b>What you pay</b>
+        <p>About 0.006 SOL for the coin's accounts and the network fee. Radar charges nothing and holds nothing. Your wallet shows the exact amount before you approve.</p>
+        <p>This launch doesn't include a first buy. Anyone can buy once it's live, including bots, so you wouldn't be first by default.</p>
+      </div>
+
+      <label class="agree-row">
+        <input id="agree" type="checkbox" />
+        <span>This launch is mine. I'm not pretending to be the poster or anyone else, and I know a coin can't be deleted once it's live.</span>
+      </label>
+
+      <button id="launch-button" class="button primary" type="button" disabled>Connect a wallet to launch</button>
+      <p id="page-message" class="message" role="status" aria-live="polite"></p>
+
+      <section id="after-launch" class="after-buy" hidden>
+        <div class="success-head"><span class="success-dot"></span><b>Your coin is live</b></div>
+        <div class="mint launched-mint"><span class="label">Contract address</span><code id="launched-mint"></code><button id="copy-launched" type="button">Copy</button></div>
+        <div class="launched-links">
+          <a id="link-pump" class="button secondary" target="_blank" rel="noopener noreferrer">Open on pump.fun</a>
+          <a id="link-scan" class="button secondary" target="_blank" rel="noopener noreferrer">Scan the post</a>
+          <a id="link-tx" class="text-link" target="_blank" rel="noopener noreferrer">Transaction</a>
+        </div>
+      </section>
+    </section>
+
+    <p class="fine launch-fine">Radar doesn't issue, check or endorse coins launched here. Memecoins are extremely risky, and most go to zero. <a href="/privacy">Privacy</a> · <a href="https://github.com/Radardotfun/radar" target="_blank" rel="noopener">Source code</a></p>
+  </main>
+</body>
+</html>

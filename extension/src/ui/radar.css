@@ -630,6 +630,8 @@ svg { display: block; }
 .recent-row span { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--muted); }
 .recent-row em { flex: none; font: 500 11px var(--mono); font-style: normal; color: var(--faint); }
 .recent-row:hover span { color: var(--text); }
+.launch-btn { display: block; width: 100%; min-height: 40px; margin-top: 14px; border: 1px solid var(--line-2); border-radius: 10px; font-weight: 700; color: var(--text); text-align: center; }
+.launch-btn:hover { background: var(--card-2); }
 .retry { margin-top: 14px; height: 34px; padding: 0 16px; border-radius: 10px; border: 1px solid var(--line-2); font-weight: 700; }
 .retry:hover { background: var(--card-2); }
 

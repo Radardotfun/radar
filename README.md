@@ -54,6 +54,17 @@ One tap opens the biggest coin on the post that passes the holder check, or tell
 - the top 10 hold less than 50%;
 - insiders hold less than 25%.
 
+## Launching a coin from a post
+
+`tryradar.fun/launch` lets anyone launch a coin on pump.fun from a post on X, with their own wallet. The source is `webapp/launch.js`, `webapp/launch-guard.js` and `server/launch.js`.
+
+- **Your wallet is the coin's creator and pays for it.** Radar charges nothing. The page makes the new coin's key, uses it for its one signature, and drops it. Radar never sees your wallet's key.
+- **Pump's own SDK builds the transaction, with no third party in it.** Before your wallet is asked, the page checks that your wallet pays, that only your wallet and the new coin sign, and that it calls only known programs. A simulation must show it spending no more than 0.05 SOL. A launch costs about 0.006 SOL.
+- **Every coin says what it is.** Its description says it was launched with Radar, that Radar did not issue it, and that the poster may have nothing to do with it. Its website is `tryradar.fun/launched`, and its card in Radar is labelled.
+- **`tryradar.fun/launched` lists a coin only after its transaction is read back from Solana.**
+- **Limits:** one launch per post per wallet on this page, and a warning when a ticker is already used. A coin can't be removed from Solana once it's live, and these checks can't stop someone calling pump.fun directly. Radar doesn't check or endorse these coins.
+- **`LAUNCH_STATE`** on the server can hide the panel button or switch launching off, with no store update.
+
 ## The Radar bot on X
 
 Tag **@radardotfunn** under any post on X and it replies with that post's coins: the highest market cap, the OG and the mover, each with its number and its contract (a DexScreener link until 5 November 2026, while X refuses crypto addresses from a new app; the address itself after that). It runs on Cloudflare ([bot/worker.js](bot/worker.js)) with the same scan as the extension and the web version, and it checks for tags every minute.

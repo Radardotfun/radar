@@ -9,6 +9,9 @@
     "@anthropic-ai/sdk": "latest"
   },
   "devDependencies": {
+    "@pump-fun/pump-sdk": "^4.3.1",
+    "bn.js": "^5.2.5",
+    "buffer": "^6.0.3",
     "esbuild": "^0.25.10"
   }
 }

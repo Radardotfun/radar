@@ -1,4 +1,4 @@
-// Radar 1.7.25 on the web: built from the extension source at https://tryradar.fun. Not financial advice.
+// Radar 1.7.26 on the web: built from the extension source at https://tryradar.fun. Not financial advice.
 (() => {
   // extension/src/lib/keywords.js
   var STOP = new Set(`a about above after again against all almost also am an and any are aren as at be because been before
@@ -1189,7 +1189,8 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       await host.store.set(RECENT_KEY, addRecent(await recentList(), item));
     };
     const recentClear = () => host.store.set(RECENT_KEY, []);
-    const handlers2 = { videoInfo, tweet: tweet2, read, coins, mentioned, story, larpcheck, refresh, safety, bundle, image, openWindow: openWindow2, reroute: reroute2, holderStatus, holderSave, holderWho, holderActive, recentList, recentAdd, recentClear, settings: () => host.settings() };
+    const launchState = () => cached("launch:state", 6e5, async () => (await fetch(`${API_BASE}/launch/settings`, { signal: AbortSignal.timeout(6e3) })).json());
+    const handlers2 = { videoInfo, tweet: tweet2, read, coins, mentioned, story, larpcheck, refresh, safety, bundle, image, openWindow: openWindow2, reroute: reroute2, holderStatus, holderSave, holderWho, holderActive, recentList, recentAdd, recentClear, launchState, settings: () => host.settings() };
     handlers2.resetBundles = () => memo.forEach((_, k) => k.startsWith("bd:") && memo.delete(k));
     return handlers2;
   }
@@ -1380,6 +1381,8 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
   var soldPct = (bought, held) => bought > 0 ? Math.max(0, Math.min(100, (1 - held / bought) * 100)) : 0;
   var pctPlain = (n2, d = 1) => n2 == null || !Number.isFinite(+n2) ? "\u2014" : `${(+n2).toFixed(d)}%`;
   var num = (n2) => n2 == null ? "\u2014" : n2 >= 1e6 ? `${(n2 / 1e6).toFixed(2)}M` : n2 >= 1e4 ? `${(n2 / 1e3).toFixed(1)}K` : Math.round(n2).toLocaleString("en-US");
+  var launchUrl = (post) => `https://tryradar.fun/launch?post=${encodeURIComponent(post)}`;
+  var launchedWithRadar = (t) => (t.websites || []).some((w) => /^https:\/\/tryradar\.fun\/launched/.test(w?.url || w));
   function postTimeOf(postUrl) {
     const id = String(postUrl || "").match(/\/status\/(\d+)/)?.[1];
     return id ? Number((BigInt(id) >> 22n) + 1288834974657n) : null;
@@ -1621,6 +1624,10 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       });
     }
     async scan({ post, source = null }) {
+      send("launchState").then((s) => {
+        this.launchOn = s?.state === "on";
+      }).catch(() => {
+      });
       const id = ++this.scanId;
       const stale = () => id !== this.scanId;
       const asked = post?.url || post?.text;
@@ -2009,6 +2016,10 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       const doing = this.watching ? "Watching the video\u2026" : this.lastPost.hasVideo ? "Listening to the video\u2026" : this.lastPost.images?.length ? "Looking at the image\u2026" : "Reading the post\u2026";
       return `<div class="narrative thinking"><span>${doing}</span></div>`;
     }
+    // The way to launch a coin from the post being read, while the server has launching on.
+    launchHtml() {
+      return this.launchOn && isPostLink(this.lastPost?.url) ? '<button type="button" class="launch-btn" data-launch>Launch a coin from this post</button>' : "";
+    }
     renderBody() {
       if (this.view === "settings") {
         this.bodyEl.innerHTML = this.settingsHtml();
@@ -2036,12 +2047,12 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       }
       if (!picks.length && !mentioned.length && !techMatch && this.state.mode === "ai" && this.state.coinable === false) {
         this.bodyEl.innerHTML = `<div class="empty"><div class="big">No coin narrative here</div>
-        <p>This post doesn't carry anything people trade. Try a news post, a trend, or a meme.</p></div>`;
+        <p>This post doesn't carry anything people trade. Try a news post, a trend, or a meme.</p>${this.launchHtml()}</div>`;
         return;
       }
       if (!picks.length && !mentioned.length && !techMatch) {
         this.bodyEl.innerHTML = `<div class="empty"><div class="big">No live coins for this narrative</div>
-        <p>Nothing trading on-chain is about this yet.</p>${this.watchHtml({ cta: true })}</div>`;
+        <p>Nothing trading on-chain is about this yet.</p>${this.watchHtml({ cta: true })}${this.launchHtml()}</div>`;
         return;
       }
       let html = "";
@@ -2084,6 +2095,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
         html = html.replace(/<div class="list"><\/div>/g, "");
         if (shown.length < others.length) html += `<button class="show-more" data-more-matches>Show ${others.length - shown.length} more</button>`;
       }
+      html += this.launchHtml();
       this.bodyEl.innerHTML = html;
       this.hydrateImages();
       for (const t of this.cardTokens()) {
@@ -2153,6 +2165,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       if (t.fromPost) tags.unshift(vsPost?.includes("after") ? `launched ${vsPost}` : "launched off this post");
       else if (vsPost) tags.push(vsPost);
       const twins = this.nameTwins(t);
+      if (launchedWithRadar(t)) tags.unshift("launched with Radar, not by the poster");
       if (twins) tags.push(twins.oldest ? `oldest of ${twins.n}` : `${twins.n} named $${String(t.symbol).trim()}`);
       const matched = t.reason ? esc2(t.reason) : t.matched?.length ? `matches \u201C${esc2(t.matched.slice(0, 2).join("\u201D, \u201C"))}\u201D` : "";
       const open = this.openCards.has(t.address);
@@ -2723,6 +2736,12 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       const again = this.recent?.[e.target.closest("[data-recent]")?.dataset.recent];
       if (again) {
         this.scan({ post: { text: again.q }, source: isPostLink(again.q) ? null : { kind: again.k, label: again.l } });
+        return;
+      }
+      if (e.target.closest("[data-launch]")) {
+        const w2 = 480;
+        const left = Math.max(0, (window.screenX || 0) + (window.outerWidth || w2) - w2 - 32);
+        if (!window.open(launchUrl(this.lastPost.url), "radar-launch", `popup=yes,width=${w2},height=820,left=${left},top=${Math.max(0, (window.screenY || 0) + 48)}`)) window.open(launchUrl(this.lastPost.url), "_blank", "noopener");
         return;
       }
       if (e.target.closest("[data-recent-clear]")) {
@@ -3516,6 +3535,8 @@ svg { display: block; }
 .recent-row span { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--muted); }
 .recent-row em { flex: none; font: 500 11px var(--mono); font-style: normal; color: var(--faint); }
 .recent-row:hover span { color: var(--text); }
+.launch-btn { display: block; width: 100%; min-height: 40px; margin-top: 14px; border: 1px solid var(--line-2); border-radius: 10px; font-weight: 700; color: var(--text); text-align: center; }
+.launch-btn:hover { background: var(--card-2); }
 .retry { margin-top: 14px; height: 34px; padding: 0 16px; border-radius: 10px; border: 1px solid var(--line-2); font-weight: 700; }
 .retry:hover { background: var(--card-2); }
 

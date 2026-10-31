@@ -66,6 +66,10 @@ const pct = (n, digits = 1) => (n == null || !Number.isFinite(+n) ? '—' : `${+
 const soldPct = (bought, held) => (bought > 0 ? Math.max(0, Math.min(100, (1 - held / bought) * 100)) : 0);
 const pctPlain = (n, d = 1) => (n == null || !Number.isFinite(+n) ? '—' : `${(+n).toFixed(d)}%`);
 const num = (n) => (n == null ? '—' : n >= 1e6 ? `${(n / 1e6).toFixed(2)}M` : n >= 1e4 ? `${(n / 1e3).toFixed(1)}K` : Math.round(n).toLocaleString('en-US'));
+const launchUrl = (post) => `https://tryradar.fun/launch?post=${encodeURIComponent(post)}`;
+// A coin launched on tryradar.fun/launch carries this as its website, and says so on its card.
+export const launchedWithRadar = (t) => (t.websites || []).some((w) => /^https:\/\/tryradar\.fun\/launched/.test(w?.url || w));
+
 // X's post ids carry their time.
 export function postTimeOf(postUrl) {
   const id = String(postUrl || '').match(/\/status\/(\d+)/)?.[1];
@@ -295,6 +299,7 @@ class Radar {
   }
 
   async scan({ post, source = null }) {
+    send('launchState').then((s) => { this.launchOn = s?.state === 'on'; }).catch(() => {});
     const id = ++this.scanId;
     const stale = () => id !== this.scanId;
     const asked = post?.url || post?.text;
@@ -689,6 +694,11 @@ class Radar {
     return `<div class="narrative thinking"><span>${doing}</span></div>`;
   }
 
+  // The way to launch a coin from the post being read, while the server has launching on.
+  launchHtml() {
+    return this.launchOn && isPostLink(this.lastPost?.url) ? '<button type="button" class="launch-btn" data-launch>Launch a coin from this post</button>' : '';
+  }
+
   renderBody() {
     if (this.view === 'settings') { this.bodyEl.innerHTML = this.settingsHtml(); return; }
     const { loading, error, picks, others, mentioned, techMatch, ts } = this.state;
@@ -713,12 +723,12 @@ class Radar {
     }
     if (!picks.length && !mentioned.length && !techMatch && this.state.mode === 'ai' && this.state.coinable === false) {
       this.bodyEl.innerHTML = `<div class="empty"><div class="big">No coin narrative here</div>
-        <p>This post doesn't carry anything people trade. Try a news post, a trend, or a meme.</p></div>`;
+        <p>This post doesn't carry anything people trade. Try a news post, a trend, or a meme.</p>${this.launchHtml()}</div>`;
       return;
     }
     if (!picks.length && !mentioned.length && !techMatch) {
       this.bodyEl.innerHTML = `<div class="empty"><div class="big">No live coins for this narrative</div>
-        <p>Nothing trading on-chain is about this yet.</p>${this.watchHtml({ cta: true })}</div>`;
+        <p>Nothing trading on-chain is about this yet.</p>${this.watchHtml({ cta: true })}${this.launchHtml()}</div>`;
       return;
     }
     let html = '';
@@ -760,6 +770,7 @@ class Radar {
       html = html.replace(/<div class="list"><\/div>/g, '');
       if (shown.length < others.length) html += `<button class="show-more" data-more-matches>Show ${others.length - shown.length} more</button>`;
     }
+    html += this.launchHtml();
     this.bodyEl.innerHTML = html;
     this.hydrateImages();
     for (const t of this.cardTokens()) {
@@ -831,6 +842,7 @@ class Radar {
     if (t.fromPost) tags.unshift(vsPost?.includes('after') ? `launched ${vsPost}` : 'launched off this post');
     else if (vsPost) tags.push(vsPost);
     const twins = this.nameTwins(t);
+    if (launchedWithRadar(t)) tags.unshift('launched with Radar, not by the poster');
     if (twins) tags.push(twins.oldest ? `oldest of ${twins.n}` : `${twins.n} named $${String(t.symbol).trim()}`);
     const matched = t.reason ? esc(t.reason) : t.matched?.length ? `matches “${esc(t.matched.slice(0, 2).join('”, “'))}”` : '';
     const open = this.openCards.has(t.address);
@@ -1375,6 +1387,12 @@ class Radar {
     if (trend) { this.scan({ post: { text: `Trending on X: ${trend.dataset.trend}` }, source: { kind: 'Trend', label: trend.dataset.trend } }); return; }
     const again = this.recent?.[e.target.closest('[data-recent]')?.dataset.recent];
     if (again) { this.scan({ post: { text: again.q }, source: isPostLink(again.q) ? null : { kind: again.k, label: again.l } }); return; }
+    if (e.target.closest('[data-launch]')) {
+      const w = 480;
+      const left = Math.max(0, (window.screenX || 0) + (window.outerWidth || w) - w - 32);
+      if (!window.open(launchUrl(this.lastPost.url), 'radar-launch', `popup=yes,width=${w},height=820,left=${left},top=${Math.max(0, (window.screenY || 0) + 48)}`)) window.open(launchUrl(this.lastPost.url), '_blank', 'noopener');
+      return;
+    }
     if (e.target.closest('[data-recent-clear]')) { this.recent = []; this.renderBody(); send('recentClear').catch(() => {}); return; }
     if (e.target.closest('[data-retry]')) { this.rescan(); return; }
     const term = e.target.closest('[data-term]');

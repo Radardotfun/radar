@@ -3,6 +3,7 @@
 //   POST /judge     { narrative, post, candidates }  -> { matches: [{ i, score, reason }] }
 //   POST /match     { post, logos }                  -> { same: [i] }: coin logos showing the post's own picture
 //   GET  /larpcheck?address=<CA>                     -> Larpcheck's verdict on the coin (see below)
+import { launchState, launchMeta, launchMetaFile, launchRecord, launchList } from './launch.js';
 import { engine, interpret, judge, storyCheck, transcribe, sameImage, LOGO_HOST } from './narrative.js';
 import { holderOn, holderConfig, holderVerify, holderWho } from './holder.js';
 import { recordPost } from './ledger.js';
@@ -134,7 +135,7 @@ async function route(kind, request, env, ctx) {
 // Reads for the bundle scan, plus what Quick Buy (tryradar.fun/trade) needs: a balance, a simulation, sending the
 // wallet-signed buy and its status. Browsers can't call the public RPC from a website (it refuses an Origin header).
 const RPC_METHODS = new Set(['getSlot', 'getBlockTime', 'getBlock', 'getBlocks', 'getSignaturesForAddress', 'getTokenSupply', 'getAccountInfo', 'getMultipleAccounts', 'getTransaction',
-  'getBalance', 'simulateTransaction', 'sendTransaction', 'getSignatureStatuses']);
+  'getBalance', 'simulateTransaction', 'sendTransaction', 'getSignatureStatuses', 'getLatestBlockhash']);
 
 // The secret as a usable https endpoint, or null. A pasted URL often carries a newline or stray quotes,
 // and fetch() throws on those, which would take the whole Worker down with it. The value holds an API
@@ -277,6 +278,19 @@ export default {
     const { pathname } = new URL(request.url);
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
     if (pathname === '/rpc' && request.method === 'POST') return rpcRelay(request, env);
+    // Launching a coin from a post (server/launch.js).
+    if (pathname === '/launch/settings' && request.method === 'GET') return json(200, { state: launchState(env) });
+    if (pathname === '/launch/list' && request.method === 'GET') return json(200, await launchList(env));
+    const launchFile = request.method === 'GET' && pathname.match(/^\/launch\/meta\/([0-9a-f]{24})\.(json|jpg|png|webp)$/);
+    if (launchFile) return launchMetaFile(launchFile[1], launchFile[2], env, new URL(request.url).origin, CORS);
+    if ((pathname === '/launch/meta' || pathname === '/launch/record') && request.method === 'POST') {
+      if (limited(`launch:${request.headers.get('cf-connecting-ip') || 'anon'}`, pathname === '/launch/meta' ? 10 : 40)) return json(429, { error: 'Too many tries. Wait a few minutes.' });
+      if (Number(request.headers.get('content-length') || 0) > 500_000) return json(413, { error: 'That picture is too big.' });
+      const body = await request.json().catch(() => ({}));
+      const origin = new URL(request.url).origin;
+      const r = pathname === '/launch/meta' ? await launchMeta(body, env, origin) : await launchRecord(body, env, relayUrl(env) || 'https://api.mainnet-beta.solana.com', origin);
+      return json(r.status, r.data);
+    }
     // Scans opened from a bot reply: one number per day, nothing about who opened them.
     const counted = request.method === 'POST' && pathname.match(/^\/count\/(bot|discord|telegram)-scan$/);
     if (counted) {
