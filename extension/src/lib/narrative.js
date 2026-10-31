@@ -39,41 +39,57 @@ const fmtAge = (ms) => {
   return h < 1 ? `${Math.round(h * 60)}m` : h < 48 ? `${Math.round(h)}h` : `${Math.round(h / 24)}d`;
 };
 
-// The coin in the poster's bio, when it's this post's coin. A post read off the page on X has no bio, so it's fetched.
-async function bioCoins(post, read, fullText, chains, apiBase, cached) {
+const postText = (post) => [post.text, post.quoted, post.card, post.parent].filter(Boolean).join('\n');
+
+// Coins whose contract address is written in the post. The panel shows these first, while the engine reads the post.
+export function postCoins(post, chains, cached = passthrough) {
+  const text = postText(post);
+  return cached(`pc:${chains}:${text}`, 60_000, () => mentionedTokens(text, chains, (q) => cached(`q:${q}`, 20_000, () => searchPairs(q))));
+}
+
+// The tokens at the addresses in the poster's bio. Looked up beside the engine's read, so it never holds the read back. A post
+// read off the page on X has no bio, so it's fetched.
+async function bioTokens(post, chains, apiBase, cached) {
   if (post.skipBio) return [];
   const bio = post.bio ?? await (post.url ? cached(`bio:${post.url}`, 3_600_000, async () => {
     const res = await fetch(`${apiBase}/tweet?url=${encodeURIComponent(post.url)}`, { signal: AbortSignal.timeout(8_000) });
     return res.ok ? (await res.json()).post?.bio || '' : '';
   }).catch(() => '') : '');
+  const found = await Promise.all(bioCas({ bio }).map((ca) => mentionedTokens(ca, chains, (q) => cached(`q:${q}`, 20_000, () => searchPairs(q))).then(([t]) => t).catch(() => null)));
+  return found.filter(Boolean);
+}
+// The one of them that's this post's coin.
+function tiedBioCoin(tokens, post, read, fullText) {
   const typed = tickersIn(fullText);
   const words = [...(read.anchors || []), ...(read.terms || []), ...fullText.split(/[^\p{L}\p{N}]+/u).filter((w) => w.length >= 3)];
-  for (const ca of bioCas({ bio })) {
-    const [t] = await mentionedTokens(ca, chains, (q) => cached(`q:${q}`, 20_000, () => searchPairs(q))).catch(() => []);
-    if (t && ((t.marketCap || 0) >= 1000 || typed.includes(sym(t))) && tiedToBio(t, post, words, typed)) return [t];
-  }
-  return [];
+  return tokens.filter((t) => ((t.marketCap || 0) >= 1000 || typed.includes(sym(t))) && tiedToBio(t, post, words, typed)).slice(0, 1);
 }
+
+// How long a quick read waits for a video's speech, which took 5.6 s on a short clip. The panel reads again once it's in.
+const SPEECH_WAIT_MS = 2_000;
 
 /** Stage 1: what is this post's coin narrative? */
 export async function readPost(post, chains, { apiBase, cached = passthrough }) {
-  const fullText = [post.text, post.quoted, post.card, post.parent].filter(Boolean).join('\n');
+  const fullText = postText(post);
   // Warm the coin searches while the engine reads: names written in the post are usually among
   // its terms. Nothing here is shown; it only fills the search cache.
   for (const k of extractKeywords(fullText.replace(SOL_CA, ' ').replace(EVM_CA, ' '), 3, { strongOnly: true })) {
     cached(`q:${k.toLowerCase()}`, 300_000, () => searchPairs(k)).catch(() => {});
   }
   // Speech in the video (transcribed by the engine) and coins written in the post, in parallel.
-  const [mentioned, transcript, videoNotes] = await Promise.all([
-    mentionedTokens(fullText, chains, (q) => cached(`q:${q}`, 20_000, () => searchPairs(q))),
-    post.videoUrl && !post.gif
-      ? cached(`tr:${post.videoUrl}`, 3_600_000, () => engine(apiBase, 'transcribe', { videoUrl: post.videoUrl })).then((r) => r.text).catch(() => '')
-      : '',
+  const speech = post.videoUrl && !post.gif
+    ? cached(`tr:${post.videoUrl}`, 3_600_000, () => engine(apiBase, 'transcribe', { videoUrl: post.videoUrl })).then((r) => r.text).catch(() => '')
+    : '';
+  const bioLookup = bioTokens(post, chains, apiBase, cached);
+  const [inPost, transcript, videoNotes] = await Promise.all([
+    postCoins(post, chains, cached),
+    post.quickRead ? Promise.race([speech, new Promise((resolve) => setTimeout(() => resolve(null), SPEECH_WAIT_MS))]) : speech,
     // The bot can't draw frames as the panel does, so the engine watches the video or GIF for it.
     post.videoUrl && post.watchVideo
       ? cached(`wv:${post.videoUrl}`, 3_600_000, () => engine(apiBase, 'watch', { videoUrl: post.videoUrl }, 50_000)).then((r) => r.text || '').catch(() => '')
       : '',
   ]);
+  const mentioned = [...inPost]; // the shared result stays as it was: coins read off an image are added below
   const full = { ...post, ...(transcript ? { transcript } : {}), ...(videoNotes ? { videoNotes } : {}) };
   // A coin written in the post is the strongest narrative signal: tell the engine what it is.
   const named = mentioned.map((t) => `${t.name} ($${t.symbol})`).join(', ');
@@ -93,8 +109,8 @@ export async function readPost(post, chains, { apiBase, cached = passthrough }) 
   if (fromImages.length) {
     mentioned.push(...await mentionedTokens(fromImages.join(' '), chains, (q) => cached(`q:${q}`, 20_000, () => searchPairs(q))).catch(() => []));
   }
-  const fromBio = mentioned.length ? [] : await bioCoins(post, read, fullText, chains, apiBase, cached);
-  return { narrative: read.narrative, coinable: read.coinable, terms: read.terms || [], anchors: read.anchors || [], judge: read.judge !== false && !read.anchors?.length, mentioned, bioCoins: fromBio, tickers: read.tickers || [], post: full };
+  const fromBio = mentioned.length ? [] : tiedBioCoin(await bioLookup, post, read, fullText);
+  return { speechPending: transcript === null, narrative: read.narrative, coinable: read.coinable, terms: read.terms || [], anchors: read.anchors || [], judge: read.judge !== false && !read.anchors?.length, mentioned, bioCoins: fromBio, tickers: read.tickers || [], post: full };
 }
 
 /** Stage 2: which on-chain coins are really about it? */

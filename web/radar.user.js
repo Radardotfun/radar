@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Radar
 // @namespace    https://tryradar.fun
-// @version      1.7.32
+// @version      1.7.33
 // @description  See the coins behind any post on X and instantly reroute to the biggest match that passes available on-chain safety checks.
 // @homepageURL  https://tryradar.fun
 // @supportURL   https://tryradar.fun
@@ -31,7 +31,7 @@
 // @downloadURL  https://tryradar.fun/radar.user.js
 // ==/UserScript==
 
-// Radar 1.7.32: built from the extension source at https://tryradar.fun. Not financial advice.
+// Radar 1.7.33: built from the extension source at https://tryradar.fun. Not financial advice.
 (() => {
   var __defProp = Object.defineProperty;
   var __export = (target, all) => {
@@ -597,32 +597,41 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     const h = (Date.now() - ms) / 36e5;
     return h < 1 ? `${Math.round(h * 60)}m` : h < 48 ? `${Math.round(h)}h` : `${Math.round(h / 24)}d`;
   };
-  async function bioCoins(post, read, fullText, chains, apiBase, cached) {
+  var postText = (post) => [post.text, post.quoted, post.card, post.parent].filter(Boolean).join("\n");
+  function postCoins(post, chains, cached = passthrough) {
+    const text = postText(post);
+    return cached(`pc:${chains}:${text}`, 6e4, () => mentionedTokens(text, chains, (q) => cached(`q:${q}`, 2e4, () => searchPairs(q))));
+  }
+  async function bioTokens(post, chains, apiBase, cached) {
     if (post.skipBio) return [];
     const bio = post.bio ?? await (post.url ? cached(`bio:${post.url}`, 36e5, async () => {
       const res = await gmFetch(`${apiBase}/tweet?url=${encodeURIComponent(post.url)}`, { signal: AbortSignal.timeout(8e3) });
       return res.ok ? (await res.json()).post?.bio || "" : "";
     }).catch(() => "") : "");
+    const found = await Promise.all(bioCas({ bio }).map((ca) => mentionedTokens(ca, chains, (q) => cached(`q:${q}`, 2e4, () => searchPairs(q))).then(([t]) => t).catch(() => null)));
+    return found.filter(Boolean);
+  }
+  function tiedBioCoin(tokens, post, read, fullText) {
     const typed = tickersIn(fullText);
     const words = [...read.anchors || [], ...read.terms || [], ...fullText.split(/[^\p{L}\p{N}]+/u).filter((w) => w.length >= 3)];
-    for (const ca of bioCas({ bio })) {
-      const [t] = await mentionedTokens(ca, chains, (q) => cached(`q:${q}`, 2e4, () => searchPairs(q))).catch(() => []);
-      if (t && ((t.marketCap || 0) >= 1e3 || typed.includes(sym(t))) && tiedToBio(t, post, words, typed)) return [t];
-    }
-    return [];
+    return tokens.filter((t) => ((t.marketCap || 0) >= 1e3 || typed.includes(sym(t))) && tiedToBio(t, post, words, typed)).slice(0, 1);
   }
+  var SPEECH_WAIT_MS = 2e3;
   async function readPost(post, chains, { apiBase, cached = passthrough }) {
-    const fullText = [post.text, post.quoted, post.card, post.parent].filter(Boolean).join("\n");
+    const fullText = postText(post);
     for (const k of extractKeywords(fullText.replace(SOL_CA, " ").replace(EVM_CA, " "), 3, { strongOnly: true })) {
       cached(`q:${k.toLowerCase()}`, 3e5, () => searchPairs(k)).catch(() => {
       });
     }
-    const [mentioned, transcript, videoNotes] = await Promise.all([
-      mentionedTokens(fullText, chains, (q) => cached(`q:${q}`, 2e4, () => searchPairs(q))),
-      post.videoUrl && !post.gif ? cached(`tr:${post.videoUrl}`, 36e5, () => engine(apiBase, "transcribe", { videoUrl: post.videoUrl })).then((r) => r.text).catch(() => "") : "",
+    const speech = post.videoUrl && !post.gif ? cached(`tr:${post.videoUrl}`, 36e5, () => engine(apiBase, "transcribe", { videoUrl: post.videoUrl })).then((r) => r.text).catch(() => "") : "";
+    const bioLookup = bioTokens(post, chains, apiBase, cached);
+    const [inPost, transcript, videoNotes] = await Promise.all([
+      postCoins(post, chains, cached),
+      post.quickRead ? Promise.race([speech, new Promise((resolve) => setTimeout(() => resolve(null), SPEECH_WAIT_MS))]) : speech,
       // The bot can't draw frames as the panel does, so the engine watches the video or GIF for it.
       post.videoUrl && post.watchVideo ? cached(`wv:${post.videoUrl}`, 36e5, () => engine(apiBase, "watch", { videoUrl: post.videoUrl }, 5e4)).then((r) => r.text || "").catch(() => "") : ""
     ]);
+    const mentioned = [...inPost];
     const full = { ...post, ...transcript ? { transcript } : {}, ...videoNotes ? { videoNotes } : {} };
     const named = mentioned.map((t) => `${t.name} ($${t.symbol})`).join(", ");
     let read;
@@ -638,8 +647,8 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     if (fromImages.length) {
       mentioned.push(...await mentionedTokens(fromImages.join(" "), chains, (q) => cached(`q:${q}`, 2e4, () => searchPairs(q))).catch(() => []));
     }
-    const fromBio = mentioned.length ? [] : await bioCoins(post, read, fullText, chains, apiBase, cached);
-    return { narrative: read.narrative, coinable: read.coinable, terms: read.terms || [], anchors: read.anchors || [], judge: read.judge !== false && !read.anchors?.length, mentioned, bioCoins: fromBio, tickers: read.tickers || [], post: full };
+    const fromBio = mentioned.length ? [] : tiedBioCoin(await bioLookup, post, read, fullText);
+    return { speechPending: transcript === null, narrative: read.narrative, coinable: read.coinable, terms: read.terms || [], anchors: read.anchors || [], judge: read.judge !== false && !read.anchors?.length, mentioned, bioCoins: fromBio, tickers: read.tickers || [], post: full };
   }
   function anchorHits(t, anchors) {
     const name = norm(t.name || "");
@@ -1213,6 +1222,10 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       if (!res.ok) throw new Error(data.error || `Larpcheck ${res.status}`);
       return data;
     }
+    async function postCoins2({ post }) {
+      const s = await host.settings();
+      return postCoins(post, s.chains, cached);
+    }
     async function mentioned({ text }) {
       const s = await host.settings();
       return cached(`mn:${text}`, 6e4, async () => (await mentionedTokens(String(text || "").slice(0, 2e3), s.chains)).map((t) => ({ address: t.address, chain: t.chain, symbol: t.symbol, name: t.name, marketCap: t.marketCap, createdAt: t.createdAt })));
@@ -1416,7 +1429,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     };
     const recentClear = () => host.store.set(RECENT_KEY, []);
     const launchState = () => cached("launch:state", 6e5, async () => (await gmFetch(`${API_BASE}/launch/settings`, { signal: AbortSignal.timeout(6e3) })).json());
-    const handlers2 = { videoInfo, tweet, read, coins, mentioned, story, larpcheck, refresh, safety, bundle, image, openWindow, reroute, holderStatus, holderSave, holderWho, holderActive, recentList, recentAdd, recentClear, launchState, lcHolders, lcBoard, lcSettings, lcStart, lcAsk, lcPoll, settings: () => host.settings() };
+    const handlers2 = { videoInfo, tweet, read, coins, postCoins: postCoins2, mentioned, story, larpcheck, refresh, safety, bundle, image, openWindow, reroute, holderStatus, holderSave, holderWho, holderActive, recentList, recentAdd, recentClear, launchState, lcHolders, lcBoard, lcSettings, lcStart, lcAsk, lcPoll, settings: () => host.settings() };
     handlers2.resetBundles = () => memo.forEach((_, k) => k.startsWith("bd:") && memo.delete(k));
     return handlers2;
   }
@@ -1766,7 +1779,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       { id: "larpcheck", name: "LarpCheck", url: `https://larpcheck.app/${a}` }
     ];
   }
-  async function frameGrid(src, { cols = 3, rows = 2, cellW = 320, timeoutMs = 15e3 } = {}) {
+  async function frameGrid(src, { cols = 3, rows = 2, cellW = 320, timeoutMs = 6e3 } = {}) {
     const video = document.createElement("video");
     video.crossOrigin = "anonymous";
     video.muted = true;
@@ -1914,7 +1927,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       const asked = post?.url || post?.text;
       this.stopTimers();
       this.lastPost = post;
-      this.state = { ...this.state, loading: true, error: null, narrative: null, engineError: null, source: source ?? this.state.source };
+      this.state = { ...this.state, loading: true, early: [], error: null, narrative: null, engineError: null, source: source ?? this.state.source };
       this.renderHead();
       this.renderBody();
       try {
@@ -1928,6 +1941,18 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
           this.state = { ...this.state, source: full.source };
           this.renderHead();
         }
+        send("postCoins", { post }).then((early) => {
+          if (stale() || !this.state.loading || !early?.length) return;
+          this.state = { ...this.state, early };
+          for (const t of early) this.tokens.set(t.address, t);
+          this.renderBody();
+          this.hydrateImages();
+          for (const t of early) {
+            this.loadAudit(t);
+            this.loadLarp(t);
+          }
+        }).catch(() => {
+        });
         const p = await this.preparePost(post, id);
         if (stale()) return;
         const read = await send("read", { post: p });
@@ -1937,23 +1962,40 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
         const res = await send("coins", { post: p });
         if (stale()) return;
         this.bodyEl.dataset.timing = JSON.stringify(res.timing || {});
-        this.state = { ...this.state, ...res, loading: false };
-        this.tokens.clear();
-        for (const t of [...res.mentioned, ...res.bioCoins || [], ...res.techMatch ? [res.techMatch] : [], ...res.roleCandidates || [], ...res.picks.map((x) => x.token), ...res.others]) this.tokens.set(t.address, t);
-        this.renderHead();
-        this.renderBody();
-        this.renderFoot();
-        this.loadAudits();
-        this.startTimers();
+        this.showCoins(res);
         this.loadStory(p, read.narrative, res, id);
         send("recentAdd", { item: recentItem({ asked, source, narrative: read.narrative, res }) }).catch(() => {
         });
+        if (read.speechPending) this.readSpeech(p, res, id);
       } catch (e) {
         if (stale()) return;
         this.state = { ...this.state, loading: false, error: e.message };
         this.renderHead();
         this.renderBody();
       }
+    }
+    showCoins(res) {
+      this.state = { ...this.state, ...res, loading: false };
+      this.tokens.clear();
+      for (const t of [...res.mentioned, ...res.bioCoins || [], ...res.techMatch ? [res.techMatch] : [], ...res.roleCandidates || [], ...res.picks.map((x) => x.token), ...res.others]) this.tokens.set(t.address, t);
+      this.renderHead();
+      this.renderBody();
+      this.renderFoot();
+      this.loadAudits();
+      this.startTimers();
+    }
+    // A video's speech comes in after the first answer. When it changes which coins the post is about, the cards follow.
+    async readSpeech({ quickRead, ...post }, shown, id) {
+      const read = await send("read", { post }).catch(() => null);
+      if (id !== this.scanId || !read?.post?.transcript) return;
+      const res = await send("coins", { post }).catch(() => null);
+      if (id !== this.scanId || !res) return;
+      const coinsOf = (r) => [...r.mentioned, ...(r.picks || []).map((p) => p.token)].map((t) => t.address).join();
+      this.state = { ...this.state, narrative: read.narrative };
+      this.renderHead();
+      if (coinsOf(res) === coinsOf(shown)) return;
+      this.showCoins(res);
+      this.loadStory(post, read.narrative, res, id);
     }
     // Video posts: pull the MP4, grid its frames for the vision model, keep the MP4 for transcription.
     preparePost(post, id = null) {
@@ -1963,7 +2005,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
           const info = post.videoUrl ? { mp4: post.videoUrl, gif: post.gif } : await send("videoInfo", { url: post.url }).catch(() => null);
           if (!info?.mp4) return post;
           const grid = await frameGrid(info.mp4).catch(() => null);
-          return { ...post, videoUrl: info.mp4, gif: info.gif, images: [grid, ...post.images || []].filter(Boolean).slice(0, 3) };
+          return { ...post, videoUrl: info.mp4, gif: info.gif, quickRead: true, images: [grid, ...post.images || []].filter(Boolean).slice(0, 3) };
         })());
       }
       if (id === this.scanId) {
@@ -2399,7 +2441,8 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       }
       const { loading, error, picks, others, mentioned, techMatch, ts } = this.state;
       if (loading) {
-        this.bodyEl.innerHTML = [0, 1, 2].map(() => `
+        const early = this.state.early || [];
+        this.bodyEl.innerHTML = (early.length ? `<div class="section-label"><span>In the post</span></div>${early.map((t) => this.cardHtml(this.tokens.get(t.address) || t, { role: "ca" })).join("")}` : "") + [0, 1, 2].slice(early.length ? 1 : 0).map(() => `
         <div class="loading-card"><div class="skel" style="width:30%"></div><div class="skel" style="width:55%"></div><div class="skel" style="height:34px"></div></div>`).join("");
         return;
       }
@@ -2480,8 +2523,8 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     }
     // The poster's bio coin gets its own card, unless a scan's own pick already shows it. A search has no poster.
     bioCards() {
-      const { mode, bioCoins: bioCoins2, picks } = this.state;
-      return mode === "ai" ? (bioCoins2 || []).filter((t) => !(picks || []).some((p) => p.token.address === t.address)) : [];
+      const { mode, bioCoins, picks } = this.state;
+      return mode === "ai" ? (bioCoins || []).filter((t) => !(picks || []).some((p) => p.token.address === t.address)) : [];
     }
     avatarHtml(t) {
       const h = hue(t.address);
@@ -4380,7 +4423,7 @@ svg { display: block; }\r
       return b;
     }
     const CA_RE = /\b(?:[1-9A-HJ-NP-Za-km-z]{32,44}|0x[a-fA-F0-9]{40})\b/;
-    const postText = (article) => [...article.querySelectorAll('[data-testid="tweetText"]')].map(textOf).join("\n");
+    const postText2 = (article) => [...article.querySelectorAll('[data-testid="tweetText"]')].map(textOf).join("\n");
     const caWatch = new IntersectionObserver((entries) => {
       for (const { target, isIntersecting } of entries) {
         if (!isIntersecting) continue;
@@ -4389,7 +4432,7 @@ svg { display: block; }\r
       }
     }, { rootMargin: "300px 0px" });
     async function caLine(article) {
-      const coins = await send2({ type: "mentioned", text: postText(article) }).catch(() => []);
+      const coins = await send2({ type: "mentioned", text: postText2(article) }).catch(() => []);
       const groups = article.querySelectorAll('[role="group"]');
       const group = groups[groups.length - 1];
       if (!coins.length || !group || article.querySelector(".nr-ca")) return;
@@ -4458,7 +4501,7 @@ svg { display: block; }\r
         wrap.appendChild(btn);
         const share = group.lastElementChild;
         group.insertBefore(wrap, share);
-        if (CA_RE.test(postText(article))) caWatch.observe(article);
+        if (CA_RE.test(postText2(article))) caWatch.observe(article);
       }
       if (hint.state === "show" && !hint.el?.isConnected) {
         for (const b of document.querySelectorAll('article[data-testid="tweet"] .nr-btn')) {

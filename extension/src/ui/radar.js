@@ -207,7 +207,7 @@ function terminals(t) {
 
 // Sample frames across a video into one grid image: vision models read one picture far
 // more reliably than many. Runs in the page, so X's own CDN serves the file (CORS-enabled).
-async function frameGrid(src, { cols = 3, rows = 2, cellW = 320, timeoutMs = 15000 } = {}) {
+async function frameGrid(src, { cols = 3, rows = 2, cellW = 320, timeoutMs = 6000 } = {}) {
   const video = document.createElement('video');
   video.crossOrigin = 'anonymous';
   video.muted = true;
@@ -341,7 +341,7 @@ class Radar {
     const asked = post?.url || post?.text;
     this.stopTimers();
     this.lastPost = post;
-    this.state = { ...this.state, loading: true, error: null, narrative: null, engineError: null, source: source ?? this.state.source };
+    this.state = { ...this.state, loading: true, early: [], error: null, narrative: null, engineError: null, source: source ?? this.state.source };
     this.renderHead();
     this.renderBody();
     try {
@@ -355,6 +355,15 @@ class Radar {
         this.state = { ...this.state, source: full.source };
         this.renderHead();
       }
+      // A coin written in the post needs no reading: it shows while the engine works.
+      send('postCoins', { post }).then((early) => {
+        if (stale() || !this.state.loading || !early?.length) return;
+        this.state = { ...this.state, early };
+        for (const t of early) this.tokens.set(t.address, t);
+        this.renderBody();
+        this.hydrateImages();
+        for (const t of early) { this.loadAudit(t); this.loadLarp(t); }
+      }).catch(() => {});
       const p = await this.preparePost(post, id);
       if (stale()) return;
       // Stage 1: show the narrative as soon as it's read.
@@ -366,22 +375,41 @@ class Radar {
       const res = await send('coins', { post: p });
       if (stale()) return;
       this.bodyEl.dataset.timing = JSON.stringify(res.timing || {});
-      this.state = { ...this.state, ...res, loading: false };
-      this.tokens.clear();
-      for (const t of [...res.mentioned, ...(res.bioCoins || []), ...(res.techMatch ? [res.techMatch] : []), ...(res.roleCandidates || []), ...res.picks.map((x) => x.token), ...res.others]) this.tokens.set(t.address, t);
-      this.renderHead();
-      this.renderBody();
-      this.renderFoot();
-      this.loadAudits();
-      this.startTimers();
+      this.showCoins(res);
       this.loadStory(p, read.narrative, res, id);
       send('recentAdd', { item: recentItem({ asked, source, narrative: read.narrative, res }) }).catch(() => {});
+      if (read.speechPending) this.readSpeech(p, res, id);
     } catch (e) {
       if (stale()) return;
       this.state = { ...this.state, loading: false, error: e.message };
       this.renderHead();
       this.renderBody();
     }
+  }
+
+  showCoins(res) {
+    this.state = { ...this.state, ...res, loading: false };
+    this.tokens.clear();
+    for (const t of [...res.mentioned, ...(res.bioCoins || []), ...(res.techMatch ? [res.techMatch] : []), ...(res.roleCandidates || []), ...res.picks.map((x) => x.token), ...res.others]) this.tokens.set(t.address, t);
+    this.renderHead();
+    this.renderBody();
+    this.renderFoot();
+    this.loadAudits();
+    this.startTimers();
+  }
+
+  // A video's speech comes in after the first answer. When it changes which coins the post is about, the cards follow.
+  async readSpeech({ quickRead, ...post }, shown, id) {
+    const read = await send('read', { post }).catch(() => null);
+    if (id !== this.scanId || !read?.post?.transcript) return;
+    const res = await send('coins', { post }).catch(() => null);
+    if (id !== this.scanId || !res) return;
+    const coinsOf = (r) => [...r.mentioned, ...(r.picks || []).map((p) => p.token)].map((t) => t.address).join();
+    this.state = { ...this.state, narrative: read.narrative };
+    this.renderHead();
+    if (coinsOf(res) === coinsOf(shown)) return;
+    this.showCoins(res);
+    this.loadStory(post, read.narrative, res, id);
   }
 
   // Video posts: pull the MP4, grid its frames for the vision model, keep the MP4 for transcription.
@@ -393,7 +421,7 @@ class Radar {
         const info = post.videoUrl ? { mp4: post.videoUrl, gif: post.gif } : await send('videoInfo', { url: post.url }).catch(() => null);
         if (!info?.mp4) return post;
         const grid = await frameGrid(info.mp4).catch(() => null);
-        return { ...post, videoUrl: info.mp4, gif: info.gif, images: [grid, ...(post.images || [])].filter(Boolean).slice(0, 3) };
+        return { ...post, videoUrl: info.mp4, gif: info.gif, quickRead: true, images: [grid, ...(post.images || [])].filter(Boolean).slice(0, 3) };
       })());
     }
     if (id === this.scanId) {
@@ -826,7 +854,9 @@ class Radar {
     if (this.view === 'settings') { this.bodyEl.innerHTML = this.settingsHtml(); return; }
     const { loading, error, picks, others, mentioned, techMatch, ts } = this.state;
     if (loading) {
-      this.bodyEl.innerHTML = [0, 1, 2].map(() => `
+      const early = this.state.early || [];
+      this.bodyEl.innerHTML = (early.length ? `<div class="section-label"><span>In the post</span></div>${early.map((t) => this.cardHtml(this.tokens.get(t.address) || t, { role: 'ca' })).join('')}` : '')
+        + [0, 1, 2].slice(early.length ? 1 : 0).map(() => `
         <div class="loading-card"><div class="skel" style="width:30%"></div><div class="skel" style="width:55%"></div><div class="skel" style="height:34px"></div></div>`).join('');
       return;
     }

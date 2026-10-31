@@ -16,10 +16,19 @@
   <meta name="twitter:image" content="https://tryradar.fun/icons/scan-card.png" />
   <link rel="icon" href="/icons/icon32.png" sizes="32x32" />
   <link rel="apple-touch-icon" href="/icons/icon512.png" />
+  <link rel="preconnect" href="https://narrative-radar.millenia-portfolio.workers.dev" crossorigin />
+  <link rel="preconnect" href="https://api.dexscreener.com" crossorigin />
+  <script>
+    // A scan link starts reading its post now, not once the app has loaded. The app's own request then finds it in the cache.
+    (function () {
+      var u = new URLSearchParams(location.search).get('url');
+      if (u && /^https:\/\/(x|twitter)\.com\/\w+\/status\/\d+/.test(u.trim())) fetch('https://narrative-radar.millenia-portfolio.workers.dev/tweet?url=' + encodeURIComponent(u.trim())).catch(function () {});
+    })();
+  </script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&family=Geist+Mono:wght@500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/app.css?v=1.7.32" />
+  <link rel="stylesheet" href="/app.css?v=1.7.33" />
 </head>
 <body class="scan-page">
   <header class="nav">
@@ -55,6 +64,6 @@
     <span>Not financial advice. Memecoins are extremely risky.</span>
     <span class="foot-links"><a href="https://github.com/Radardotfun/radar" target="_blank" rel="noopener">Source code</a> · <a href="/privacy">Privacy</a></span>
   </footer>
-  <script src="/scan.js?v=1.7.32"></script>
+  <script src="/scan.js?v=1.7.33"></script>
 </body>
 </html>

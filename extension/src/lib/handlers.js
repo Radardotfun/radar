@@ -2,7 +2,7 @@
 // the web app runs it in the page. Each host supplies its own storage, window opening and RPC.
 import { fullTokens, mentionedTokens, typedCashtags, linkedSymbol, LAUNCHPADS, pickThree } from './market.js';
 import { rugReport, standInReport } from './rugcheck.js';
-import { readPost, findCoins } from './narrative.js';
+import { readPost, findCoins, postCoins as coinsInPost } from './narrative.js';
 import { makeRpc, analyzeLaunch, PUBLIC_RPC } from './solana.js';
 import { pickReroute, marketBlock, reportBlock, rejectionLine } from './reroute.js';
 import { RECENT_KEY, addRecent } from '../ui/recent.js';
@@ -125,6 +125,12 @@ export function makeHandlers(host) {
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || `Larpcheck ${res.status}`);
     return data;
+  }
+
+  // The panel's first cards, while the engine reads the post.
+  async function postCoins({ post }) {
+    const s = await host.settings();
+    return coinsInPost(post, s.chains, cached);
   }
 
   // Coins whose CA is written in a post: shown under it right away, no AI involved.
@@ -351,7 +357,7 @@ export function makeHandlers(host) {
   const recentClear = () => host.store.set(RECENT_KEY, []);
   const launchState = () => cached('launch:state', 600_000, async () => (await fetch(`${API_BASE}/launch/settings`, { signal: AbortSignal.timeout(6000) })).json());
 
-  const handlers = { videoInfo, tweet, read, coins, mentioned, story, larpcheck, refresh, safety, bundle, image, openWindow, reroute, holderStatus, holderSave, holderWho, holderActive, recentList, recentAdd, recentClear, launchState, lcHolders, lcBoard, lcSettings, lcStart, lcAsk, lcPoll, settings: () => host.settings() };
+  const handlers = { videoInfo, tweet, read, coins, postCoins, mentioned, story, larpcheck, refresh, safety, bundle, image, openWindow, reroute, holderStatus, holderSave, holderWho, holderActive, recentList, recentAdd, recentClear, launchState, lcHolders, lcBoard, lcSettings, lcStart, lcAsk, lcPoll, settings: () => host.settings() };
   // Changing the RPC drops cached bundle results so they're re-read through the new one.
   handlers.resetBundles = () => memo.forEach((_, k) => k.startsWith('bd:') && memo.delete(k));
   return handlers;
