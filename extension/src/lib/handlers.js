@@ -98,6 +98,35 @@ export function makeHandlers(host) {
     });
   }
 
+  // More of Larpcheck through our server: holder data for chains Radar's own check doesn't cover, its lists, and for
+  // holders with a plan on the server, new checks and questions.
+  const lcGet = async (path, ttl) => cached(`lc:${path}`, ttl, async () => {
+    const res = await fetch(`${API_BASE}${path}`, { signal: AbortSignal.timeout(12_000) });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `Larpcheck ${res.status}`);
+    return data;
+  });
+  const lcHolders = ({ address, chain }) => lcGet(`/lc/holders?address=${encodeURIComponent(address)}&chain=${encodeURIComponent(chain)}`, 300_000);
+  const lcBoard = ({ sort }) => lcGet(`/lc/board?sort=${encodeURIComponent(sort)}`, 300_000);
+  const lcSettings = () => lcGet('/lc/settings', 600_000);
+  async function lcHolderPost(path, body) {
+    const h = await holderStored();
+    if (!h) throw new Error('This is for $RADAR holders. Check your wallet first.');
+    const res = await fetch(`${API_BASE}${path}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ token: h.token, ...body }), signal: AbortSignal.timeout(50_000) });
+    const data = await res.json().catch(() => ({}));
+    if (res.status === 401) await host.store.set(HOLDER_KEY, null);
+    if (!res.ok) throw new Error(data.error || `Larpcheck ${res.status}`);
+    return data;
+  }
+  const lcStart = ({ input }) => lcHolderPost('/lc/check', { input });
+  const lcAsk = ({ id, question }) => lcHolderPost('/lc/ask', { id, question });
+  async function lcPoll({ id }) {
+    const res = await fetch(`${API_BASE}/lc/check?id=${encodeURIComponent(id)}`, { signal: AbortSignal.timeout(15_000) });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `Larpcheck ${res.status}`);
+    return data;
+  }
+
   // Coins whose CA is written in a post: shown under it right away, no AI involved.
   async function mentioned({ text }) {
     const s = await host.settings();
@@ -303,7 +332,7 @@ export function makeHandlers(host) {
   const recentClear = () => host.store.set(RECENT_KEY, []);
   const launchState = () => cached('launch:state', 600_000, async () => (await fetch(`${API_BASE}/launch/settings`, { signal: AbortSignal.timeout(6000) })).json());
 
-  const handlers = { videoInfo, tweet, read, coins, mentioned, story, larpcheck, refresh, safety, bundle, image, openWindow, reroute, holderStatus, holderSave, holderWho, holderActive, recentList, recentAdd, recentClear, launchState, settings: () => host.settings() };
+  const handlers = { videoInfo, tweet, read, coins, mentioned, story, larpcheck, refresh, safety, bundle, image, openWindow, reroute, holderStatus, holderSave, holderWho, holderActive, recentList, recentAdd, recentClear, launchState, lcHolders, lcBoard, lcSettings, lcStart, lcAsk, lcPoll, settings: () => host.settings() };
   // Changing the RPC drops cached bundle results so they're re-read through the new one.
   handlers.resetBundles = () => memo.forEach((_, k) => k.startsWith('bd:') && memo.delete(k));
   return handlers;

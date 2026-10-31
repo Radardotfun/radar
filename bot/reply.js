@@ -57,7 +57,7 @@ export function replyEntries(result, now = Date.now()) {
 // an app's first 7 days ("Crypto addresses are prohibited for the first 7 days after authentication").
 // `links: true` puts each coin's DexScreener page on its own line instead (the address travels inside the link). A
 // post with a link costs $0.20 instead of $0.01, so this is only for the week X refuses addresses as text.
-export function botReply(result, postUrl, now = Date.now(), { full = true, links = false } = {}) {
+export function botReply(result, postUrl, now = Date.now(), { full = true, links = false, larp = null } = {}) {
   const entries = replyEntries(result, now);
   if (!entries.length) return null;
   const lines = [];
@@ -78,7 +78,11 @@ export function botReply(result, postUrl, now = Date.now(), { full = true, links
   // The time keeps two replies about the same post from being identical, which X refuses as duplicates.
   const at = new Date(now).toISOString().slice(11, 16);
   const head = `Coins on this post (${at} UTC):`;
-  if (links) return [head, `Full scan + Insta Buy: ${scanUrl(postUrl)}&from=bot`, '', ...lines].join('\n').trimEnd();
+  // Larpcheck's verdict on the first coin, only in a reply with links: their terms need a link wherever it's shown. Plain
+  // ticker, as X allows one cashtag a post.
+  const verdict = links && larp?.checked && /^[A-Z ]{2,20}$/.test(larp.verdict || '') && /^https:\/\/larpcheck\.app\//.test(larp.url || '')
+    ? [`Larpcheck on ${ticker(entries[0].t.symbol)}: ${larp.verdict}${(larp.total ?? larp.score) == null ? '' : ` ${larp.total ?? larp.score}`}`, larp.url] : [];
+  if (links) return [head, `Full scan + Insta Buy: ${scanUrl(postUrl)}&from=bot`, '', ...lines, ...verdict].join('\n').trimEnd();
   return [head, '', ...lines, 'Full scan + Insta Buy: link in bio'].join('\n');
 }
 

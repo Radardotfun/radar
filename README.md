@@ -65,6 +65,16 @@ One tap opens the biggest coin on the post that passes the holder check, or tell
 - **Limits:** one launch per post per wallet on this page, and a warning when a ticker is already used. A coin can't be removed from Solana once it's live, and these checks can't stop someone calling pump.fun directly. Radar doesn't check or endorse these coins.
 - **`LAUNCH_STATE`** on the server can hide the panel button or switch launching off, with no store update.
 
+## What Radar uses from Larpcheck
+
+Radar reads verdicts, holder data and lists from [Larpcheck's API](https://larpcheck.app/developers) through its server (`server/lc.js`), which holds the key. It names Larpcheck, links every verdict to its check, and never rewords one.
+
+- **Coin cards:** Larpcheck's verdict, and its holder reading on chains Radar's own holder check doesn't cover.
+- **Buy pages:** the verdict, above the buy button. It never blocks or changes a buy.
+- **The bot:** the verdict and its link, in replies that carry links.
+- **The panel:** Larpcheck's most asked, most real and most larp coins of the day.
+- **$RADAR holders:** Larpcheck's record of an account's posts, and an alert when a coin in their feed turns bad. Starting a check and asking about one need a Larpcheck API plan, and stay off without one.
+
 ## The Radar bot on X
 
 Tag **@radardotfunn** under any post on X and it replies with that post's coins: the highest market cap, the OG and the mover, each with its number and its contract (a DexScreener link until 5 November 2026, while X refuses crypto addresses from a new app; the address itself after that). It runs on Cloudflare ([bot/worker.js](bot/worker.js)) with the same scan as the extension and the web version, and it checks for tags every minute.

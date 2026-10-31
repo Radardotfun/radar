@@ -1,6 +1,6 @@
 import { makeHandlers, API_BASE, DEFAULTS } from './lib/handlers.js';
 import { listWallets, buy, KEY_RE, FRONTRUN_ORIGIN } from './lib/frontrun.js';
-import { newWatch, checkWatch, buyUrl, chartUrl, MAX_WATCHES } from './lib/alerts.js';
+import { newWatch, verdictTurned, checkWatch, buyUrl, chartUrl, MAX_WATCHES } from './lib/alerts.js';
 import { reportBlock } from './ui/holdercheck.js';
 
 export { API_BASE, DEFAULTS };
@@ -192,7 +192,7 @@ async function notify(item) {
   const opts = {
     type: 'basic',
     iconUrl: ext.runtime.getURL('icons/icon128.png'),
-    title: `New coin off ${item.watch.author ? `@${item.watch.author}'s` : 'a watched'} post: $${String(c.symbol || '').slice(0, 14)}`,
+    title: item.kind === 'verdict' ? `Larpcheck now says ${item.larp.word}: $${String(c.symbol || '').slice(0, 14)}` : `New coin off ${item.watch.author ? `@${item.watch.author}'s` : 'a watched'} post: $${String(c.symbol || '').slice(0, 14)}`,
     message: [line, [larp, item.holders?.text].filter(Boolean).join(' · ')].filter(Boolean).join('\n'),
     priority: 2,
     buttons: [{ title: item.buy ? (c.chain === 'solana' ? 'Buy on Radar' : 'Trade on Uniswap') : 'Open the chart' }, { title: 'Open the post' }],
@@ -217,6 +217,32 @@ function wireNotifications() {
 }
 wireNotifications();
 ext.permissions.onAdded?.addListener(() => wireNotifications());
+
+// Coins already in the feed get another look at Larpcheck, three a minute. Radar pings when a verdict turns bad, using only
+// Larpcheck's free reads, cached on the server.
+let sweepAt = 0;
+async function sweepVerdicts() {
+  const coins = (await loadAlerts()).feed.filter((f) => !f.kind && Date.now() - f.at < 24 * 3_600_000);
+  if (!coins.length) return [];
+  const picks = Array.from({ length: Math.min(3, coins.length) }, (_, i) => coins[(sweepAt + i) % coins.length]);
+  sweepAt += picks.length;
+  const seen = await Promise.all(picks.map(async (f) => ({ id: f.id, lc: await handlers.larpcheck({ address: f.coin.address }).catch(() => null) })));
+  return withAlerts(async (a) => {
+    const added = [];
+    for (const { id, lc } of seen) {
+      const f = a.feed.find((x) => x.id === id);
+      if (!f || !lc?.checked || f.larp?.word === lc.verdict) continue;
+      const larp = { by: 'Larpcheck', word: lc.verdict, score: lc.score ?? null, url: lc.url || lc.page || null };
+      if (verdictTurned(f.larp?.word, lc.verdict)) added.push({ ...f, id: `${f.id}:${lc.verdict}`, kind: 'verdict', at: Date.now(), larp });
+      f.larp = larp;
+    }
+    const fresh = added.filter((n) => !a.feed.some((x) => x.id === n.id));
+    a.feed = [...fresh, ...a.feed].slice(0, 30);
+    a.unread += fresh.length;
+    if (fresh.length) showBadge(a.unread);
+    return fresh;
+  });
+}
 
 // One pass over every watch. Searches and checks run outside the queue; only the bookkeeping waits in it.
 let checking = false;
@@ -258,6 +284,7 @@ async function runAlertChecks() {
       return added;
     });
     for (const item of fresh) await notify(item);
+    for (const item of await sweepVerdicts()) await notify(item);
   } finally {
     checking = false;
   }

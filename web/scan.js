@@ -1,4 +1,4 @@
-// Radar 1.7.26 on the web: built from the extension source at https://tryradar.fun. Not financial advice.
+// Radar 1.7.27 on the web: built from the extension source at https://tryradar.fun. Not financial advice.
 (() => {
   // extension/src/lib/keywords.js
   var STOP = new Set(`a about above after again against all almost also am an and any are aren as at be because been before
@@ -1007,6 +1007,32 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
         return data;
       });
     }
+    const lcGet = async (path, ttl) => cached(`lc:${path}`, ttl, async () => {
+      const res = await fetch(`${API_BASE}${path}`, { signal: AbortSignal.timeout(12e3) });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `Larpcheck ${res.status}`);
+      return data;
+    });
+    const lcHolders = ({ address, chain }) => lcGet(`/lc/holders?address=${encodeURIComponent(address)}&chain=${encodeURIComponent(chain)}`, 3e5);
+    const lcBoard = ({ sort }) => lcGet(`/lc/board?sort=${encodeURIComponent(sort)}`, 3e5);
+    const lcSettings = () => lcGet("/lc/settings", 6e5);
+    async function lcHolderPost(path, body) {
+      const h = await holderStored();
+      if (!h) throw new Error("This is for $RADAR holders. Check your wallet first.");
+      const res = await fetch(`${API_BASE}${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ token: h.token, ...body }), signal: AbortSignal.timeout(5e4) });
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 401) await host.store.set(HOLDER_KEY, null);
+      if (!res.ok) throw new Error(data.error || `Larpcheck ${res.status}`);
+      return data;
+    }
+    const lcStart = ({ input }) => lcHolderPost("/lc/check", { input });
+    const lcAsk = ({ id, question }) => lcHolderPost("/lc/ask", { id, question });
+    async function lcPoll({ id }) {
+      const res = await fetch(`${API_BASE}/lc/check?id=${encodeURIComponent(id)}`, { signal: AbortSignal.timeout(15e3) });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `Larpcheck ${res.status}`);
+      return data;
+    }
     async function mentioned({ text }) {
       const s = await host.settings();
       return cached(`mn:${text}`, 6e4, async () => (await mentionedTokens(String(text || "").slice(0, 2e3), s.chains)).map((t) => ({ address: t.address, chain: t.chain, symbol: t.symbol, name: t.name, marketCap: t.marketCap, createdAt: t.createdAt })));
@@ -1190,7 +1216,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     };
     const recentClear = () => host.store.set(RECENT_KEY, []);
     const launchState = () => cached("launch:state", 6e5, async () => (await fetch(`${API_BASE}/launch/settings`, { signal: AbortSignal.timeout(6e3) })).json());
-    const handlers2 = { videoInfo, tweet: tweet2, read, coins, mentioned, story, larpcheck, refresh, safety, bundle, image, openWindow: openWindow2, reroute: reroute2, holderStatus, holderSave, holderWho, holderActive, recentList, recentAdd, recentClear, launchState, settings: () => host.settings() };
+    const handlers2 = { videoInfo, tweet: tweet2, read, coins, mentioned, story, larpcheck, refresh, safety, bundle, image, openWindow: openWindow2, reroute: reroute2, holderStatus, holderSave, holderWho, holderActive, recentList, recentAdd, recentClear, launchState, lcHolders, lcBoard, lcSettings, lcStart, lcAsk, lcPoll, settings: () => host.settings() };
     handlers2.resetBundles = () => memo.forEach((_, k) => k.startsWith("bd:") && memo.delete(k));
     return handlers2;
   }
@@ -1315,7 +1341,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     const n2 = lcScore(lc);
     return ext(lc.url, `<span class="lc-k">Larpcheck</span><b>${esc(lc.verdict)}${n2 == null ? "" : ` ${n2}`}</b><span class="lc-go">\u2197</span>`, "lc-btn", lc.headline || lc.call || "");
   }
-  function lcStoryHtml(lc, { open, symbol, chevron }) {
+  function lcStoryHtml(lc, { open, symbol, chevron, ask = "" }) {
     const stamps = (lc.stamps || []).filter((s) => s.word);
     return `<div class="story ${lcTone(lc.verdict)}">
       <button class="story-top" data-story aria-expanded="${open}">
@@ -1324,6 +1350,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       <div class="story-call">${esc(lc.call || lc.headline || "")}</div>
       ${open ? `${lc.call && lc.headline ? `<p class="lc-headline">${esc(lc.headline)}</p>` : ""}
         ${stamps.length ? `<ul class="findings">${stamps.map((s) => `<li><span>${esc(s.id)}</span>${esc(s.word)}${s.score == null ? "" : ` \xB7 ${s.score}`}</li>`).join("")}</ul>` : ""}` : ""}
+      ${ask}
       <div class="lc-foot"><span>Verdict by <b>Larpcheck</b>${symbol ? ` on $${esc(symbol)}` : ""}</span>${ext(lc.url, "Full report \u2197", "lc-btn")}</div>
     </div>`;
   }
@@ -1599,7 +1626,10 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       if (p) this.scan({ post: p, source });
       else if (!this.state.ts) this.renderBody();
       if (!p) setTimeout(() => this.input?.focus(), 250);
-      if (!p && this.inline) this.loadRecent();
+      if (!p && this.inline) {
+        this.loadRecent();
+        this.loadBoard();
+      }
     }
     // Hovering the radar button starts the work early; the click then picks up the same result.
     prefetch(post) {
@@ -1616,6 +1646,25 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       return this.shell.classList.contains("open");
     }
     /* ----- scanning ----- */
+    // Larpcheck's lists, on the panel before a scan.
+    loadBoard(sort = this.boardSort || "asks") {
+      this.boardSort = sort;
+      send("lcBoard", { sort }).then((d) => {
+        if (this.boardSort !== sort) return;
+        this.board = d?.rows || [];
+        if (!this.state.ts && !this.state.loading && this.view !== "settings") this.renderBody();
+      }).catch(() => {
+      });
+    }
+    boardHtml() {
+      const rows = this.board || [];
+      const tabs = [["asks", "Most asked"], ["real", "Most real"], ["larp", "Most larp"]];
+      if (!rows.length && !this.boardSort) return "";
+      return `<div class="lc-board"><div class="recent-top"><span>Larpcheck today</span><a href="https://larpcheck.app/" target="_blank" rel="noopener noreferrer">larpcheck.app \u2197</a></div>
+      <div class="lc-tabs" role="tablist">${tabs.map(([id, label]) => `<button type="button" role="tab" aria-selected="${this.boardSort === id}" data-board="${id}">${label}</button>`).join("")}</div>
+      ${rows.length ? rows.map((r) => `<div class="lc-row"><button type="button" data-board-coin="${esc2(r.coin)}" data-board-title="${esc2(r.title || "")}"><b>${esc2(r.title || `${r.coin.slice(0, 4)}\u2026${r.coin.slice(-4)}`)}</b></button><a href="${esc2(r.url)}" target="_blank" rel="noopener noreferrer" title="Open this check on Larpcheck">${lcStamp(r)}</a></div>`).join("") : '<p class="lc-none">Nothing on this list yet today.</p>'}
+    </div>`;
+    }
     loadRecent() {
       send("recentList").then((list) => {
         this.recent = list;
@@ -1731,8 +1780,27 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       const slot = card.querySelector("[data-lc]");
       if (slot) slot.innerHTML = lcButtonHtml(lc);
     }
+    // Radar's holder check is Solana only. Elsewhere the card uses Larpcheck's holder panel, credited and linked.
+    async loadLcHolders(t) {
+      const v = await send("lcHolders", { address: t.address, chain: t.chain }).catch(() => null);
+      if (!v?.ready) return;
+      (this.lcHolderData ||= /* @__PURE__ */ new Map()).set(t.address, v);
+      this.renderLcHolders(t.address);
+    }
+    renderLcHolders(addr) {
+      const v = this.lcHolderData?.get(addr);
+      const card = v && this.bodyEl.querySelector(`[data-addr="${addr}"]`);
+      if (!card) return;
+      const h = card.querySelector('[data-k="holders"]');
+      if (h && v.holders != null) h.textContent = num(v.holders);
+      const el = card.querySelector(`[data-lch="${addr}"]`);
+      if (!el || !v.line) return;
+      el.hidden = false;
+      el.className = `hc ${v.ok ? "ok" : "no"}`;
+      el.innerHTML = `<span class="hc-mark">${v.ok ? "\u2713" : "\u2715"}</span><span>${esc2(v.line)}</span><a class="hc-by" href="${esc2(v.page)}" target="_blank" rel="noopener noreferrer">Larpcheck \u2197</a>`;
+    }
     async loadAudit(t, { force = false } = {}) {
-      if (t.chain !== "solana") return;
+      if (t.chain !== "solana") return this.loadLcHolders(t);
       const a = this.audits.get(t.address) || {};
       if (a.loading && !force) return;
       a.loading = true;
@@ -1854,11 +1922,19 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
           this.view = this.view === "settings" ? "scan" : "settings";
           this.renderBody();
         } else if (b.dataset.act === "watch") this.watch();
+        else if (b.dataset.lcCheck) this.runLcCheck(b.dataset.lcCheck);
         else if (b.dataset.act === "unwatch") this.unwatch(b.dataset.id);
         else if ("story" in b.dataset) {
           this.expanded.has("story") ? this.expanded.delete("story") : this.expanded.add("story");
           this.renderHead();
         }
+      });
+      this.headEl.addEventListener("submit", (e) => {
+        const form = e.target.closest("[data-lc-ask]");
+        if (!form) return;
+        e.preventDefault();
+        const q = form.querySelector("input").value.trim();
+        if (q) this.runLcAsk(form.dataset.lcAsk, q);
       });
       this.root.addEventListener("keydown", (e) => {
         if (e.key === "Escape" && !this.inline) this.close();
@@ -1908,6 +1984,11 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     // When Larpcheck has a verdict on the coin, the larp check is theirs, credited and linked to their report.
     // ---------- Who posted this (holders of $RADAR, data from Frontrun; server/holder.js) ----------
     loadHolder() {
+      send("lcSettings").then((s) => {
+        this.lcPlan = !!s?.plan;
+        this.renderHead();
+      }).catch(() => {
+      });
       return send("holderStatus").then((h) => {
         this.holder = h;
         this.renderHead();
@@ -1935,6 +2016,8 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       const own = w.own?.coins;
       const total = own ? own.live + own.deleted : 0;
       if (own) lines.push(total ? `Radar has seen <b>${total}</b> coin${total === 1 ? "" : "s"} from this account${own.deletedPosts ? `, and <b class="who-gone">${own.deletedPosts}</b> of its coin post${own.deletedPosts === 1 ? " is" : "s are"} gone` : ""}` : "Radar hasn't seen this account post a coin yet.");
+      if (w.lc?.checked) lines.push(`Larpcheck has checked <b>${w.lc.checked}</b> post${w.lc.checked === 1 ? "" : "s"} from this account${w.lc.risky ? `, and <b class="who-gone">${w.lc.risky}</b> came back as likely larp, larp or scam` : ""}`);
+      const lcRows = (w.lc?.rows || []).map((r) => `<a class="who-row" href="${esc2(r.url)}" target="_blank" rel="noopener noreferrer"><b>${esc2(r.verdict)}${r.total == null ? "" : ` ${r.total}`}</b><span>${esc2(r.title || "Post")}</span><span>Larpcheck \u2197</span><span></span></a>`).join("");
       const rows = (w.own?.recent || []).map((r) => `<a class="who-row" href="https://x.com/${esc2(handle)}/status/${esc2(r.id)}" target="_blank" rel="noopener noreferrer">
         <b>${r.symbol ? `$${esc2(r.symbol)}` : esc2(`${r.ca.slice(0, 4)}\u2026${r.ca.slice(-4)}`)}</b><span>${r.mc ? usd(r.mc) : "no market"}</span><span>${age(r.at)} ago</span><span class="who-gone">${r.gone ? "post gone" : ""}</span></a>`).join("");
       if (w.smartCount != null) lines.push(`<b>${w.smartCount}</b> smart follower${w.smartCount === 1 ? "" : "s"}${w.smartFinal ? "" : " so far"}${w.smart?.length ? `: ${w.smart.map((s) => `@${esc2(s)}`).join(", ")}` : ""}`);
@@ -1943,6 +2026,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       ${w.label ? `<div class="who-label">${esc2(w.label)}</div>` : ""}
       ${lines.map((l) => `<div class="story-call">${l}</div>`).join("")}
       ${rows ? `<div class="who-rows">${rows}</div>` : ""}
+      ${lcRows ? `<div class="who-rows">${lcRows}</div>` : ""}
       <div class="story-note">Radar's own record, from posts scanned since 30 Oct 2026, so it won't show everything${w.smartCount != null || w.coins ? ". Smart followers from Frontrun" : ""}.</div></div>`;
     }
     async loadWho(handle) {
@@ -1972,7 +2056,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       if (!s || s.error) return "";
       if (s.loading) return `<div class="story loading"><div class="story-top"><span class="story-k">Larp check</span></div><div class="story-call"><span class="spinner"></span>Checking the author, links and coin\u2026</div></div>`;
       const open = this.expanded.has("story");
-      if (s.larpcheck) return lcStoryHtml(s.larpcheck, { open, symbol: s.coin, chevron: I.chevron });
+      if (s.larpcheck) return lcStoryHtml(s.larpcheck, { open, symbol: s.coin, chevron: I.chevron, ask: open ? this.lcAskHtml(s.larpcheck) : "" });
       const tone = ["LIKELY LARP", "LARP"].includes(s.word) ? "risk" : ["REAL", "LIKELY REAL"].includes(s.word) ? "ok" : "mid";
       return `<div class="story ${tone}">
       <button class="story-top" data-story aria-expanded="${open}">
@@ -1981,8 +2065,64 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       <div class="story-call">${esc2(s.call)}</div>
       ${open ? `<ul class="findings">${(s.findings || []).map((f) => `<li class="${esc2(f.kind)}"><span>${esc2(f.kind)}</span>${esc2(f.text)}</li>`).join("")}</ul>
         <div class="story-note">Checks evidence, not people. ${s.coin ? `Read with $${esc2(s.coin)}.` : "No coin was checked."}</div>` : ""}
+      ${this.lcRunHtml(s)}
       ${lcCheckItHtml(s.lcPage, s.coin)}
     </div>`;
+    }
+    // Paid Larpcheck features, for $RADAR holders, only when the server's key has a plan (/lc/settings).
+    get lcPerks() {
+      return !!(this.lcPlan && this.holder?.holder);
+    }
+    lcRunHtml(s) {
+      if (!s.lcPage || !s.lcAddress) return "";
+      const run = this.lcRun?.address === s.lcAddress ? this.lcRun : null;
+      if (run?.error) return `<div class="story-note">${esc2(run.error)}</div>`;
+      if (run) return `<div class="story-call"><span class="spinner"></span>Larpcheck is checking it${run.step ? `: ${esc2(run.step)}` : "\u2026"}</div>`;
+      return this.lcPerks ? `<button type="button" class="who-connect" data-lc-check="${esc2(s.lcAddress)}">Check ${s.coin ? `$${esc2(s.coin)}` : "it"} on Larpcheck now</button>` : "";
+    }
+    lcAskHtml(lc) {
+      if (!this.lcPerks || !lc.id) return "";
+      const a = this.lcAnswer?.id === lc.id ? this.lcAnswer : null;
+      return `<form class="lc-ask" data-lc-ask="${esc2(lc.id)}"><input type="text" maxlength="499" placeholder="Ask Larpcheck about this coin" autocomplete="off" spellcheck="false" /><button type="submit"${a?.busy ? " disabled" : ""}>${a?.busy ? "\u2026" : "Ask"}</button></form>
+      ${a?.error ? `<div class="story-note">${esc2(a.error)}</div>` : ""}
+      ${a?.answer ? `<div class="lc-answer"><p>${esc2(a.answer)}</p><span>Answer by <b>Larpcheck</b></span></div>` : ""}`;
+    }
+    async runLcCheck(address) {
+      this.lcRun = { address };
+      this.renderHead();
+      const scanAtStart = this.scanId;
+      try {
+        const { id } = await send("lcStart", { input: address });
+        for (let i = 0; i < 60; i++) {
+          const c = await send("lcPoll", { id });
+          if (c.error) throw new Error(c.error);
+          if (c.lc) {
+            this.larp.set(address, { lc: c.lc, at: Date.now() });
+            this.lcRun = null;
+            if (scanAtStart === this.scanId && this.state.story?.lcAddress === address) this.state = { ...this.state, story: { larpcheck: c.lc, coin: this.state.story.coin } };
+            this.renderHead();
+            return;
+          }
+          this.lcRun = { address, step: c.step };
+          this.renderHead();
+          await new Promise((r) => setTimeout(r, 5e3));
+        }
+        throw new Error("Larpcheck is still working on this. Look again in a few minutes.");
+      } catch (e) {
+        this.lcRun = { address, error: e.message };
+        this.renderHead();
+      }
+    }
+    async runLcAsk(id, question) {
+      this.lcAnswer = { id, busy: true };
+      this.renderHead();
+      try {
+        const { answer } = await send("lcAsk", { id, question });
+        this.lcAnswer = { id, answer };
+      } catch (e) {
+        this.lcAnswer = { id, error: e.message };
+      }
+      this.renderHead();
     }
     async loadStory(post, narrative, res, id) {
       if (this.state.source?.kind === "Search" || !post?.text && !post?.images?.length) return;
@@ -2001,7 +2141,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       try {
         const s = await send("story", { post, narrative, coin });
         if (id !== this.scanId) return;
-        this.state = { ...this.state, story: { ...s, coin: t?.symbol || null, lcPage: lc?.page || null } };
+        this.state = { ...this.state, story: { ...s, coin: t?.symbol || null, lcPage: lc?.page || null, lcAddress: t?.address || null } };
       } catch (e) {
         if (id !== this.scanId) return;
         this.state = { ...this.state, story: { error: e.message } };
@@ -2041,6 +2181,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
         this.bodyEl.innerHTML = `<div class="empty"><div class="big">Scan any post on X</div>
         <p>${esc2(this.hint || (this.inline ? "Search a narrative, a ticker or a CA above." : "Tap the radar under any post or trend."))}</p>
         ${recent.length ? `<div class="recent-list"><div class="recent-top"><span>Recent</span><button data-recent-clear>Clear</button></div>${recent.map((r, i) => `<button class="recent-row" data-recent="${i}"><b>$${esc2(r.c)}</b><span>${esc2(r.l)}</span><em>${age(r.t)}</em></button>`).join("")}</div>` : ""}
+        ${this.inline ? this.boardHtml() : ""}
         ${trends.length ? `<div class="trend-list"><span>Trending</span>${trends.map((t) => `<button data-trend="${esc2(t)}">${esc2(t)}</button>`).join("")}</div>` : ""}</div>
         ${this.inline && (this.alerts?.watches.length || this.alerts?.feed.length) ? this.alertsHtml() : ""}`;
         return;
@@ -2194,7 +2335,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
           <div><span>Age</span><b data-k="age" title="${t.createdAt ? new Date(t.createdAt).toLocaleString() : ""}">${age(t.createdAt)}</b></div>
           <div><span>Vol 24h</span><b data-k="vol">${usd(t.volume.h24)}</b></div>
         </div>
-        ${t.chain === "solana" ? `<div class="hc" data-hc="${t.address}"><span class="hc-mark wait"></span><span>Checking holders\u2026</span></div>` : ""}
+        ${t.chain === "solana" ? `<div class="hc" data-hc="${t.address}"><span class="hc-mark wait"></span><span>Checking holders\u2026</span></div>` : `<div class="hc" data-lch="${t.address}" hidden></div>`}
         <div class="actions" data-actions="${t.address}">${this.actionsHtml(t)}</div>
         <div class="card-body" aria-hidden="${!open}">
           <div class="card-inner">
@@ -2243,6 +2384,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       </div>`;
     }
     renderAudit(addr) {
+      this.renderLcHolders(addr);
       const card = this.bodyEl.querySelector(`.card[data-addr="${addr}"]`);
       if (!card) return;
       const t = this.tokens.get(addr);
@@ -2733,6 +2875,18 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
         this.scan({ post: { text: `Trending on X: ${trend.dataset.trend}` }, source: { kind: "Trend", label: trend.dataset.trend } });
         return;
       }
+      const tab = e.target.closest("[data-board]");
+      if (tab) {
+        this.board = [];
+        this.loadBoard(tab.dataset.board);
+        this.renderBody();
+        return;
+      }
+      const listed = e.target.closest("[data-board-coin]");
+      if (listed) {
+        this.scan({ post: { text: listed.dataset.boardCoin }, source: { kind: "Larpcheck", label: listed.dataset.boardTitle || listed.dataset.boardCoin } });
+        return;
+      }
       const again = this.recent?.[e.target.closest("[data-recent]")?.dataset.recent];
       if (again) {
         this.scan({ post: { text: again.q }, source: isPostLink(again.q) ? null : { kind: again.k, label: again.l } });
@@ -3118,7 +3272,7 @@ svg { display: block; }
 .card.tech { --role: var(--violet); border-color: color-mix(in srgb, var(--violet) 45%, var(--line)); }
 .card.tech-match { border-color: color-mix(in srgb, var(--violet) 55%, var(--line)); box-shadow: 0 0 0 1px color-mix(in srgb, var(--violet) 24%, transparent); }
 .card.tech-match .tag { color: var(--violet); border-color: color-mix(in srgb, var(--violet) 55%, var(--line-2)); font-weight: 800; }
-.card.ca { --role: var(--accent); }
+.card.ca { --role: var(--accent); display: block; }
 .card.more { --role: var(--muted); }
 
 .card-top { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; position: relative; }
@@ -3537,6 +3691,28 @@ svg { display: block; }
 .recent-row:hover span { color: var(--text); }
 .launch-btn { display: block; width: 100%; min-height: 40px; margin-top: 14px; border: 1px solid var(--line-2); border-radius: 10px; font-weight: 700; color: var(--text); text-align: center; }
 .launch-btn:hover { background: var(--card-2); }
+.hc-by { margin-left: auto; flex: none; font: 600 10px var(--mono); letter-spacing: 0.06em; color: var(--faint); text-decoration: none; white-space: nowrap; }
+.hc-by:hover { color: var(--text); }
+.hc > span:nth-child(2) { min-width: 0; }
+.recent-top a { color: var(--faint); text-decoration: none; letter-spacing: 0; text-transform: none; }
+.recent-top a:hover { color: var(--text); }
+.lc-board { margin-top: 18px; display: flex; flex-direction: column; text-align: left; }
+.lc-tabs { display: flex; gap: 6px; margin: 2px 0 6px; }
+.lc-tabs button { padding: 5px 9px; border: 1px solid var(--line); border-radius: 999px; font: 600 11px var(--font); color: var(--muted); }
+.lc-tabs button[aria-selected="true"] { color: var(--text); border-color: var(--line-2); background: var(--card-2); }
+.lc-row { display: flex; align-items: center; gap: 8px; min-height: 38px; border-bottom: 1px solid var(--line); }
+.lc-row button { flex: 1; min-width: 0; padding: 8px 0; text-align: left; color: var(--text); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.lc-row button:hover { color: var(--muted); }
+.lc-row b { font-weight: 600; }
+.lc-row a { flex: none; text-decoration: none; }
+.lc-none { margin: 10px 0 0; font-size: 12px; color: var(--faint); }
+.lc-ask { display: flex; gap: 6px; margin-top: 10px; }
+.lc-ask input { flex: 1; min-width: 0; height: 32px; padding: 0 10px; border: 1px solid var(--line); border-radius: 9px; background: transparent; color: var(--text); font: 500 12px var(--font); outline: 0; }
+.lc-ask input:focus { border-color: var(--line-2); }
+.lc-ask button { height: 32px; padding: 0 12px; border: 1px solid var(--line-2); border-radius: 9px; font-weight: 700; color: var(--text); }
+.lc-answer { margin-top: 8px; font-size: 12px; color: var(--text); }
+.lc-answer p { margin: 0 0 4px; white-space: pre-wrap; }
+.lc-answer span { font-size: 11px; color: var(--faint); }
 .retry { margin-top: 14px; height: 34px; padding: 0 16px; border-radius: 10px; border: 1px solid var(--line-2); font-weight: 700; }
 .retry:hover { background: var(--card-2); }
 

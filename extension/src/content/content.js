@@ -355,7 +355,7 @@
       const card = document.createElement('div');
       card.className = 'nr-alert';
       card.setAttribute('role', 'alert');
-      card.innerHTML = `<div class="nr-alert-top">${BELL}<span>New coin off ${item.watch.author ? `@${esc(item.watch.author)}'s` : 'a watched'} post</span><button type="button" class="nr-alert-x" data-x aria-label="Close">×</button></div>
+      card.innerHTML = `<div class="nr-alert-top">${BELL}<span>${item.kind === 'verdict' ? `Larpcheck now says ${esc(item.larp.word)}` : `New coin off ${item.watch.author ? `@${esc(item.watch.author)}'s` : 'a watched'} post`}</span><button type="button" class="nr-alert-x" data-x aria-label="Close">×</button></div>
         <div class="nr-alert-coin"><b>$${esc(String(c.symbol || '').trim())}</b><span>${esc(c.name || '')}</span></div>
         <div class="nr-alert-meta">${esc([CHAIN[c.chain] || c.chain, c.marketCap ? `${usd(c.marketCap)} MC` : '', c.createdAt ? `launched ${ageOf(c.createdAt)} ago` : ''].filter(Boolean).join(' · '))}</div>
         <div class="nr-alert-checks">${larp}${holders}</div>

@@ -11,10 +11,11 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&family=Geist+Mono:wght@500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/trade.css?v=1.7.26" />
+  <link rel="stylesheet" href="/trade.css?v=1.7.27" />
   <script defer src="/solana-web3.min.js?v=1.98.4"></script>
-  <script defer src="/quickbuy-guard.js?v=1.7.26"></script>
-  <script defer src="/trade.js?v=1.7.26"></script>
+  <script defer src="/quickbuy-guard.js?v=1.7.27"></script>
+  <script defer src="/trade.js?v=1.7.27"></script>
+  <script defer src="/larp-verdict.js?v=1.7.27"></script>
 </head>
 <body>
   <header class="nav">
@@ -71,6 +72,12 @@
         <span>%</span>
       </div>
       <p class="field-help">The most the price can move before the buy is refused.</p>
+
+      <div id="lc-verdict" class="fee-box check-box lc-verdict" aria-live="polite" hidden>
+        <b></b>
+        <p></p>
+        <a target="_blank" rel="noopener noreferrer"></a>
+      </div>
 
       <div class="fee-box">
         <b>Fees and checks</b>

@@ -3,6 +3,7 @@
 //   POST /judge     { narrative, post, candidates }  -> { matches: [{ i, score, reason }] }
 //   POST /match     { post, logos }                  -> { same: [i] }: coin logos showing the post's own picture
 //   GET  /larpcheck?address=<CA>                     -> Larpcheck's verdict on the coin (see below)
+import { lcBoard, lcHolders, lcSettings, lcStart, lcPoll, lcAsk, lcHandle } from './lc.js';
 import { launchState, launchMeta, launchMetaFile, launchRecord, launchList } from './launch.js';
 import { engine, interpret, judge, storyCheck, transcribe, sameImage, LOGO_HOST } from './narrative.js';
 import { holderOn, holderConfig, holderVerify, holderWho } from './holder.js';
@@ -214,6 +215,7 @@ function larpcheckView(d, id) {
   return {
     checked: true,
     page,
+    id: clip(l.id, 64),
     url: l.url,
     verdict: l.verdict,
     score: Number.isFinite(l.score) ? l.score : null,
@@ -304,6 +306,19 @@ export default {
     if (post) return Response.redirect(new URL(`/?url=${encodeURIComponent(`https://x.com/${post[1]}/status/${post[2]}`)}`, request.url), 302);
     if (pathname === '/tweet' && request.method === 'GET') return readTweet(new URL(request.url).searchParams.get('url'), ctx);
     if (pathname === '/larpcheck' && request.method === 'GET') return larpcheck(request, env, ctx);
+    // More of Larpcheck's API (server/lc.js).
+    if (pathname.startsWith('/lc/')) {
+      if (limited(`lc:${request.headers.get('cf-connecting-ip') || 'anon'}`, 300)) return json(429, { error: 'Too many lookups' });
+      const q = new URL(request.url).searchParams;
+      if (pathname === '/lc/settings' && request.method === 'GET') return json(200, await lcSettings(env, ctx));
+      const out = pathname === '/lc/board' && request.method === 'GET' ? await lcBoard(q.get('sort'), env, ctx)
+        : pathname === '/lc/holders' && request.method === 'GET' ? await lcHolders(q.get('address'), q.get('chain'), env, ctx)
+          : pathname === '/lc/check' && request.method === 'GET' ? await lcPoll(q.get('id'), env)
+            : pathname === '/lc/check' && request.method === 'POST' ? await lcStart(await request.json().catch(() => ({})), env)
+              : pathname === '/lc/ask' && request.method === 'POST' ? await lcAsk(await request.json().catch(() => ({})), env)
+                : { status: 404, data: { error: 'Not found' } };
+      return json(out.status, out.data);
+    }
     // Holder-only data (server/holder.js). 1.7.17 reads /holder/config and its panel promises Frontrun's data, so that
     // route stays off for it; 1.7.18 on reads /holder/settings, whose wording comes from here.
     if (pathname === '/holder/config' && request.method === 'GET') return json(200, { on: false });
@@ -313,6 +328,8 @@ export default {
       if (limited(`holder:${request.headers.get('cf-connecting-ip') || 'anon'}`, 120)) return json(429, { error: 'Too many requests. Try again in a few minutes.' });
       const body = await request.json().catch(() => ({}));
       const r = pathname === '/holder/verify' ? await holderVerify(body, env, relayUrl(env)) : await holderWho(body, env, { limited });
+      // Larpcheck's record of this account's posts, added to Radar's own for holders.
+      if (pathname === '/holder/who' && r.status === 200 && r.body?.handle) r.body.lc = await lcHandle(r.body.handle, env, ctx).catch(() => null);
       return json(r.status, r.body);
     }
     if (pathname === '/health') return json(200, {

@@ -3,7 +3,7 @@ import { coinCheck } from './coincheck.js';
 import { marketBlock, reportBlock } from './holdercheck.js';
 import { recentItem } from './recent.js';
 
-import { lcButtonHtml, lcStoryHtml, lcCheckItHtml } from './larpcheck.js';
+import { lcButtonHtml, lcStoryHtml, lcCheckItHtml, lcStamp } from './larpcheck.js';
 
 // Radar panel — shared by the X overlay (floating) and the toolbar popup (inline).
 
@@ -275,7 +275,7 @@ class Radar {
     if (p) this.scan({ post: p, source });
     else if (!this.state.ts) this.renderBody();
     if (!p) setTimeout(() => this.input?.focus(), 250);
-    if (!p && this.inline) this.loadRecent();
+    if (!p && this.inline) { this.loadRecent(); this.loadBoard(); }
   }
 
   // Hovering the radar button starts the work early; the click then picks up the same result.
@@ -291,6 +291,25 @@ class Radar {
   get isOpen() { return this.shell.classList.contains('open'); }
 
   /* ----- scanning ----- */
+  // Larpcheck's lists, on the panel before a scan.
+  loadBoard(sort = this.boardSort || 'asks') {
+    this.boardSort = sort;
+    send('lcBoard', { sort }).then((d) => {
+      if (this.boardSort !== sort) return;
+      this.board = d?.rows || [];
+      if (!this.state.ts && !this.state.loading && this.view !== 'settings') this.renderBody();
+    }).catch(() => {});
+  }
+  boardHtml() {
+    const rows = this.board || [];
+    const tabs = [['asks', 'Most asked'], ['real', 'Most real'], ['larp', 'Most larp']];
+    if (!rows.length && !this.boardSort) return '';
+    return `<div class="lc-board"><div class="recent-top"><span>Larpcheck today</span><a href="https://larpcheck.app/" target="_blank" rel="noopener noreferrer">larpcheck.app ↗</a></div>
+      <div class="lc-tabs" role="tablist">${tabs.map(([id, label]) => `<button type="button" role="tab" aria-selected="${this.boardSort === id}" data-board="${id}">${label}</button>`).join('')}</div>
+      ${rows.length ? rows.map((r) => `<div class="lc-row"><button type="button" data-board-coin="${esc(r.coin)}" data-board-title="${esc(r.title || '')}"><b>${esc(r.title || `${r.coin.slice(0, 4)}…${r.coin.slice(-4)}`)}</b></button><a href="${esc(r.url)}" target="_blank" rel="noopener noreferrer" title="Open this check on Larpcheck">${lcStamp(r)}</a></div>`).join('') : '<p class="lc-none">Nothing on this list yet today.</p>'}
+    </div>`;
+  }
+
   loadRecent() {
     send('recentList').then((list) => {
       this.recent = list;
@@ -413,8 +432,28 @@ class Radar {
     if (slot) slot.innerHTML = lcButtonHtml(lc);
   }
 
+  // Radar's holder check is Solana only. Elsewhere the card uses Larpcheck's holder panel, credited and linked.
+  async loadLcHolders(t) {
+    const v = await send('lcHolders', { address: t.address, chain: t.chain }).catch(() => null);
+    if (!v?.ready) return;
+    (this.lcHolderData ||= new Map()).set(t.address, v);
+    this.renderLcHolders(t.address);
+  }
+  renderLcHolders(addr) {
+    const v = this.lcHolderData?.get(addr);
+    const card = v && this.bodyEl.querySelector(`[data-addr="${addr}"]`);
+    if (!card) return;
+    const h = card.querySelector('[data-k="holders"]');
+    if (h && v.holders != null) h.textContent = num(v.holders);
+    const el = card.querySelector(`[data-lch="${addr}"]`);
+    if (!el || !v.line) return;
+    el.hidden = false;
+    el.className = `hc ${v.ok ? 'ok' : 'no'}`;
+    el.innerHTML = `<span class="hc-mark">${v.ok ? '✓' : '✕'}</span><span>${esc(v.line)}</span><a class="hc-by" href="${esc(v.page)}" target="_blank" rel="noopener noreferrer">Larpcheck ↗</a>`;
+  }
+
   async loadAudit(t, { force = false } = {}) {
-    if (t.chain !== 'solana') return;
+    if (t.chain !== 'solana') return this.loadLcHolders(t);
     const a = this.audits.get(t.address) || {};
     if (a.loading && !force) return;
     a.loading = true;
@@ -527,11 +566,19 @@ class Radar {
       else if (b.dataset.act === 'share') this.share();
       else if (b.dataset.act === 'settings') { this.view = this.view === 'settings' ? 'scan' : 'settings'; this.renderBody(); }
       else if (b.dataset.act === 'watch') this.watch();
+      else if (b.dataset.lcCheck) this.runLcCheck(b.dataset.lcCheck);
       else if (b.dataset.act === 'unwatch') this.unwatch(b.dataset.id);
       else if ('story' in b.dataset) {
         this.expanded.has('story') ? this.expanded.delete('story') : this.expanded.add('story');
         this.renderHead();
       }
+    });
+    this.headEl.addEventListener('submit', (e) => {
+      const form = e.target.closest('[data-lc-ask]');
+      if (!form) return;
+      e.preventDefault();
+      const q = form.querySelector('input').value.trim();
+      if (q) this.runLcAsk(form.dataset.lcAsk, q);
     });
     this.root.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !this.inline) this.close(); });
   }
@@ -585,6 +632,7 @@ class Radar {
   // When Larpcheck has a verdict on the coin, the larp check is theirs, credited and linked to their report.
   // ---------- Who posted this (holders of $RADAR, data from Frontrun; server/holder.js) ----------
   loadHolder() {
+    send('lcSettings').then((s) => { this.lcPlan = !!s?.plan; this.renderHead(); }).catch(() => {});
     return send('holderStatus').then((h) => { this.holder = h; this.renderHead(); }).catch(() => { this.holder = { on: false }; });
   }
 
@@ -605,6 +653,8 @@ class Radar {
     const own = w.own?.coins;
     const total = own ? own.live + own.deleted : 0;
     if (own) lines.push(total ? `Radar has seen <b>${total}</b> coin${total === 1 ? '' : 's'} from this account${own.deletedPosts ? `, and <b class="who-gone">${own.deletedPosts}</b> of its coin post${own.deletedPosts === 1 ? ' is' : 's are'} gone` : ''}` : "Radar hasn't seen this account post a coin yet.");
+    if (w.lc?.checked) lines.push(`Larpcheck has checked <b>${w.lc.checked}</b> post${w.lc.checked === 1 ? '' : 's'} from this account${w.lc.risky ? `, and <b class="who-gone">${w.lc.risky}</b> came back as likely larp, larp or scam` : ''}`);
+    const lcRows = (w.lc?.rows || []).map((r) => `<a class="who-row" href="${esc(r.url)}" target="_blank" rel="noopener noreferrer"><b>${esc(r.verdict)}${r.total == null ? '' : ` ${r.total}`}</b><span>${esc(r.title || 'Post')}</span><span>Larpcheck ↗</span><span></span></a>`).join('');
     const rows = (w.own?.recent || []).map((r) => `<a class="who-row" href="https://x.com/${esc(handle)}/status/${esc(r.id)}" target="_blank" rel="noopener noreferrer">
         <b>${r.symbol ? `$${esc(r.symbol)}` : esc(`${r.ca.slice(0, 4)}…${r.ca.slice(-4)}`)}</b><span>${r.mc ? usd(r.mc) : 'no market'}</span><span>${age(r.at)} ago</span><span class="who-gone">${r.gone ? 'post gone' : ''}</span></a>`).join('');
     if (w.smartCount != null) lines.push(`<b>${w.smartCount}</b> smart follower${w.smartCount === 1 ? '' : 's'}${w.smartFinal ? '' : ' so far'}${w.smart?.length ? `: ${w.smart.map((s) => `@${esc(s)}`).join(', ')}` : ''}`);
@@ -613,6 +663,7 @@ class Radar {
       ${w.label ? `<div class="who-label">${esc(w.label)}</div>` : ''}
       ${lines.map((l) => `<div class="story-call">${l}</div>`).join('')}
       ${rows ? `<div class="who-rows">${rows}</div>` : ''}
+      ${lcRows ? `<div class="who-rows">${lcRows}</div>` : ''}
       <div class="story-note">Radar's own record, from posts scanned since 30 Oct 2026, so it won't show everything${w.smartCount != null || w.coins ? '. Smart followers from Frontrun' : ''}.</div></div>`;
   }
 
@@ -645,7 +696,7 @@ class Radar {
     if (!s || s.error) return '';
     if (s.loading) return `<div class="story loading"><div class="story-top"><span class="story-k">Larp check</span></div><div class="story-call"><span class="spinner"></span>Checking the author, links and coin…</div></div>`;
     const open = this.expanded.has('story');
-    if (s.larpcheck) return lcStoryHtml(s.larpcheck, { open, symbol: s.coin, chevron: I.chevron });
+    if (s.larpcheck) return lcStoryHtml(s.larpcheck, { open, symbol: s.coin, chevron: I.chevron, ask: open ? this.lcAskHtml(s.larpcheck) : '' });
     const tone = ['LIKELY LARP', 'LARP'].includes(s.word) ? 'risk' : ['REAL', 'LIKELY REAL'].includes(s.word) ? 'ok' : 'mid';
     return `<div class="story ${tone}">
       <button class="story-top" data-story aria-expanded="${open}">
@@ -654,8 +705,63 @@ class Radar {
       <div class="story-call">${esc(s.call)}</div>
       ${open ? `<ul class="findings">${(s.findings || []).map((f) => `<li class="${esc(f.kind)}"><span>${esc(f.kind)}</span>${esc(f.text)}</li>`).join('')}</ul>
         <div class="story-note">Checks evidence, not people. ${s.coin ? `Read with $${esc(s.coin)}.` : 'No coin was checked.'}</div>` : ''}
+      ${this.lcRunHtml(s)}
       ${lcCheckItHtml(s.lcPage, s.coin)}
     </div>`;
+  }
+
+  // Paid Larpcheck features, for $RADAR holders, only when the server's key has a plan (/lc/settings).
+  get lcPerks() { return !!(this.lcPlan && this.holder?.holder); }
+  lcRunHtml(s) {
+    if (!s.lcPage || !s.lcAddress) return '';
+    const run = this.lcRun?.address === s.lcAddress ? this.lcRun : null;
+    if (run?.error) return `<div class="story-note">${esc(run.error)}</div>`;
+    if (run) return `<div class="story-call"><span class="spinner"></span>Larpcheck is checking it${run.step ? `: ${esc(run.step)}` : '…'}</div>`;
+    return this.lcPerks ? `<button type="button" class="who-connect" data-lc-check="${esc(s.lcAddress)}">Check ${s.coin ? `$${esc(s.coin)}` : 'it'} on Larpcheck now</button>` : '';
+  }
+  lcAskHtml(lc) {
+    if (!this.lcPerks || !lc.id) return '';
+    const a = this.lcAnswer?.id === lc.id ? this.lcAnswer : null;
+    return `<form class="lc-ask" data-lc-ask="${esc(lc.id)}"><input type="text" maxlength="499" placeholder="Ask Larpcheck about this coin" autocomplete="off" spellcheck="false" /><button type="submit"${a?.busy ? ' disabled' : ''}>${a?.busy ? '…' : 'Ask'}</button></form>
+      ${a?.error ? `<div class="story-note">${esc(a.error)}</div>` : ''}
+      ${a?.answer ? `<div class="lc-answer"><p>${esc(a.answer)}</p><span>Answer by <b>Larpcheck</b></span></div>` : ''}`;
+  }
+  async runLcCheck(address) {
+    this.lcRun = { address };
+    this.renderHead();
+    const scanAtStart = this.scanId;
+    try {
+      const { id } = await send('lcStart', { input: address });
+      for (let i = 0; i < 60; i++) {
+        const c = await send('lcPoll', { id });
+        if (c.error) throw new Error(c.error);
+        if (c.lc) {
+          this.larp.set(address, { lc: c.lc, at: Date.now() });
+          this.lcRun = null;
+          if (scanAtStart === this.scanId && this.state.story?.lcAddress === address) this.state = { ...this.state, story: { larpcheck: c.lc, coin: this.state.story.coin } };
+          this.renderHead();
+          return;
+        }
+        this.lcRun = { address, step: c.step };
+        this.renderHead();
+        await new Promise((r) => setTimeout(r, 5000));
+      }
+      throw new Error('Larpcheck is still working on this. Look again in a few minutes.');
+    } catch (e) {
+      this.lcRun = { address, error: e.message };
+      this.renderHead();
+    }
+  }
+  async runLcAsk(id, question) {
+    this.lcAnswer = { id, busy: true };
+    this.renderHead();
+    try {
+      const { answer } = await send('lcAsk', { id, question });
+      this.lcAnswer = { id, answer };
+    } catch (e) {
+      this.lcAnswer = { id, error: e.message };
+    }
+    this.renderHead();
   }
 
   async loadStory(post, narrative, res, id) {
@@ -677,7 +783,7 @@ class Radar {
     try {
       const s = await send('story', { post, narrative, coin });
       if (id !== this.scanId) return;
-      this.state = { ...this.state, story: { ...s, coin: t?.symbol || null, lcPage: lc?.page || null } };
+      this.state = { ...this.state, story: { ...s, coin: t?.symbol || null, lcPage: lc?.page || null, lcAddress: t?.address || null } };
     } catch (e) {
       if (id !== this.scanId) return;
       this.state = { ...this.state, story: { error: e.message } };
@@ -717,6 +823,7 @@ class Radar {
       this.bodyEl.innerHTML = `<div class="empty"><div class="big">Scan any post on X</div>
         <p>${esc(this.hint || (this.inline ? 'Search a narrative, a ticker or a CA above.' : 'Tap the radar under any post or trend.'))}</p>
         ${recent.length ? `<div class="recent-list"><div class="recent-top"><span>Recent</span><button data-recent-clear>Clear</button></div>${recent.map((r, i) => `<button class="recent-row" data-recent="${i}"><b>$${esc(r.c)}</b><span>${esc(r.l)}</span><em>${age(r.t)}</em></button>`).join('')}</div>` : ''}
+        ${this.inline ? this.boardHtml() : ''}
         ${trends.length ? `<div class="trend-list"><span>Trending</span>${trends.map((t) => `<button data-trend="${esc(t)}">${esc(t)}</button>`).join('')}</div>` : ''}</div>
         ${this.inline && (this.alerts?.watches.length || this.alerts?.feed.length) ? this.alertsHtml() : ''}`;
       return;
@@ -871,7 +978,7 @@ class Radar {
           <div><span>Age</span><b data-k="age" title="${t.createdAt ? new Date(t.createdAt).toLocaleString() : ''}">${age(t.createdAt)}</b></div>
           <div><span>Vol 24h</span><b data-k="vol">${usd(t.volume.h24)}</b></div>
         </div>
-        ${t.chain === 'solana' ? `<div class="hc" data-hc="${t.address}"><span class="hc-mark wait"></span><span>Checking holders…</span></div>` : ''}
+        ${t.chain === 'solana' ? `<div class="hc" data-hc="${t.address}"><span class="hc-mark wait"></span><span>Checking holders…</span></div>` : `<div class="hc" data-lch="${t.address}" hidden></div>`}
         <div class="actions" data-actions="${t.address}">${this.actionsHtml(t)}</div>
         <div class="card-body" aria-hidden="${!open}">
           <div class="card-inner">
@@ -922,6 +1029,7 @@ class Radar {
   }
 
   renderAudit(addr) {
+    this.renderLcHolders(addr);
     const card = this.bodyEl.querySelector(`.card[data-addr="${addr}"]`);
     if (!card) return;
     const t = this.tokens.get(addr);
@@ -1385,6 +1493,10 @@ class Radar {
     }
     const trend = e.target.closest('[data-trend]');
     if (trend) { this.scan({ post: { text: `Trending on X: ${trend.dataset.trend}` }, source: { kind: 'Trend', label: trend.dataset.trend } }); return; }
+    const tab = e.target.closest('[data-board]');
+    if (tab) { this.board = []; this.loadBoard(tab.dataset.board); this.renderBody(); return; }
+    const listed = e.target.closest('[data-board-coin]');
+    if (listed) { this.scan({ post: { text: listed.dataset.boardCoin }, source: { kind: 'Larpcheck', label: listed.dataset.boardTitle || listed.dataset.boardCoin } }); return; }
     const again = this.recent?.[e.target.closest('[data-recent]')?.dataset.recent];
     if (again) { this.scan({ post: { text: again.q }, source: isPostLink(again.q) ? null : { kind: again.k, label: again.l } }); return; }
     if (e.target.closest('[data-launch]')) {

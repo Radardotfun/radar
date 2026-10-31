@@ -94,6 +94,9 @@ footer a { text-decoration:none; }
 .insta .risk { margin-top:12px; font-size:10.5px; }
 .after-buy.neutral { border-color:var(--line); background:rgba(255,255,255,.025); }
 
+.lc-verdict a { display:inline-block; margin-top:6px; color:var(--text); font-size:12px; text-underline-offset:3px; }
+.lc-verdict p:empty { display:none; }
+
 /* Launch page */
 .visually-hidden { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); }
 .launch-post { display:block; }

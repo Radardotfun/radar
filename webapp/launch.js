@@ -189,6 +189,7 @@ const shown = (mint, signature) => {
   $('launched-mint').textContent = mint;
   $('link-pump').href = `https://pump.fun/coin/${mint}`;
   $('link-tx').href = `https://solscan.io/tx/${signature}`;
+  $('link-larpcheck').href = `https://larpcheck.app/${mint}`;
   $('link-scan').href = `/scan?url=${encodeURIComponent(post)}`;
 };
 

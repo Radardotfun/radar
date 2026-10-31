@@ -11,9 +11,10 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&family=Geist+Mono:wght@500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/trade.css?v=1.7.26" />
-  <script defer src="/robinhood-guard.js?v=1.7.26"></script>
-  <script defer src="/trade-robinhood.js?v=1.7.26"></script>
+  <link rel="stylesheet" href="/trade.css?v=1.7.27" />
+  <script defer src="/robinhood-guard.js?v=1.7.27"></script>
+  <script defer src="/trade-robinhood.js?v=1.7.27"></script>
+  <script defer src="/larp-verdict.js?v=1.7.27"></script>
 </head>
 <body>
   <header class="nav">
@@ -69,6 +70,12 @@
       <div id="check-box" class="fee-box check-box" aria-live="polite">
         <b>Radar's check</b>
         <p id="check-result">Checking what this buy really costs…</p>
+      </div>
+
+      <div id="lc-verdict" class="fee-box check-box lc-verdict" aria-live="polite" hidden>
+        <b></b>
+        <p></p>
+        <a target="_blank" rel="noopener noreferrer"></a>
       </div>
 
       <div class="fee-box">

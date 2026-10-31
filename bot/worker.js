@@ -195,7 +195,9 @@ async function replyFor(postUrl, known = null, fresh = false) {
     if (found.engineError) throw new Error('Radar could not read this post right now');
     const { scan, scores } = withMemory(found, known);
     const res = { ...scan, ...await botCoins(scan, post, { search: searchPairs, lookupCa, matchImages, capOf: curveCap, chains: SETTINGS.chains }) };
-    return { text: botReply(res, postUrl) || NO_COINS, short: botReply(res, postUrl, Date.now(), { full: false }) || NO_COINS, links: botReply(res, postUrl, Date.now(), { links: true }) || NO_COINS, story: res.narrative || '', scores, entries: replyEntries(res) };
+    const first = replyEntries(res)[0]?.t;
+    const larp = first ? await h.larpcheck({ address: first.address }).catch(() => null) : null;
+    return { text: botReply(res, postUrl) || NO_COINS, short: botReply(res, postUrl, Date.now(), { full: false }) || NO_COINS, links: botReply(res, postUrl, Date.now(), { links: true, larp }) || NO_COINS, story: res.narrative || '', scores, entries: replyEntries(res) };
   })();
   scans.set(postUrl, { at: Date.now(), p });
   p.catch(() => scans.delete(postUrl));
@@ -403,7 +405,7 @@ export default {
       dexBudget = DEX_BUDGET;
       try {
         const r = await replyFor(url);
-        return json(200, { ms: Date.now() - t0, chars: xLength(r.text), story: r.story, reply: r.text, calls });
+        return json(200, { ms: Date.now() - t0, chars: xLength(r.text), story: r.story, reply: r.text, links: r.links, calls });
       } catch (e) {
         return json(502, { error: String(e.message || e) });
       }

@@ -7,6 +7,9 @@ import { searchPairs, aggregate, isMemecoin, fullTokens } from './market.js';
 import { norm } from './keywords.js';
 
 export const WATCH_MS = 24 * 3_600_000;
+export const RISK_WORDS = new Set(['LIKELY LARP', 'LARP', 'SCAM']);
+// A second ping for a coin already in the feed: only when its verdict turns bad.
+export const verdictTurned = (before, now) => RISK_WORDS.has(now) && !RISK_WORDS.has(before);
 export const MAX_WATCHES = 5;
 // A coin launched a few minutes before the post's timestamp still counts (clocks and indexing lag).
 const EARLY_MS = 10 * 60_000;

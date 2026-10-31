@@ -213,7 +213,7 @@ svg { display: block; }
 .card.tech { --role: var(--violet); border-color: color-mix(in srgb, var(--violet) 45%, var(--line)); }
 .card.tech-match { border-color: color-mix(in srgb, var(--violet) 55%, var(--line)); box-shadow: 0 0 0 1px color-mix(in srgb, var(--violet) 24%, transparent); }
 .card.tech-match .tag { color: var(--violet); border-color: color-mix(in srgb, var(--violet) 55%, var(--line-2)); font-weight: 800; }
-.card.ca { --role: var(--accent); }
+.card.ca { --role: var(--accent); display: block; }
 .card.more { --role: var(--muted); }
 
 .card-top { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; position: relative; }
@@ -632,6 +632,28 @@ svg { display: block; }
 .recent-row:hover span { color: var(--text); }
 .launch-btn { display: block; width: 100%; min-height: 40px; margin-top: 14px; border: 1px solid var(--line-2); border-radius: 10px; font-weight: 700; color: var(--text); text-align: center; }
 .launch-btn:hover { background: var(--card-2); }
+.hc-by { margin-left: auto; flex: none; font: 600 10px var(--mono); letter-spacing: 0.06em; color: var(--faint); text-decoration: none; white-space: nowrap; }
+.hc-by:hover { color: var(--text); }
+.hc > span:nth-child(2) { min-width: 0; }
+.recent-top a { color: var(--faint); text-decoration: none; letter-spacing: 0; text-transform: none; }
+.recent-top a:hover { color: var(--text); }
+.lc-board { margin-top: 18px; display: flex; flex-direction: column; text-align: left; }
+.lc-tabs { display: flex; gap: 6px; margin: 2px 0 6px; }
+.lc-tabs button { padding: 5px 9px; border: 1px solid var(--line); border-radius: 999px; font: 600 11px var(--font); color: var(--muted); }
+.lc-tabs button[aria-selected="true"] { color: var(--text); border-color: var(--line-2); background: var(--card-2); }
+.lc-row { display: flex; align-items: center; gap: 8px; min-height: 38px; border-bottom: 1px solid var(--line); }
+.lc-row button { flex: 1; min-width: 0; padding: 8px 0; text-align: left; color: var(--text); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.lc-row button:hover { color: var(--muted); }
+.lc-row b { font-weight: 600; }
+.lc-row a { flex: none; text-decoration: none; }
+.lc-none { margin: 10px 0 0; font-size: 12px; color: var(--faint); }
+.lc-ask { display: flex; gap: 6px; margin-top: 10px; }
+.lc-ask input { flex: 1; min-width: 0; height: 32px; padding: 0 10px; border: 1px solid var(--line); border-radius: 9px; background: transparent; color: var(--text); font: 500 12px var(--font); outline: 0; }
+.lc-ask input:focus { border-color: var(--line-2); }
+.lc-ask button { height: 32px; padding: 0 12px; border: 1px solid var(--line-2); border-radius: 9px; font-weight: 700; color: var(--text); }
+.lc-answer { margin-top: 8px; font-size: 12px; color: var(--text); }
+.lc-answer p { margin: 0 0 4px; white-space: pre-wrap; }
+.lc-answer span { font-size: 11px; color: var(--faint); }
 .retry { margin-top: 14px; height: 34px; padding: 0 16px; border-radius: 10px; border: 1px solid var(--line-2); font-weight: 700; }
 .retry:hover { background: var(--card-2); }
 
