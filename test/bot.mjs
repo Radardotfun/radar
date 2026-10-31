@@ -109,10 +109,26 @@ const pic = await botCoins({ mentioned: [], picks: [], roleCandidates: [], pool:
 assert.deepEqual(asked, [otherOwl.image, owlCopy.image, owl.image], 'every searched coin with a logo is compared');
 assert.equal(pic.named, owl, 'the bigger coin with the same picture leads; a different owl does not count');
 assert.equal(pic.how, 'picture');
-assert.match(botReply(pic, 'x', now), /🖼 Same picture as the post \(Highest MC\): \$OWLO · \$41\.0K\n5h6eVq4SCz7zF9FTQj7t8bvzrHwEntcJLU2WoGmTpump\n/);
+// Alone on the story it beat nothing, so it claims no title.
+assert.match(botReply(pic, 'x', now), /🖼 Same picture as the post: \$OWLO · \$41\.0K\n5h6eVq4SCz7zF9FTQj7t8bvzrHwEntcJLU2WoGmTpump\n/);
 // A post that names its coin needs no picture check.
 const skip = await botCoins({ mentioned: [purr], picks: [] }, { text: '', images: ['https://pbs.twimg.com/media/owl.jpg'] }, { search: async () => [], matchImages: async () => { throw new Error('not called'); } });
 assert.equal(skip.how, 'post');
+// A tiny coin found by its picture doesn't push out a far bigger coin of the same name and call itself Highest MC.
+const bigGoat = tok('GOAT', 'Goatseus Maximus', 'CzLSujWBLFsSjncfkh59rUFqvafWcY5tzedWJSuypump', 14_000_000, { image: 'https://cdn.dexscreener.com/cms/images/big', relevance: 95, mcapBacked: true, createdAt: Date.parse('2024-10-01') });
+const tinyGoat = tok('goat', 'goat', '2i8uH6B7emwAypye6XNXQ4v6PTf3N7KPseatCkLWpump', 3_100, { image: 'https://cdn.dexscreener.com/cms/images/tiny', relevance: 0, createdAt: now - 3_600_000 });
+const goatPic = await botCoins({ mentioned: [], picks: [], roleCandidates: [bigGoat], pool: [bigGoat, tinyGoat] }, { text: '', images: ['https://pbs.twimg.com/media/goat.jpg'] }, { search: async () => [], matchImages: async () => [1] });
+assert.equal(goatPic.named, tinyGoat);
+assert.equal(goatPic.picks.find((p) => p.role === 'top')?.token.address, bigGoat.address, 'the bigger namesake keeps Highest MC');
+const goatText = botReply(goatPic, 'x', now);
+assert.match(goatText, /🖼 Same picture as the post: \$goat · \$3\.1K/);
+assert.match(goatText, /🏆 Highest MC[^\n]*GOAT · \$14\.00M/);
+// A bigger namesake with no real liquidity behind its market cap stays out, and so does one beside a coin the post names.
+const thinGoat = { ...bigGoat, mcapBacked: false };
+const thinPic = await botCoins({ mentioned: [], picks: [], roleCandidates: [thinGoat], pool: [thinGoat, tinyGoat] }, { text: '', images: ['https://pbs.twimg.com/media/goat.jpg'] }, { search: async () => [], matchImages: async () => [1] });
+assert.doesNotMatch(botReply(thinPic, 'x', now), /14\.00M/);
+const namedSmall = await botCoins({ mentioned: [tinyGoat], picks: [], roleCandidates: [bigGoat], pool: [bigGoat] }, { text: '', images: [] }, { search: async () => [] });
+assert.doesNotMatch(botReply(namedSmall, 'x', now), /14\.00M/);
 console.log('PASS bot: a picture post leads with the coin whose logo is that picture');
 const si276 = tok('SI276', 'Super Inu 276', 'HMYd9tosnUXuNHmq7pXmoePRVBLBBjA3JBfydq6upump', 20_000, { createdAt: Date.parse('2026-01-01') });
 assert.deepEqual((await botCoins({ mentioned: [superInu], picks: [], roleCandidates: [si276] }, { text: '' }, { search: async () => [] })).picks.map((p) => p.token.symbol), ['SI'], 'SI276 is a copy of SI');
@@ -131,7 +147,7 @@ const onBsc = await botCoins({ mentioned: [], picks: [], roleCandidates: [solInu
 assert.equal(onBsc.named?.chain, 'bsc');
 assert.ok(!onBsc.picks.some((p) => p.token.address === solInu.address), 'the Solana INU is a copy of the BNB one');
 const bscReply = botReply({ ...onBsc }, 'https://x.com/a/status/1', Date.parse('2026-10-29T22:00:00Z'), { links: true });
-assert.match(bscReply, /📌 In the post \(Highest MC\): \$INU · \$1\.20M · BNB\n/);
+assert.match(bscReply, /📌 In the post: \$INU · \$1\.20M · BNB\n/);
 assert.match(bscReply, /https:\/\/dexscreener\.com\/bsc\/0x63ee32ac3077d1fbd8a77ebba2a6ed4b8e96f0a1/);
 // On a chain the bot doesn't scan (Ethereum), the coin isn't named and copies of its ticker stay out.
 const onEth = await botCoins({ mentioned: [], picks: [], roleCandidates: [solInu] }, { text: 'vote for $INU 0x63ee32ac3077d1fbd8a77ebba2a6ed4b8e96f0a1' },

@@ -40,9 +40,9 @@ export function replyEntries(result, now = Date.now()) {
   const named = result?.named?.address ? result.named : null;
   const entries = [];
   // Every role a coin holds ("📌 In the post (Highest MC, OG)") instead of lines repeating it. A role another line holds
-  // isn't claimed too.
+  // isn't claimed too. A coin alone on the story beat nothing, so the post's own coin claims no title then.
   const won = (address) => {
-    const p = picks.find((x) => x.token.address === address);
+    const p = result?.alone ? null : picks.find((x) => x.token.address === address);
     return ROLES.filter(([role]) => p && (p.role === role || (p[ALSO[role]] && !picks.some((x) => x.role === role && x.token.address !== address)))).map(([, label]) => label.replace(/^\S+ /, ''));
   };
   // A coin past its first day that barely trades says so, beside the number that earned its place.

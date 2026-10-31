@@ -214,11 +214,14 @@ export async function botCoins(res, post, { search, lookupCa, lookupBio = lookup
   const seen = new Set();
   const isOwn = (t) => ownCoin(t, post) && live(t);
   const onlyChain = chainInPost(post?.text);
+  // A coin found only by its picture doesn't own the name: a bigger namesake with real liquidity is no copy of it, and it
+  // keeps Highest MC ($goat at $3K had pushed out $GOAT at $14M and taken the title).
+  const copyOfNamed = (t) => named && sameCoin(t, named) && !(how === 'picture' && t.mcapBacked && (t.marketCap || 0) > (named.marketCap || 0));
   let story = [...scanned, ...(res?.pool || []).filter((t) => t?.address && isOwn(t))].filter((t) => {
     if (seen.has(t.address)) return false;
     seen.add(t.address);
     if (onlyChain && chains.includes(onlyChain) && t.chain !== onlyChain && !isOwn(t) && !t.fromPost) return false;
-    return (onStory(t) || isOwn(t) || t.address === runner?.address) && !isMajor(t) && !isRadarCopy(t) && (isOwn(t) || !namedAfterPoster(t, post, post?.text)) && !elsewhere.has(sym(t)) && !(named && sameCoin(t, named));
+    return (onStory(t) || isOwn(t) || t.address === runner?.address) && !isMajor(t) && !isRadarCopy(t) && (isOwn(t) || !namedAfterPoster(t, post, post?.text)) && !elsewhere.has(sym(t)) && !copyOfNamed(t);
   }).map((t) => (t.address === runner?.address || isOwn(t) ? { ...t, relevance: Math.max(t.relevance || 0, 90) } : t));
   // With the account's own coin found, dust that only the judge tied to the story is noise beside it.
   if (story.some(isOwn)) story = story.filter((t) => isOwn(t) || (t.marketCap || 0) >= 10_000);
@@ -237,5 +240,5 @@ export async function botCoins(res, post, { search, lookupCa, lookupBio = lookup
   const postsOwn = named || story.some(isOwn);
   story = story.map((t) => { const twin = olderTwinOf(t, twins); return { ...t, olderTwin: postsOwn ? !!twin : twin }; });
   const { picks } = story.length ? pickThree(story, { cuts: [0.85, 0.7], allowFallback: false }) : { picks: [] };
-  return { named, how, picks };
+  return { named, how, picks, alone: story.length < 2 };
 }
