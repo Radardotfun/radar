@@ -592,14 +592,14 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       queue.push(() => fn().then(resolve, reject));
       pump();
     });
-    async function call(method, params, retries = 5) {
+    async function call(method, params2, retries = 5) {
       for (let attempt = 0; ; attempt++) {
         let res;
         try {
           res = await fetch(url2, {
             method: "POST",
             headers: { "content-type": "application/json" },
-            body: JSON.stringify({ jsonrpc: "2.0", id: ++id, method, params })
+            body: JSON.stringify({ jsonrpc: "2.0", id: ++id, method, params: params2 })
           });
         } catch (e) {
           if (attempt >= retries) throw e;
@@ -620,7 +620,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
         return json.result;
       }
     }
-    return (method, params) => schedule(() => call(method, params));
+    return (method, params2) => schedule(() => call(method, params2));
   }
   async function blockTimeNear(rpc, slot, dir = 1) {
     for (let i = 0; i < 8; i++) {
@@ -3603,6 +3603,12 @@ svg { display: block; }\r
     }, 1800);
   });
   useBackend(handlers, { cssText: radar_default });
-  var url = new URLSearchParams(location.search).get("url");
+  var params = new URLSearchParams(location.search);
+  var url = params.get("url");
+  if (params.get("from") === "bot") {
+    navigator.sendBeacon?.(`${API_BASE}/count/bot-scan`);
+    params.delete("from");
+    history.replaceState(null, "", `/scan?${params}`);
+  }
   mountInline(document.getElementById("radar"), "dark", { hint: "Paste a link to a post on X above. Or search a narrative, a ticker or a CA." }).then((radar) => radar.open(url && isPostLink(url) ? { text: url } : {}));
 })();

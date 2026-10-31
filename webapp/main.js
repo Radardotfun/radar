@@ -90,6 +90,13 @@ document.querySelector('[data-share-copy]')?.addEventListener('click', async (e)
 
 useBackend(handlers, { cssText: css });
 
-const url = new URLSearchParams(location.search).get('url');
+const params = new URLSearchParams(location.search);
+const url = params.get('url');
+// Opened from a bot reply: add one to the day's count, and keep from=bot out of the address people share.
+if (params.get('from') === 'bot') {
+  navigator.sendBeacon?.(`${API_BASE}/count/bot-scan`);
+  params.delete('from');
+  history.replaceState(null, '', `/scan?${params}`);
+}
 mountInline(document.getElementById('radar'), 'dark', { hint: 'Paste a link to a post on X above. Or search a narrative, a ticker or a CA.' })
   .then((radar) => radar.open(url && isPostLink(url) ? { text: url } : {}));

@@ -10,3 +10,11 @@ CREATE TABLE IF NOT EXISTS posts (
   PRIMARY KEY (id, ca)
 );
 CREATE INDEX IF NOT EXISTS posts_author ON posts (author, at DESC);
+
+-- Daily totals with nothing about who: how many scans were opened from a bot reply.
+CREATE TABLE IF NOT EXISTS counts (
+  day TEXT NOT NULL,         -- UTC date
+  name TEXT NOT NULL,
+  n INTEGER NOT NULL,
+  PRIMARY KEY (day, name)
+);
