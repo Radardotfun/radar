@@ -14,10 +14,11 @@
 // POST /poll (run one round now).
 import { makeHandlers, API_BASE, DEFAULTS } from '../extension/src/lib/handlers.js';
 import { searchPairs, allPairs, aggregate } from '../extension/src/lib/market.js';
-import { botReply, NO_COINS, xLength } from './reply.js';
+import { botReply, replyEntries, NO_COINS, xLength } from './reply.js';
 import { botCoins, withMemory } from './coins.js';
 import { oauthHeader } from './oauth.js';
 import { wantsCoins } from './trigger.js';
+import { createChat } from './chat.js';
 
 const X = 'https://api.x.com/2';
 
@@ -194,13 +195,28 @@ async function replyFor(postUrl, known = null, fresh = false) {
     if (found.engineError) throw new Error('Radar could not read this post right now');
     const { scan, scores } = withMemory(found, known);
     const res = { ...scan, ...await botCoins(scan, post, { search: searchPairs, lookupCa, matchImages, capOf: curveCap, chains: SETTINGS.chains }) };
-    return { text: botReply(res, postUrl) || NO_COINS, short: botReply(res, postUrl, Date.now(), { full: false }) || NO_COINS, links: botReply(res, postUrl, Date.now(), { links: true }) || NO_COINS, story: res.narrative || '', scores };
+    return { text: botReply(res, postUrl) || NO_COINS, short: botReply(res, postUrl, Date.now(), { full: false }) || NO_COINS, links: botReply(res, postUrl, Date.now(), { links: true }) || NO_COINS, story: res.narrative || '', scores, entries: replyEntries(res) };
   })();
   scans.set(postUrl, { at: Date.now(), p });
   p.catch(() => scans.delete(postUrl));
   if (scans.size > 300) scans.delete(scans.keys().next().value);
   return p;
 }
+
+// Discord and Telegram (bot/chat.js) use the same scan. Each scan gets a fresh DexScreener budget in its own run.
+let chat = null;
+const chatFor = (env) => (chat ||= createChat({
+  fetch: realFetch,
+  self: env.SELF,
+  scan: async (url, tries) => {
+    dexBudget = DEX_BUDGET;
+    dexLastStatus.clear();
+    const found = await replyFor(url, null, tries > 0);
+    const lost = dexLost();
+    if (lost && tries < 3) scans.delete(url);
+    return { found, lost };
+  },
+}));
 
 // Bot state in one KV key, written once per round that had mentions (KV's free plan allows 1,000 writes a day).
 async function loadState(env) {
@@ -337,14 +353,28 @@ const authorized = (req, env) => {
 };
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     radar = env.RADAR;
     useDexProxy(env);
     const u = new URL(request.url);
+    // Discord and Telegram call these two themselves, and each proves it's them (a signature, a shared secret).
+    if (u.pathname === '/discord' && request.method === 'POST') return chatFor(env).interaction(request, env, ctx);
+    if (u.pathname === '/telegram' && request.method === 'POST') return chatFor(env).telegramUpdate(request, env, ctx);
     if (!authorized(request, env)) return json(401, { error: 'token required' });
     if (u.pathname === '/health') {
       const s = await loadState(env);
-      return json(200, { live: env.BOT_LIVE === '1', keys: hasKeys(env), keyShape: keyShape(env), account: s.me?.username || null, today: { day: s.day, replies: s.sent }, since: s.since });
+      return json(200, { live: env.BOT_LIVE === '1', keys: hasKeys(env), keyShape: keyShape(env), account: s.me?.username || null, today: { day: s.day, replies: s.sent }, since: s.since, chat: await chatFor(env).status(env).catch((e) => String(e.message || e)) });
+    }
+    // One Discord or Telegram scan, in a run of its own.
+    if (u.pathname === '/chat-job' && request.method === 'POST') {
+      return json(200, await chatFor(env).runJob(env, await request.json()));
+    }
+    // After the Discord or Telegram keys are in: registers the commands and the webhook.
+    if (u.pathname === '/chat-setup' && request.method === 'POST') return json(200, await chatFor(env).setup(env, u.origin));
+    // What the narrative wire would post right now.
+    if (u.pathname === '/wire-preview') {
+      const bursts = await chatFor(env).wireBursts(env);
+      return json(200, { bursts: bursts.slice(0, 15).map((b) => ({ word: b.word, coins: b.list.length, wallets: b.devs, biggest: `${b.top.s} ${b.top.m}`, first: b.first.s })) });
     }
     if (u.pathname === '/log') return json(200, (await loadState(env)).log);
     // X's full answer to "who am I" with these keys (status, its body and the headers that explain a refusal).
@@ -391,5 +421,6 @@ export default {
     radar = env.RADAR;
     useDexProxy(env);
     ctx.waitUntil(poll(env).catch((e) => console.log('poll failed', e.message)));
+    ctx.waitUntil(chatFor(env).tick(env).catch((e) => console.log('chat failed', e.message)));
   },
 };

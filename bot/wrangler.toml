@@ -16,6 +16,12 @@ crons = ["* * * * *"]
 binding = "BOT_KV"
 id = "49b7576e1bd54ae2b7148d2a75d522cb"
 
+# Discord, Telegram and the narrative wire (bot/chat.js).
+[[d1_databases]]
+binding = "DB"
+database_name = "radar-ledger"
+database_id = "3dcfd367-581e-4f54-9e9d-3f1219d8b37c"
+
 # Requests to the Radar server (narrative-radar) go through this binding instead of the public internet.
 [[services]]
 binding = "RADAR"

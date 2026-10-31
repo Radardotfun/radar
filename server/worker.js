@@ -278,10 +278,11 @@ export default {
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
     if (pathname === '/rpc' && request.method === 'POST') return rpcRelay(request, env);
     // Scans opened from a bot reply: one number per day, nothing about who opened them.
-    if (pathname === '/count/bot-scan' && request.method === 'POST') {
+    const counted = request.method === 'POST' && pathname.match(/^\/count\/(bot|discord|telegram)-scan$/);
+    if (counted) {
       if (limited(`count:${request.headers.get('cf-connecting-ip') || 'anon'}`, 30)) return json(429, { error: 'Too many requests' });
       ctx.waitUntil(env.DB.prepare('INSERT INTO counts (day, name, n) VALUES (?, ?, 1) ON CONFLICT (day, name) DO UPDATE SET n = n + 1')
-        .bind(new Date().toISOString().slice(0, 10), 'bot-scan').run().catch(() => {}));
+        .bind(new Date().toISOString().slice(0, 10), `${counted[1]}-scan`).run().catch(() => {}));
       return new Response(null, { status: 204, headers: CORS });
     }
     // Swap x.com for this site in any post link to scan it: /<user>/status/<id> opens the radar on it.

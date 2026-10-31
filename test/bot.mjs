@@ -272,3 +272,41 @@ console.log("PASS bot: only the poster's own words count");
   assert.deepEqual(addressesIn(writtenBy(`$EVO | ${dapp}`)), [dapp], 'a written 0x still counts');
   assert.deepEqual(addressesIn(writtenBy(`ca: ${sol}`)), [sol], 'a written CA still counts');
 }
+
+// Discord, Telegram and the narrative wire.
+{
+  const { postLinks, discordReply, telegramReply, verifyDiscord } = await import("../bot/chat.js");
+  const { findBursts, wordsOf, wireMessage } = await import("../bot/wire.js");
+  assert.deepEqual(postLinks("look https://x.com/a_b/status/123?s=20 and https://fxtwitter.com/c/status/456 https://twitter.com/i/web/status/123 https://x.com/a/status/9 "), ["https://x.com/i/status/123", "https://x.com/i/status/456"], "links in one form, repeats gone, two at most");
+  assert.deepEqual(postLinks("https://x.com/home nothing"), []);
+  const entry = { label: "🏆 Highest MC", stat: "$12.2K", t: { symbol: "@evil<b>", address: "86QepwFpKzt5fS9BugCwt3nwmL67EdkEtpoZ8ZRpump", chain: "solana" } };
+  const d = discordReply({ entries: [entry] }, "https://x.com/i/status/1");
+  assert.ok(!/@evil|<b>/.test(d.embeds[0].description), "a coin name cannot ping people or add markup on Discord");
+  assert.deepEqual(d.allowed_mentions, { parse: [] });
+  assert.ok(d.components[0].components[0].url.endsWith("&from=discord"));
+  assert.equal(discordReply({ entries: [] }, "x").content, "No coins on this one yet.");
+  const tg = telegramReply({ entries: [{ ...entry, stat: "<x>&" }] }, "https://x.com/i/status/1");
+  assert.ok(!tg.includes("<x>") && tg.includes("&lt;x&gt;&amp;") && tg.includes("from=telegram"), "Telegram HTML is escaped");
+  assert.equal(await verifyDiscord("", "aa", "1", "{}"), false);
+  const pair = await crypto.subtle.generateKey("Ed25519", true, ["sign", "verify"]);
+  const hex = (u) => Buffer.from(u).toString("hex");
+  const pub = hex(new Uint8Array(await crypto.subtle.exportKey("raw", pair.publicKey)));
+  const sig = hex(new Uint8Array(await crypto.subtle.sign("Ed25519", pair.privateKey, new TextEncoder().encode("1700{}"))));
+  assert.equal(await verifyDiscord(pub, sig, "1700", "{}"), true, "a real Discord signature passes");
+  assert.equal(await verifyDiscord(pub, sig, "1700", "{\"a\":1}"), false, "a changed body fails");
+  const nowW = Date.parse("2026-10-31T02:00:00Z");
+  const launch = (i, name, m = 3000, d = "w" + i, ago = 5) => ({ a: name + i, s: name.toUpperCase(), n: name, m, d, t: nowW - ago * 60000 });
+  const many = (name, n, top = 20000) => Array.from({ length: n }, (_, i) => launch(i, name, i === 0 ? top : 3000));
+  assert.deepEqual(findBursts(many("weirdcat", 6), nowW).map((b) => b.word), ["weirdcat"], "six coins, six wallets, one trading up");
+  assert.deepEqual(findBursts(many("weirdcat", 5), nowW), [], "five is not enough");
+  assert.deepEqual(findBursts(many("weirdcat", 6, 9000), nowW), [], "nothing has traded up");
+  assert.deepEqual(findBursts(many("cat", 20), nowW), [], "a generic word is never a story");
+  assert.deepEqual(findBursts(Array.from({ length: 8 }, (_, i) => launch(i, "spam", i ? 3000 : 20000, "same")), nowW), [], "one wallet launching many is not a story");
+  assert.deepEqual(findBursts(Array.from({ length: 8 }, (_, i) => launch(i, "stale", i ? 3000 : 20000, "w" + i, 45)), nowW), [], "older than the window");
+  const two = Array.from({ length: 6 }, (_, i) => ({ ...launch(i, "x", i ? 3000 : 20000), n: "weird weirdcat", s: "WC" }));
+  assert.deepEqual(findBursts(two, nowW).map((b) => b.word), ["weirdcat"], "the longer word wins when the coins are the same");
+  assert.deepEqual(wordsOf("The GTA-6 Cat!"), ["gta"]);
+  const msg = wireMessage(findBursts(many("weirdcat", 6), nowW)[0]);
+  assert.ok(msg.embeds[0].description.includes('At least **6 coins**') && msg.allowed_mentions.parse.length === 0);
+  console.log("PASS bot: Discord, Telegram and the narrative wire");
+}

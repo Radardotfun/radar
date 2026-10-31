@@ -30,17 +30,36 @@ export const shortCa = (a) => (a && a.length > 10 ? `${a.slice(0, 4)}…${a.slic
 export const contract = (a) => String(a || '').replace(/[^1-9A-HJ-NP-Za-km-z0x]/g, '').slice(0, 64);
 export const scanUrl = (postUrl) => `${SITE}/scan?url=${encodeURIComponent(postUrl)}`;
 
+// The coins to show for a scan, in order: { label, t (the token), stat }. Empty when the post has none.
+export function replyEntries(result, now = Date.now()) {
+  // Not a check, just no dust: a pick under $1K market cap that isn't trading at least $1K a day is left out.
+  const picks = (result?.picks || []).filter((p) => p?.token?.address && ((p.token.marketCap || 0) >= 1000 || (p.token.volume?.h24 || 0) >= 1000));
+  // The coin the post names shows whatever its size: it's the one the tagger is asking about.
+  const named = result?.named?.address ? result.named : null;
+  const entries = [];
+  // The roles the named coin won itself ("📌 In the post (Highest MC, OG)") instead of lines repeating it.
+  if (named) {
+    const won = ROLES.filter(([role]) => picks.find((p) => p.role === role)?.token.address === named.address).map(([, label]) => label.replace(/^\S+ /, ''));
+    entries.push({ label: `${result.how === 'picture' ? '🖼 Same picture as the post' : '📌 In the post'}${won.length ? ` (${won.join(', ')})` : ''}`, t: named, stat: usd(named.marketCap) });
+  }
+  for (const [role, label] of ROLES) {
+    const t = picks.find((p) => p.role === role)?.token;
+    if (!t || t.address === named?.address) continue;
+    entries.push({ label, t, stat: role === 'top' ? usd(t.marketCap)
+      : role === 'og' ? (ago(t.createdAt, now) ? `launched ${ago(t.createdAt, now)} ago` : usd(t.marketCap))
+        : usd(t.volume?.h24) ? `${usd(t.volume.h24)} vol 24h` : usd(t.marketCap) });
+  }
+  return entries;
+}
+
 // The reply text, or null when the post has no coins (the bot then says so, briefly). `full: false` gives the short
 // form (first 4 and last 4 characters of each contract) for when X won't take crypto addresses: it refuses them for
 // an app's first 7 days ("Crypto addresses are prohibited for the first 7 days after authentication").
 // `links: true` puts each coin's DexScreener page on its own line instead (the address travels inside the link). A
 // post with a link costs $0.20 instead of $0.01, so this is only for the week X refuses addresses as text.
 export function botReply(result, postUrl, now = Date.now(), { full = true, links = false } = {}) {
-  // Not a check, just no dust: a pick under $1K market cap that isn't trading at least $1K a day is left out.
-  const picks = (result?.picks || []).filter((p) => p?.token?.address && ((p.token.marketCap || 0) >= 1000 || (p.token.volume?.h24 || 0) >= 1000));
-  // The coin the post names shows whatever its size: it's the one the tagger is asking about.
-  const named = result?.named?.address ? result.named : null;
-  if (!picks.length && !named) return null;
+  const entries = replyEntries(result, now);
+  if (!entries.length) return null;
   const lines = [];
   const add = (label, t, stat) => {
     // X refuses a post with more than one cashtag ("Posts are limited to a maximum of one cashtag"), so only the
@@ -51,18 +70,7 @@ export function botReply(result, postUrl, now = Date.now(), { full = true, links
     else if (full) lines.push(head, contract(t.address), '');
     else lines.push(`${head} · ${shortCa(t.address)}`);
   };
-  // The roles the named coin won itself ("📌 In the post (Highest MC, OG)") instead of lines repeating it.
-  if (named) {
-    const won = ROLES.filter(([role]) => picks.find((p) => p.role === role)?.token.address === named.address).map(([, label]) => label.replace(/^\S+ /, ''));
-    add(`${result.how === 'picture' ? '🖼 Same picture as the post' : '📌 In the post'}${won.length ? ` (${won.join(', ')})` : ''}`, named, usd(named.marketCap));
-  }
-  for (const [role, label] of ROLES) {
-    const t = picks.find((p) => p.role === role)?.token;
-    if (!t || t.address === named?.address) continue;
-    add(label, t, role === 'top' ? usd(t.marketCap)
-      : role === 'og' ? (ago(t.createdAt, now) ? `launched ${ago(t.createdAt, now)} ago` : usd(t.marketCap))
-        : usd(t.volume?.h24) ? `${usd(t.volume.h24)} vol 24h` : usd(t.marketCap));
-  }
+  for (const { label, t, stat } of entries) add(label, t, stat);
   if (!full) lines.push('');
   // X bills a post with a URL at $0.20 against $0.01 for a reply to a tag (docs.x.com pricing, 29 Oct 2026). A reply
   // that already has links also gets its scan, ahead of them: with the scan last, X previewed DexScreener's card

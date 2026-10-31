@@ -3605,8 +3605,8 @@ svg { display: block; }\r
   useBackend(handlers, { cssText: radar_default });
   var params = new URLSearchParams(location.search);
   var url = params.get("url");
-  if (params.get("from") === "bot") {
-    navigator.sendBeacon?.(`${API_BASE}/count/bot-scan`);
+  if (["bot", "discord", "telegram"].includes(params.get("from"))) {
+    navigator.sendBeacon?.(`${API_BASE}/count/${params.get("from")}-scan`);
     params.delete("from");
     history.replaceState(null, "", `/scan?${params}`);
   }

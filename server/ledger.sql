@@ -11,6 +11,11 @@ CREATE TABLE IF NOT EXISTS posts (
 );
 CREATE INDEX IF NOT EXISTS posts_author ON posts (author, at DESC);
 
+-- The bot's Discord and Telegram side (bot/chat.js): small settings, usage limits, the narrative wire's minutes.
+CREATE TABLE IF NOT EXISTS bot_kv (k TEXT PRIMARY KEY, v TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS bot_usage (k TEXT PRIMARY KEY, n INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS wire_rows (at INTEGER PRIMARY KEY, coins TEXT NOT NULL);
+
 -- Daily totals with nothing about who: how many scans were opened from a bot reply.
 CREATE TABLE IF NOT EXISTS counts (
   day TEXT NOT NULL,         -- UTC date

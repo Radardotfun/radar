@@ -92,9 +92,9 @@ useBackend(handlers, { cssText: css });
 
 const params = new URLSearchParams(location.search);
 const url = params.get('url');
-// Opened from a bot reply: add one to the day's count, and keep from=bot out of the address people share.
-if (params.get('from') === 'bot') {
-  navigator.sendBeacon?.(`${API_BASE}/count/bot-scan`);
+// Opened from a bot reply: add one to the day's count, and keep from= out of the address people share.
+if (['bot', 'discord', 'telegram'].includes(params.get('from'))) {
+  navigator.sendBeacon?.(`${API_BASE}/count/${params.get('from')}-scan`);
   params.delete('from');
   history.replaceState(null, '', `/scan?${params}`);
 }

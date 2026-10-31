@@ -51,3 +51,19 @@ scanned once per 10 minutes, and picks under $1K market cap with under $1K daily
 Cloudflare's free plan allows 1,000 KV writes a day; the bot writes about twice per minute that has tags, so a bot
 tagged in almost every minute of the day would need the Workers Paid plan ($5/month). If a write fails, that round
 posts nothing rather than risk replying twice.
+
+## Discord and Telegram
+
+The bot also answers in Discord and Telegram (bot/chat.js), and the narrative wire posts to a Discord channel (bot/wire.js). Each stays off until its secrets are set, from the bot/ folder:
+
+    npx wrangler secret put DISCORD_APP_ID
+    npx wrangler secret put DISCORD_PUBLIC_KEY
+    npx wrangler secret put DISCORD_BOT_TOKEN
+    npx wrangler secret put TELEGRAM_BOT_TOKEN
+    npx wrangler secret put TELEGRAM_SECRET
+
+Then POST /chat-setup with the x-bot-token header. It registers the Discord commands and the Telegram webhook, and returns the invite link and the Interactions Endpoint URL.
+
+- **Discord:** turn on Message Content Intent for /watch. In a channel, /watch turns automatic scans on or off, and /wire makes it the narrative wire.
+- **Telegram:** in BotFather, /setprivacy to Disable, or the bot only sees commands in groups.
+- **Wire check:** GET /wire-preview shows what the wire would post right now.
