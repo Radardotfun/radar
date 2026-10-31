@@ -101,7 +101,7 @@ if (process.argv.includes('--live')) {
 // Phantom's Auto-Confirm: with no popup, a link must not be able to start a buy.
 {
   const g = G;
-  assert.match(g.simulationWhy({ InstructionError: [3, { Custom: 6063 }] }, []), /paired to another token/, 'why $RADAR itself fails today');
+  assert.match(g.simulationWhy({ InstructionError: [3, { Custom: 6063 }] }, []), /route this coin through its paired token/, 'when a route through the paired token fails');
   const opener = {};
   const go = (over = {}) => ({ source: opener, origin: 'https://x.com', data: { type: 'radar:insta-go', mint: 'MINT', sol: 0.1 }, ...over });
   assert.equal(g.autoIsOn({ enabled: true, chains: ['solana:101'] }), true);
@@ -125,4 +125,25 @@ if (process.argv.includes('--live')) {
   assert.equal(g.mintBlock(tx, 'MINT'), null);
   assert.match(g.mintBlock(tx, 'OTHER'), /does not name the coin/);
   console.log('PASS quickbuy: with Auto-Confirm on, only the panel can start a buy, up to the cap');
+}
+
+// A coin paired to another token goes through pump's own SDK.
+{
+  const RADAR = 'HyDSdtgiSa5mHqkTVoz8cTFTeVLFKdZ8amPvtNYfpump';
+  const LARP = 't9bnCGiZVUYsRKvx4d5dPcoDCSyuBM9C33ZNGNULARP';
+  const WSOL = 'So11111111111111111111111111111111111111112';
+  const pair = (dexId, quote, liq = 1) => ({ chainId: 'solana', dexId, baseToken: { address: RADAR }, quoteToken: { address: quote }, liquidity: { usd: liq } });
+  assert.equal(G.quoteRoute([pair('pumpfun', LARP)], RADAR), LARP);
+  assert.equal(G.quoteRoute([pair('pumpswap', LARP)], RADAR), LARP, 'still paired to it once it bonds');
+  assert.equal(G.quoteRoute([pair('pumpfun', WSOL)], RADAR), null, 'a SOL pair stays with PumpPortal');
+  assert.equal(G.quoteRoute([pair('raydium', LARP)], RADAR), null, 'only pump markets');
+  assert.equal(G.quoteRoute([pair('pumpswap', WSOL, 900), pair('pumpswap', LARP, 5)], RADAR), null, 'the deepest market decides');
+  assert.equal(G.quoteRoute([], RADAR), null);
+  assert.equal(G.quoteRoute([pair('pumpfun', 'not an address')], RADAR), null);
+  const { minOut } = await import('../webapp/pump-route.js');
+  assert.equal(minOut('1000', 10).toString(), '900');
+  assert.equal(minOut('1000000', 0.5).toString(), '995000');
+  assert.throws(() => minOut('1000', 0));
+  assert.throws(() => minOut('1000', 100));
+  console.log('PASS quickbuy: a coin paired to another token takes the route, and slippage sets the floor');
 }

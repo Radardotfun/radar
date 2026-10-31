@@ -42,6 +42,10 @@ All of it is in [web/trade.js](web/trade.js) and [web/quickbuy-guard.js](web/qui
 
 `node test/quickbuy.mjs` runs the guard against fake transactions: a foreign fee payer, extra signers, an unknown program and overspending. `--live` also has PumpPortal build real buys for a throwaway, unfunded wallet and checks that they pass. Nothing is signed or sent.
 
+### Coins paired to another token
+
+PumpPortal can't build buys of coins paired to a token instead of SOL, such as $RADAR, paired to $LARPCHECK. For those, the page builds one `multi_hop_swap` from SOL through the paired token to the coin, with pump.fun's own SDK (`webapp/pump-route.js`). It has no PumpPortal fee, and it goes through the same checks: your wallet pays, only known programs, and a simulation of what it spends.
+
 ### Auto-Confirm (optional, Phantom only)
 
 Normally your wallet asks before every buy. Phantom's own Auto-Confirm setting removes that popup, and you can turn it on from the buy page after a warning and a tick. With it on, nothing stands between a page and a signature, so Radar adds its own rules (`web/quickbuy-guard.js`):

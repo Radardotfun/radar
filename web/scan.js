@@ -1,4 +1,4 @@
-// Radar 1.7.29 on the web: built from the extension source at https://tryradar.fun. Not financial advice.
+// Radar 1.7.30 on the web: built from the extension source at https://tryradar.fun. Not financial advice.
 (() => {
   // extension/src/lib/keywords.js
   var STOP = new Set(`a about above after again against all almost also am an and any are aren as at be because been before

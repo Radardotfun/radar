@@ -72,8 +72,8 @@
   // Plain words for a failed simulation.
   function simulationWhy(err, logs) {
     const text = `${JSON.stringify(err || '')} ${(logs || []).join(' ')}`;
-    // A coin paired to another token, like $RADAR to $LARPCHECK: PumpPortal's builder can't buy those (31 Oct 2026).
-    if (/UnsupportedQuoteMint|"Custom":6063/.test(text)) return "Quick Buy can't buy this coin yet: it's paired to another token, not SOL. Open it on a terminal below. Nothing was signed.";
+    // A coin paired to another token, when the route through it fails.
+    if (/UnsupportedQuoteMint|"Custom":6063/.test(text)) return "Quick Buy couldn't route this coin through its paired token. Open it on a terminal below. Nothing was signed.";
     // An empty wallet has no account on chain yet: AccountNotFound.
     if (/insufficient (lamports|funds)|InsufficientFunds|AccountNotFound|0x1\b/i.test(text)) return 'Not enough SOL in this wallet for the buy and fees.';
     if (/slippage|TooMuchSol|TooLittleSol|ExceededSlippage|0x1772|0x1773/i.test(text)) return 'The price moved past your slippage. Raise it or try again.';
@@ -103,6 +103,16 @@
     return markets.some((m) => QUICK_MARKETS.has(m));
   }
 
+  // The token a pump coin is paired to, when that isn't SOL, as $RADAR is to $LARPCHECK. PumpPortal can't build those, so the
+  // page routes them through pump's own SDK (webapp/pump-route.js). Null for a coin paired to SOL.
+  const WSOL = 'So11111111111111111111111111111111111111112';
+  function quoteRoute(pairs, mint) {
+    const top = (Array.isArray(pairs) ? pairs : []).filter((p) => p && p.chainId === 'solana' && p.baseToken && p.baseToken.address === mint && (p.dexId === 'pumpfun' || p.dexId === 'pumpswap'))
+      .sort((a, b) => ((b.liquidity && b.liquidity.usd) || 0) - ((a.liquidity && a.liquidity.usd) || 0))[0];
+    const quote = top && top.quoteToken && top.quoteToken.address;
+    return quote && quote !== WSOL && /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(quote) ? quote : null;
+  }
+
   // Plain words for a coin Quick Buy can't buy.
   function marketWhy(pairs, mint) {
     const top = (Array.isArray(pairs) ? pairs : []).filter((p) => p && p.chainId === 'solana' && p.baseToken && p.baseToken.address === mint)
@@ -111,5 +121,5 @@
     return `Quick Buy can't buy this coin yet. It trades on ${where}, and PumpPortal, which builds Radar's buys, only covers pump.fun, PumpSwap and Raydium. Open it on a terminal below. Nothing was signed.`;
   }
 
-  root.RadarQuickBuyGuard = { AUTO_MAX_SOL, AUTO_OPENERS, SOLANA_MAINNET, autoIsOn, mintBlock, mayAutoStart, vouches, PROGRAMS, QUICK_MARKETS, txBlock, spendBlock, simulationWhy, coinFromPairs, quickBuyable, marketWhy };
+  root.RadarQuickBuyGuard = { quoteRoute, AUTO_MAX_SOL, AUTO_OPENERS, SOLANA_MAINNET, autoIsOn, mintBlock, mayAutoStart, vouches, PROGRAMS, QUICK_MARKETS, txBlock, spendBlock, simulationWhy, coinFromPairs, quickBuyable, marketWhy };
 })(typeof window !== 'undefined' ? window : globalThis);

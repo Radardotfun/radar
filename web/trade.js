@@ -98,6 +98,7 @@
   const money = (n) => (n >= 1e9 ? `$${(n / 1e9).toFixed(2)}B` : n >= 1e6 ? `$${(n / 1e6).toFixed(2)}M` : n >= 1e3 ? `$${(n / 1e3).toFixed(1)}K` : `$${Math.round(n)}`);
   // A coin on a market PumpPortal can't build buys on: say so, keep Buy off, and point to the terminals.
   let unbuyable = '';
+  let routeQuote = null;
   const blockBuy = (why) => {
     unbuyable = why;
     buyButton.disabled = true;
@@ -114,6 +115,10 @@
       const coin = guard.coinFromPairs(pairs, mint);
       if (!coin) throw new Error('not listed');
       if (guard.quickBuyable(pairs, mint) === false) blockBuy(guard.marketWhy(pairs, mint));
+      routeQuote = guard.quoteRoute(pairs, mint);
+      if (routeQuote) {
+        $('fee-text').textContent = "This coin is paired to another token, so the buy goes through that token in one transaction, built with pump.fun's own SDK. No PumpPortal fee here. You pay pump.fun's fees, a 0.0001 SOL priority fee and Solana network fees. Before your wallet sees it, Radar checks that only your wallet pays, that it uses known swap programs, and that a simulation spends no more than your amount plus fees.";
+      }
       coinKnown = true;
       $('coin-name').textContent = coin.name;
       $('coin-symbol').textContent = '$' + coin.symbol;
@@ -383,6 +388,44 @@
     tick();
   };
 
+  // A coin paired to another token is built with pump's own SDK, loaded only when it's needed. Its code is large.
+  const loadRoute = () => new Promise((resolve, reject) => {
+    if (window.RadarPumpRoute) return resolve(window.RadarPumpRoute);
+    const s = document.createElement('script');
+    s.src = `/pump-route.js?v=${encodeURIComponent(document.querySelector('script[src*="trade.js"]')?.src.split('v=')[1] || '1')}`;
+    s.onload = () => (window.RadarPumpRoute ? resolve(window.RadarPumpRoute) : reject(new Error('The route code did not load. Nothing was signed.')));
+    s.onerror = () => reject(new Error('The route code did not load. Nothing was signed.'));
+    document.head.append(s);
+  });
+  const buildRoute = async (solAmount, slippage) => {
+    const route = await loadRoute();
+    try {
+      const { bytes } = await route.buildRouteBuy({ rpcUrl: RELAY, wallet: connectedAddress, mint, quoteMint: routeQuote, sol: solAmount, slippagePct: slippage });
+      return bytes;
+    } catch (e) {
+      throw new Error(guard.simulationWhy(e?.message, []));
+    }
+  };
+  const buildPortal = async (solAmount, slippage) => {
+    let response;
+    try {
+      response = await fetch('https://pumpportal.fun/api/trade-local', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ publicKey: connectedAddress, action: 'buy', mint, amount: solAmount, denominatedInSol: 'true', slippage, priorityFee: PRIORITY_FEE, pool: 'auto' }),
+        signal: AbortSignal.timeout(20000), credentials: 'omit', cache: 'no-store',
+      });
+    } catch (e) {
+      throw new Error(e?.name === 'TimeoutError' ? 'The buy builder timed out. Nothing was signed.' : 'Could not reach PumpPortal. Nothing was signed.');
+    }
+    // PumpPortal answers a bare "Bad Request" for coins on markets it doesn't cover (DexScreener can miss some).
+    if (response.status === 400) { blockBuy(guard.marketWhy([], mint)); return null; }
+    if (!response.ok) {
+      const detail = (await response.text()).replace(/[\u0000-\u001f\u007f]/g, ' ').slice(0, 160);
+      throw new Error((detail || 'PumpPortal returned HTTP ' + response.status) + '. Nothing was signed.');
+    }
+    return new Uint8Array(await response.arrayBuffer());
+  };
+
   const runBuy = async () => {
     if (busy || !connectedProvider || !connectedAddress) return;
     if (unbuyable) { setMessage(unbuyable, 'error'); return; }
@@ -396,23 +439,9 @@
     afterBuy.hidden = true;
     setMessage('Building the buy…');
     try {
-      let response;
-      try {
-        response = await fetch('https://pumpportal.fun/api/trade-local', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ publicKey: connectedAddress, action: 'buy', mint, amount: solAmount, denominatedInSol: 'true', slippage, priorityFee: PRIORITY_FEE, pool: 'auto' }),
-          signal: AbortSignal.timeout(20000), credentials: 'omit', cache: 'no-store',
-        });
-      } catch (e) {
-        throw new Error(e?.name === 'TimeoutError' ? 'The buy builder timed out. Nothing was signed.' : 'Could not reach PumpPortal. Nothing was signed.');
-      }
-      // PumpPortal answers a bare "Bad Request" for coins on markets it doesn't cover (DexScreener can miss some).
-      if (response.status === 400) { blockBuy(guard.marketWhy([], mint)); return; }
-      if (!response.ok) {
-        const detail = (await response.text()).replace(/[\u0000-\u001f\u007f]/g, ' ').slice(0, 160);
-        throw new Error((detail || 'PumpPortal returned HTTP ' + response.status) + '. Nothing was signed.');
-      }
-      const bytes = new Uint8Array(await response.arrayBuffer());
+      await coinReady;
+      const bytes = routeQuote ? await buildRoute(solAmount, slippage) : await buildPortal(solAmount, slippage);
+      if (!bytes) return;
       if (!bytes.length || bytes.length > 1232) throw new Error('The buy came back empty or too large. Nothing was signed.');
       const transaction = web3.VersionedTransaction.deserialize(bytes);
 

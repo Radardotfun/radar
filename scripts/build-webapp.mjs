@@ -36,5 +36,20 @@ const launch = await build({
   write: false,
   logLevel: 'warning',
 });
+const route = await build({
+  entryPoints: ['webapp/pump-route.js'],
+  bundle: true,
+  format: 'iife',
+  platform: 'browser',
+  target: ['chrome110', 'firefox115', 'safari16'],
+  minify: true,
+  inject: ['scripts/node-shim.js'],
+  define: { global: 'globalThis' },
+  legalComments: 'none',
+  write: false,
+  logLevel: 'warning',
+});
+writeFileSync('web/pump-route.js', `// Radar ${version} buy route, built from webapp/pump-route.js: https://github.com/Radardotfun/radar\n${route.outputFiles[0].text}`);
+console.log(`pump-route.js ${version}: ${(route.outputFiles[0].text.length / 1024).toFixed(0)} KB`);
 writeFileSync('web/launch.js', `// Radar ${version} launch page, built from webapp/launch.js: https://github.com/Radardotfun/radar\n${launch.outputFiles[0].text}`);
 console.log(`launch.js ${version}: ${(launch.outputFiles[0].text.length / 1024).toFixed(0)} KB`);
