@@ -92,6 +92,8 @@ useBackend(handlers, { cssText: css });
 
 const params = new URLSearchParams(location.search);
 const url = params.get('url');
+// Opened on a scan: on a phone the coins come first, with no intro to scroll past.
+if (url && isPostLink(url)) document.body.classList.add('scan-open');
 // Opened from a bot reply: add one to the day's count, and keep from= out of the address people share.
 if (['bot', 'discord', 'telegram'].includes(params.get('from'))) {
   navigator.sendBeacon?.(`${API_BASE}/count/${params.get('from')}-scan`);

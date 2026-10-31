@@ -3684,6 +3684,7 @@ svg { display: block; }
   useBackend(handlers, { cssText: radar_default });
   var params = new URLSearchParams(location.search);
   var url = params.get("url");
+  if (url && isPostLink(url)) document.body.classList.add("scan-open");
   if (["bot", "discord", "telegram"].includes(params.get("from"))) {
     navigator.sendBeacon?.(`${API_BASE}/count/${params.get("from")}-scan`);
     params.delete("from");

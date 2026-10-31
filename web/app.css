@@ -200,6 +200,7 @@ h3 { font-size: 18px; letter-spacing: -0.02em; font-weight: 700; }
 @media (max-width: 900px) {
   .scan { grid-template-columns: minmax(0, 1fr); gap: 22px; padding-top: 24px; }
   .scan-copy { position: static; padding-top: 0; }
+  .scan-open .scan-copy { display: none; }
   .scan-steps, .scan-copy .fine { display: none; }
   .scan-panel { height: calc(100dvh - 92px); min-height: 520px; border-radius: 18px; }
   .hero { grid-template-columns: minmax(0, 1fr); padding-top: 28px; gap: 24px; }
