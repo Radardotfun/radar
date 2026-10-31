@@ -82,7 +82,7 @@ export async function launchMeta(body, env, origin) {
       .bind(id, fields.name, fields.symbol, fields.description, fields.post, fields.wallet, image, type, Date.now()),
     env.DB.prepare("INSERT INTO counts (day, name, n) VALUES (?, 'launch-meta', 1) ON CONFLICT (day, name) DO UPDATE SET n = n + 1").bind(day),
   ]);
-  return { status: 200, data: { id, uri: `${origin}/launch/meta/${id}.json` } };
+  return { status: 200, data: { id, uri: `${origin}/launch/meta/${id}.json`, name: fields.name, symbol: fields.symbol } };
 }
 
 // GET /launch/meta/<id>.<json|jpg|png|webp>. What's stored never changes, so it can be cached for good.

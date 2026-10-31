@@ -31,7 +31,7 @@ const say = (text, kind) => {
 const refresh = () => {
   ui.connect.disabled = busy;
   ui.launch.disabled = busy || !provider || !picture || !ui.agree.checked || !ui.name.value.trim() || !ui.symbol.value.trim() || !samePost(post);
-  ui.launch.textContent = !provider ? 'Connect a wallet to launch' : busy ? 'Working…' : 'Check and launch in wallet';
+  ui.launch.textContent = !provider ? 'Connect a wallet to launch' : busy ? 'Working…' : !picture ? 'Choose a picture to launch' : 'Check and launch in wallet';
 };
 
 // Any picture becomes a 512px square JPEG here, so what's stored is small and the same shape for every coin.
@@ -77,6 +77,7 @@ async function loadPost() {
       const res = await fetch(photo, { signal: AbortSignal.timeout(15000) });
       if (res.ok) await usePicture(await res.blob());
     }
+    if (!picture) say('This post has no picture to use. Choose one for the coin.');
   } catch (e) {
     say(e.message || 'Could not read that post. You can still launch from it.', 'error');
   }
@@ -213,15 +214,16 @@ async function runLaunch() {
     });
     const meta = await metaRes.json();
     if (!metaRes.ok) throw new Error(meta.error || 'Could not save the details.');
-    const clean = (s) => s.trim().replace(/\s+/g, ' ');
     const mintKey = Keypair.generate();
     const mint = mintKey.publicKey.toBase58();
     say('Building and checking the launch…');
-    const tx = await buildLaunch({ mintKey, uri: meta.uri, name: clean(ui.name.value), symbol: clean(ui.symbol.value).replace(/^\$+/, '').replace(/\s/g, '') });
+    const tx = await buildLaunch({ mintKey, uri: meta.uri, name: meta.name, symbol: meta.symbol });
     const blocked = txBlock(tx, wallet, mint) || await simulate(tx);
     if (blocked) throw new Error(blocked);
     say('Check the launch in your wallet and approve it.');
-    const signed = await provider.signTransaction(tx);
+    // A wallet returns its own copy of the transaction, from its own copy of web3.js, and may have added a guard to it.
+    // So it's rebuilt from bytes and checked again. The new coin's key signs last, over what the wallet approved.
+    const signed = VersionedTransaction.deserialize((await provider.signTransaction(tx)).serialize());
     const again = txBlock(signed, wallet, mint);
     if (again) throw new Error(again);
     signed.sign([mintKey]);
