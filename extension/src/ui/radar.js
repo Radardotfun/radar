@@ -1,6 +1,7 @@
 import { TERMINAL_ICONS } from './terminal-icons.js';
 import { coinCheck } from './coincheck.js';
 import { marketBlock, reportBlock } from './holdercheck.js';
+import { recentItem } from './recent.js';
 
 import { lcButtonHtml, lcStoryHtml, lcCheckItHtml } from './larpcheck.js';
 
@@ -254,6 +255,7 @@ class Radar {
     if (p) this.scan({ post: p, source });
     else if (!this.state.ts) this.renderBody();
     if (!p) setTimeout(() => this.input?.focus(), 250);
+    if (!p && this.inline) this.loadRecent();
   }
 
   // Hovering the radar button starts the work early; the click then picks up the same result.
@@ -269,9 +271,17 @@ class Radar {
   get isOpen() { return this.shell.classList.contains('open'); }
 
   /* ----- scanning ----- */
+  loadRecent() {
+    send('recentList').then((list) => {
+      this.recent = list;
+      if (!this.state.ts && !this.state.loading && this.view !== 'settings') this.renderBody();
+    }).catch(() => {});
+  }
+
   async scan({ post, source = null }) {
     const id = ++this.scanId;
     const stale = () => id !== this.scanId;
+    const asked = post?.url || post?.text;
     this.stopTimers();
     this.lastPost = post;
     this.state = { ...this.state, loading: true, error: null, narrative: null, engineError: null, source: source ?? this.state.source };
@@ -308,6 +318,7 @@ class Radar {
       this.loadAudits();
       this.startTimers();
       this.loadStory(p, read.narrative, res, id);
+      send('recentAdd', { item: recentItem({ asked, source, narrative: read.narrative, res }) }).catch(() => {});
     } catch (e) {
       if (stale()) return;
       this.state = { ...this.state, loading: false, error: e.message };
@@ -664,8 +675,10 @@ class Radar {
     }
     if (!ts) {
       const trends = (this.trends || []).slice(0, 6);
+      const recent = this.inline ? this.recent || [] : [];
       this.bodyEl.innerHTML = `<div class="empty"><div class="big">Scan any post on X</div>
         <p>${esc(this.hint || (this.inline ? 'Search a narrative, a ticker or a CA above.' : 'Tap the radar under any post or trend.'))}</p>
+        ${recent.length ? `<div class="recent-list"><div class="recent-top"><span>Recent</span><button data-recent-clear>Clear</button></div>${recent.map((r, i) => `<button class="recent-row" data-recent="${i}"><b>$${esc(r.c)}</b><span>${esc(r.l)}</span><em>${age(r.t)}</em></button>`).join('')}</div>` : ''}
         ${trends.length ? `<div class="trend-list"><span>Trending</span>${trends.map((t) => `<button data-trend="${esc(t)}">${esc(t)}</button>`).join('')}</div>` : ''}</div>
         ${this.inline && (this.alerts?.watches.length || this.alerts?.feed.length) ? this.alertsHtml() : ''}`;
       return;
@@ -1330,6 +1343,9 @@ class Radar {
     }
     const trend = e.target.closest('[data-trend]');
     if (trend) { this.scan({ post: { text: `Trending on X: ${trend.dataset.trend}` }, source: { kind: 'Trend', label: trend.dataset.trend } }); return; }
+    const again = this.recent?.[e.target.closest('[data-recent]')?.dataset.recent];
+    if (again) { this.scan({ post: { text: again.q }, source: isPostLink(again.q) ? null : { kind: again.k, label: again.l } }); return; }
+    if (e.target.closest('[data-recent-clear]')) { this.recent = []; this.renderBody(); send('recentClear').catch(() => {}); return; }
     if (e.target.closest('[data-retry]')) { this.rescan(); return; }
     const term = e.target.closest('[data-term]');
     if (term) {

@@ -17,7 +17,7 @@ const GENERIC = new Set(('the and for with this that you your our are was his he
   + 'cat cats dog dogs frog pepe doge shib baby king queen lord god man men boy girl guy dad mom kid wife '
   + 'ape monkey bull bear pig rat fish bird duck wolf lion tiger bear '
   + 'money cash rich gold usd usdc btc eth bitcoin crypto stock stocks elon musk trump '
-  + 'ai agent bot gpt web net app dao fi lol wtf gm gn yes no').split(' '));
+  + 'ai agent bot gpt web net app dao fi lol wtf gm gn yes no digital trench').split(' '));
 
 export const wordsOf = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').split(/\s+/)
   .filter((w) => w.length >= 3 && !/^\d+$/.test(w) && !GENERIC.has(w));

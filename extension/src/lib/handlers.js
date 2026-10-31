@@ -5,6 +5,7 @@ import { rugReport } from './rugcheck.js';
 import { readPost, findCoins } from './narrative.js';
 import { makeRpc, analyzeLaunch, PUBLIC_RPC } from './solana.js';
 import { pickReroute, marketBlock, reportBlock, rejectionLine } from './reroute.js';
+import { RECENT_KEY, addRecent } from '../ui/recent.js';
 
 // Hosted narrative engine (Cloudflare Worker). Runs 24/7; nobody needs a key.
 export const API_BASE = 'https://narrative-radar.millenia-portfolio.workers.dev';
@@ -297,7 +298,11 @@ export function makeHandlers(host) {
     return d;
   }
 
-  const handlers = { videoInfo, tweet, read, coins, mentioned, story, larpcheck, refresh, safety, bundle, image, openWindow, reroute, holderStatus, holderSave, holderWho, holderActive, settings: () => host.settings() };
+  const recentList = async () => (await host.store.get(RECENT_KEY)) || [];
+  const recentAdd = async ({ item }) => { await host.store.set(RECENT_KEY, addRecent(await recentList(), item)); };
+  const recentClear = () => host.store.set(RECENT_KEY, []);
+
+  const handlers = { videoInfo, tweet, read, coins, mentioned, story, larpcheck, refresh, safety, bundle, image, openWindow, reroute, holderStatus, holderSave, holderWho, holderActive, recentList, recentAdd, recentClear, settings: () => host.settings() };
   // Changing the RPC drops cached bundle results so they're re-read through the new one.
   handlers.resetBundles = () => memo.forEach((_, k) => k.startsWith('bd:') && memo.delete(k));
   return handlers;

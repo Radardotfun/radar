@@ -1,4 +1,4 @@
-// Radar 1.7.21 on the web: built from the extension source at https://tryradar.fun. Not financial advice.
+// Radar 1.7.22 on the web: built from the extension source at https://tryradar.fun. Not financial advice.
 (() => {
   // extension/src/lib/keywords.js
   var STOP = new Set(`a about above after again against all almost also am an and any are aren as at be because been before
@@ -933,6 +933,20 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     return r ? `$${String(r.token.symbol || "").trim()} ${r.why}` : "";
   }
 
+  // extension/src/ui/recent.js
+  var RECENT_KEY = "radar-recent";
+  var MAX_RECENT = 8;
+  function recentItem({ asked, source, narrative, res, now = Date.now() }) {
+    const q = String(asked || "").trim().slice(0, 300);
+    const coin = res?.mentioned?.[0] || res?.picks?.[0]?.token;
+    if (!q || !coin?.symbol) return null;
+    return { q, k: source?.kind || "Search", l: String(narrative || source?.label || q).slice(0, 120), c: String(coin.symbol).slice(0, 14), t: now };
+  }
+  function addRecent(list, item) {
+    if (!item) return list;
+    return [item, ...list.filter((r) => r.q !== item.q)].slice(0, MAX_RECENT);
+  }
+
   // extension/src/lib/handlers.js
   var API_BASE = "https://narrative-radar.millenia-portfolio.workers.dev";
   var DEFAULTS = { rpcUrl: "", chains: ["solana", "robinhood"], refreshSec: 10 };
@@ -1170,7 +1184,12 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       if (d.own?.recent?.length) d.own.recent = await holderCoinFacts(d.own.recent);
       return d;
     }
-    const handlers2 = { videoInfo, tweet: tweet2, read, coins, mentioned, story, larpcheck, refresh, safety, bundle, image, openWindow: openWindow2, reroute: reroute2, holderStatus, holderSave, holderWho, holderActive, settings: () => host.settings() };
+    const recentList = async () => await host.store.get(RECENT_KEY) || [];
+    const recentAdd = async ({ item }) => {
+      await host.store.set(RECENT_KEY, addRecent(await recentList(), item));
+    };
+    const recentClear = () => host.store.set(RECENT_KEY, []);
+    const handlers2 = { videoInfo, tweet: tweet2, read, coins, mentioned, story, larpcheck, refresh, safety, bundle, image, openWindow: openWindow2, reroute: reroute2, holderStatus, holderSave, holderWho, holderActive, recentList, recentAdd, recentClear, settings: () => host.settings() };
     handlers2.resetBundles = () => memo.forEach((_, k) => k.startsWith("bd:") && memo.delete(k));
     return handlers2;
   }
@@ -1565,6 +1584,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       if (p) this.scan({ post: p, source });
       else if (!this.state.ts) this.renderBody();
       if (!p) setTimeout(() => this.input?.focus(), 250);
+      if (!p && this.inline) this.loadRecent();
     }
     // Hovering the radar button starts the work early; the click then picks up the same result.
     prefetch(post) {
@@ -1581,9 +1601,17 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       return this.shell.classList.contains("open");
     }
     /* ----- scanning ----- */
+    loadRecent() {
+      send("recentList").then((list) => {
+        this.recent = list;
+        if (!this.state.ts && !this.state.loading && this.view !== "settings") this.renderBody();
+      }).catch(() => {
+      });
+    }
     async scan({ post, source = null }) {
       const id = ++this.scanId;
       const stale = () => id !== this.scanId;
+      const asked = post?.url || post?.text;
       this.stopTimers();
       this.lastPost = post;
       this.state = { ...this.state, loading: true, error: null, narrative: null, engineError: null, source: source ?? this.state.source };
@@ -1618,6 +1646,8 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
         this.loadAudits();
         this.startTimers();
         this.loadStory(p, read.narrative, res, id);
+        send("recentAdd", { item: recentItem({ asked, source, narrative: read.narrative, res }) }).catch(() => {
+        });
       } catch (e) {
         if (stale()) return;
         this.state = { ...this.state, loading: false, error: e.message };
@@ -1974,8 +2004,10 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       }
       if (!ts) {
         const trends = (this.trends || []).slice(0, 6);
+        const recent = this.inline ? this.recent || [] : [];
         this.bodyEl.innerHTML = `<div class="empty"><div class="big">Scan any post on X</div>
         <p>${esc2(this.hint || (this.inline ? "Search a narrative, a ticker or a CA above." : "Tap the radar under any post or trend."))}</p>
+        ${recent.length ? `<div class="recent-list"><div class="recent-top"><span>Recent</span><button data-recent-clear>Clear</button></div>${recent.map((r, i) => `<button class="recent-row" data-recent="${i}"><b>$${esc2(r.c)}</b><span>${esc2(r.l)}</span><em>${age(r.t)}</em></button>`).join("")}</div>` : ""}
         ${trends.length ? `<div class="trend-list"><span>Trending</span>${trends.map((t) => `<button data-trend="${esc2(t)}">${esc2(t)}</button>`).join("")}</div>` : ""}</div>
         ${this.inline && (this.alerts?.watches.length || this.alerts?.feed.length) ? this.alertsHtml() : ""}`;
         return;
@@ -2662,6 +2694,18 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       const trend = e.target.closest("[data-trend]");
       if (trend) {
         this.scan({ post: { text: `Trending on X: ${trend.dataset.trend}` }, source: { kind: "Trend", label: trend.dataset.trend } });
+        return;
+      }
+      const again = this.recent?.[e.target.closest("[data-recent]")?.dataset.recent];
+      if (again) {
+        this.scan({ post: { text: again.q }, source: isPostLink(again.q) ? null : { kind: again.k, label: again.l } });
+        return;
+      }
+      if (e.target.closest("[data-recent-clear]")) {
+        this.recent = [];
+        this.renderBody();
+        send("recentClear").catch(() => {
+        });
         return;
       }
       if (e.target.closest("[data-retry]")) {
@@ -3437,6 +3481,15 @@ svg { display: block; }\r
 .trend-list span { font: 600 10px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--faint); margin-bottom: 6px; }\r
 .trend-list button { text-align: left; padding: 8px 0; border-bottom: 1px solid var(--line); color: var(--text); font-weight: 600; }\r
 .trend-list button:hover { color: var(--muted); }\r
+.recent-list { margin-top: 18px; display: flex; flex-direction: column; text-align: left; }\r
+.recent-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; font: 600 10px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--faint); }\r
+.recent-top button { font: inherit; letter-spacing: inherit; text-transform: inherit; color: var(--faint); }\r
+.recent-top button:hover { color: var(--text); }\r
+.recent-row { display: flex; align-items: baseline; gap: 8px; width: 100%; min-height: 36px; padding: 8px 0; border-bottom: 1px solid var(--line); text-align: left; color: var(--text); }\r
+.recent-row b { flex: none; font-weight: 700; }\r
+.recent-row span { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--muted); }\r
+.recent-row em { flex: none; font: 500 11px var(--mono); font-style: normal; color: var(--faint); }\r
+.recent-row:hover span { color: var(--text); }\r
 .retry { margin-top: 14px; height: 34px; padding: 0 16px; border-radius: 10px; border: 1px solid var(--line-2); font-weight: 700; }\r
 .retry:hover { background: var(--card-2); }\r
 \r
@@ -3473,8 +3526,8 @@ svg { display: block; }\r
 .who-rows { margin-top: 7px; display: grid; gap: 2px; }\r
 .who-row { display: grid; grid-template-columns: minmax(0, 1fr) 58px 46px 54px; gap: 8px; padding: 4px 0; font-size: 11px; color: var(--muted); text-decoration: none; border-top: 1px solid var(--line); }\r
 .who-row b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); font-weight: 600; }\r
-.who-row:hover b { text-decoration: underline; }
-.who-row span { text-align: right; white-space: nowrap; }
+.who-row:hover b { text-decoration: underline; }\r
+.who-row span { text-align: right; white-space: nowrap; }\r
 .who .story-call b.who-gone, .who-row .who-gone { color: var(--warn); }\r
 .findings { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; }\r
 .findings li { font-size: 11.5px; line-height: 1.4; color: var(--muted); display: grid; grid-template-columns: 58px 1fr; gap: 6px; }\r
