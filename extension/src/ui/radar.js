@@ -39,6 +39,8 @@ const send = (type, payload = {}) => (backend
 // A pasted link to a post on X (nothing else typed) is opened and read as that post.
 const X_POST = /^https?:\/\/(?:www\.|mobile\.)?(?:x|twitter)\.com\/\w+\/status\/\d+\S*$/i;
 export const isPostLink = (s) => X_POST.test(String(s || '').trim());
+const CA = /^(0x[a-fA-F0-9]{40}|[1-9A-HJ-NP-Za-km-z]{32,44})$/;
+export const scansOnPaste = (s) => isPostLink(s) || CA.test(String(s || '').trim());
 
 /* ---------------- formatting ---------------- */
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -517,6 +519,9 @@ class Radar {
 
   renderHead() {
     const { source } = this.state;
+    // A redraw (the holder check answering, say) must not wipe what's being typed or pasted.
+    const typed = this.input?.value;
+    const typing = this.input && this.input.getRootNode().activeElement === this.input;
     this.headEl.innerHTML = `
       <div class="brand">
         ${MARK}
@@ -537,13 +542,21 @@ class Radar {
       ${this.narrativeHtml()}`;
     // Search lives in the toolbar popup; on X the panel only shows what was scanned.
     this.input = this.headEl.querySelector('input');
+    if (this.input && typed) this.input.value = typed;
+    if (typing) this.input?.focus();
     this.headEl.querySelector('form')?.addEventListener('submit', (e) => {
       e.preventDefault();
       const v = this.input.value.trim();
       if (!v) return;
       this.input.value = '';
+      this.input.blur();
       // Anything typed goes to the narrative engine: a topic, a headline, a pasted post or a CA.
       this.scan({ post: { text: v }, source: isPostLink(v) ? null : { kind: 'Search', label: v.slice(0, 80) } });
+    });
+    // A pasted post link or CA scans right away, so there's no Enter to press. Other words wait for Enter.
+    this.input?.addEventListener('paste', (e) => {
+      if (this.input.value.trim() || !scansOnPaste(e.clipboardData?.getData('text'))) return;
+      setTimeout(() => this.headEl.querySelector('form')?.requestSubmit());
     });
     this.updateLive();
   }

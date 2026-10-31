@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Radar
 // @namespace    https://tryradar.fun
-// @version      1.7.22
+// @version      1.7.23
 // @description  See the coins behind any post on X and instantly reroute to the biggest match that passes available on-chain safety checks.
 // @homepageURL  https://tryradar.fun
 // @supportURL   https://tryradar.fun
@@ -31,7 +31,7 @@
 // @downloadURL  https://tryradar.fun/radar.user.js
 // ==/UserScript==
 
-// Radar 1.7.22: built from the extension source at https://tryradar.fun. Not financial advice.
+// Radar 1.7.23: built from the extension source at https://tryradar.fun. Not financial advice.
 (() => {
   var __defProp = Object.defineProperty;
   var __export = (target, all) => {
@@ -1293,6 +1293,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     mountFloating: () => mountFloating,
     mountInline: () => mountInline,
     price: () => price,
+    scansOnPaste: () => scansOnPaste,
     usd: () => usd,
     useBackend: () => useBackend
   });
@@ -1459,6 +1460,8 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
   });
   var X_POST = /^https?:\/\/(?:www\.|mobile\.)?(?:x|twitter)\.com\/\w+\/status\/\d+\S*$/i;
   var isPostLink = (s) => X_POST.test(String(s || "").trim());
+  var CA = /^(0x[a-fA-F0-9]{40}|[1-9A-HJ-NP-Za-km-z]{32,44})$/;
+  var scansOnPaste = (s) => isPostLink(s) || CA.test(String(s || "").trim());
   var esc2 = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
   function usd(n2, { compact = true } = {}) {
     if (n2 == null || !Number.isFinite(n2)) return "\u2014";
@@ -1950,6 +1953,8 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     }
     renderHead() {
       const { source } = this.state;
+      const typed = this.input?.value;
+      const typing = this.input && this.input.getRootNode().activeElement === this.input;
       this.headEl.innerHTML = `
       <div class="brand">
         ${MARK}
@@ -1969,12 +1974,19 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       ${this.watchHtml()}
       ${this.narrativeHtml()}`;
       this.input = this.headEl.querySelector("input");
+      if (this.input && typed) this.input.value = typed;
+      if (typing) this.input?.focus();
       this.headEl.querySelector("form")?.addEventListener("submit", (e) => {
         e.preventDefault();
         const v = this.input.value.trim();
         if (!v) return;
         this.input.value = "";
+        this.input.blur();
         this.scan({ post: { text: v }, source: isPostLink(v) ? null : { kind: "Search", label: v.slice(0, 80) } });
+      });
+      this.input?.addEventListener("paste", (e) => {
+        if (this.input.value.trim() || !scansOnPaste(e.clipboardData?.getData("text"))) return;
+        setTimeout(() => this.headEl.querySelector("form")?.requestSubmit());
       });
       this.updateLive();
     }

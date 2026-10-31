@@ -32,3 +32,8 @@ const panel = readFileSync(new URL('../extension/src/ui/radar.js', import.meta.u
 const outside = [...panel.matchAll(/^import .* from '([^']+)'/gm)].map((m) => m[1]).filter((p) => !p.startsWith('./'));
 assert.deepEqual(outside, [], 'the panel imports from ui/ only');
 console.log('PASS recent: the panel only imports what it can load on X');
+
+const { scansOnPaste } = await import('../extension/src/ui/radar.js');
+for (const yes of ['https://x.com/a/status/123', ' https://twitter.com/a/status/123?s=20 ', 'HyDSdtgiSa5mHqkTVoz8cTFTeVLFKdZ8amPvtNYfpump', '0x21CFCFc3d8F98fC728f48341D10Ad8283F6EB7AB']) assert.ok(scansOnPaste(yes), yes);
+for (const no of ['', null, 'halloween', 'a dog in a hat', 'https://x.com/a', '0x21CF', 'https://example.com/a/status/123', 'check HyDSdtgiSa5mHqkTVoz8cTFTeVLFKdZ8amPvtNYfpump']) assert.ok(!scansOnPaste(no), String(no));
+console.log('PASS paste: a post link or a CA scans by itself, other words wait for Enter');
