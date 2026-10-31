@@ -88,7 +88,7 @@ const PROVIDERS = [
     text: ['nvidia/nemotron-3.5-lightning:free', 'minimax/minimax-m3.1-flash:free', 'google/gemma-4-31b-it:free'],
     vision: ['google/gemma-4-31b-it:free', 'nvidia/nemotron-3.5-super-vl:free'], extra: { reasoning: { enabled: false } } },
   { id: 'gemini', url: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
-    text: ['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-flash-latest'], vision: ['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-flash-latest'],
+    text: ['gemini-flash-lite-latest', 'gemini-2.5-flash', 'gemini-flash-latest'], vision: ['gemini-flash-lite-latest', 'gemini-2.5-flash', 'gemini-flash-latest'],
     extra: { reasoning_effort: 'low' }, effortEnv: 'GEMINI_EFFORT' },
   { id: 'mistral', url: 'https://api.mistral.ai/v1/chat/completions', text: ['mistral-small-latest'], vision: ['mistral-small-latest'] },
 ];

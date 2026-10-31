@@ -1,7 +1,7 @@
 // The radar's backend: everything the panel asks for. The extension runs it in its service worker;
 // the web app runs it in the page. Each host supplies its own storage, window opening and RPC.
 import { fullTokens, mentionedTokens, typedCashtags, linkedSymbol, LAUNCHPADS, pickThree } from './market.js';
-import { rugReport } from './rugcheck.js';
+import { rugReport, standInReport } from './rugcheck.js';
 import { readPost, findCoins } from './narrative.js';
 import { makeRpc, analyzeLaunch, PUBLIC_RPC } from './solana.js';
 import { pickReroute, marketBlock, reportBlock, rejectionLine } from './reroute.js';
@@ -152,8 +152,27 @@ export function makeHandlers(host) {
     return { tokens: updated, ranking };
   }
 
+  // RugCheck first, Larpcheck's holder read when it can't answer. RugCheck failed for every coin on 31 Oct 2026, so after three
+  // failures in a row it's left alone for 5 minutes and cards don't wait on it.
+  let rugFails = 0;
+  let rugOffUntil = 0;
+  async function holderReport(mint, pairs) {
+    if (Date.now() >= rugOffUntil) {
+      try {
+        const report = await rugReport(mint, pairs);
+        rugFails = 0;
+        return report;
+      } catch {
+        if (++rugFails >= 3) { rugFails = 0; rugOffUntil = Date.now() + 300_000; }
+      }
+    }
+    const s = await host.settings();
+    const report = await standInReport(mint, () => lcHolders({ address: mint, chain: 'solana' }), rpcFor(await host.rpcUrl(s)));
+    if (!report) throw new Error("Holder data isn't available right now");
+    return report;
+  }
   async function safety({ mint, pairs }) {
-    return cached(`rc:${mint}`, 60_000, () => rugReport(mint, pairs));
+    return cached(`rc:${mint}`, 60_000, () => holderReport(mint, pairs));
   }
 
   async function bundle({ mint, launchMs, pairs, launchPair, launchDex }) {

@@ -148,6 +148,7 @@ const ROLE = {
   mover: { label: 'THE MOVER', icon: I.bolt },
   tech: { label: 'TECH MATCH', icon: I.spark },
   ca: { label: 'MENTIONED CA', icon: I.pin },
+  bio: { label: "POSTER'S BIO", icon: I.pin },
   more: { label: 'MATCH', icon: I.pin },
 };
 
@@ -367,7 +368,7 @@ class Radar {
       this.bodyEl.dataset.timing = JSON.stringify(res.timing || {});
       this.state = { ...this.state, ...res, loading: false };
       this.tokens.clear();
-      for (const t of [...res.mentioned, ...(res.techMatch ? [res.techMatch] : []), ...(res.roleCandidates || []), ...res.picks.map((x) => x.token), ...res.others]) this.tokens.set(t.address, t);
+      for (const t of [...res.mentioned, ...(res.bioCoins || []), ...(res.techMatch ? [res.techMatch] : []), ...(res.roleCandidates || []), ...res.picks.map((x) => x.token), ...res.others]) this.tokens.set(t.address, t);
       this.renderHead();
       this.renderBody();
       this.renderFoot();
@@ -408,7 +409,7 @@ class Radar {
   }
 
   cardTokens() {
-    const tokens = [...this.state.mentioned, ...(this.state.techMatch ? [this.state.techMatch] : []), ...this.state.picks.map((p) => p.token), ...this.state.others.filter((t) => this.expanded.has(t.address))];
+    const tokens = [...this.state.mentioned, ...this.bioCards(), ...(this.state.techMatch ? [this.state.techMatch] : []), ...this.state.picks.map((p) => p.token), ...this.state.others.filter((t) => this.expanded.has(t.address))];
     return [...new Map(tokens.map((t) => [t.address, t])).values()]
       .map((t) => this.tokens.get(t.address) || t);
   }
@@ -782,7 +783,7 @@ class Radar {
 
   async loadStory(post, narrative, res, id) {
     if (this.state.source?.kind === 'Search' || (!post?.text && !post?.images?.length)) return;
-    const t = res.mentioned[0] || res.picks[0]?.token || null;
+    const t = res.mentioned[0] || res.bioCoins?.[0] || res.picks[0]?.token || null;
     // No coin on the post's story: nothing to check, and no AI spent on it.
     if (!t) return;
     const coin = t ? { name: t.name, symbol: t.symbol, address: t.address, createdAt: t.createdAt, socials: t.socials, websites: t.websites, fromPost: !!t.fromPost, mentioned: res.mentioned.includes(t) } : null;
@@ -844,12 +845,13 @@ class Radar {
         ${this.inline && (this.alerts?.watches.length || this.alerts?.feed.length) ? this.alertsHtml() : ''}`;
       return;
     }
-    if (!picks.length && !mentioned.length && !techMatch && this.state.mode === 'ai' && this.state.coinable === false) {
+    const bio = this.bioCards();
+    if (!picks.length && !mentioned.length && !bio.length && !techMatch && this.state.mode === 'ai' && this.state.coinable === false) {
       this.bodyEl.innerHTML = `<div class="empty"><div class="big">No coin narrative here</div>
         <p>This post doesn't carry anything people trade. Try a news post, a trend, or a meme.</p>${this.launchHtml()}</div>`;
       return;
     }
-    if (!picks.length && !mentioned.length && !techMatch) {
+    if (!picks.length && !mentioned.length && !bio.length && !techMatch) {
       this.bodyEl.innerHTML = `<div class="empty"><div class="big">No live coins for this narrative</div>
         <p>Nothing trading on-chain is about this yet.</p>${this.watchHtml({ cta: true })}${this.launchHtml()}</div>`;
       return;
@@ -857,6 +859,7 @@ class Radar {
     let html = '';
     html += `<div class="reroute-bar"><span>Instant reroute</span><button type="button" data-reroute>Open best match</button></div>`;
     if (mentioned.length) html += `<div class="section-label"><span>In the post</span></div>` + mentioned.map((t) => this.cardHtml(t, { role: 'ca' })).join('');
+    if (bio.length) html += `<div class="section-label"><span>In the poster's bio</span></div>` + bio.map((t) => this.cardHtml(t, { role: 'bio' })).join('');
     const techIsAlreadyShown = techMatch && (mentioned.some((t) => t.address === techMatch.address) || picks.some((p) => p.token.address === techMatch.address));
     if (techMatch && !techIsAlreadyShown) {
       const t = this.tokens.get(techMatch.address) || techMatch;
@@ -902,6 +905,12 @@ class Radar {
     }
   }
 
+  // The poster's bio coin gets its own card, unless a scan's own pick already shows it. A search has no poster.
+  bioCards() {
+    const { mode, bioCoins, picks } = this.state;
+    return mode === 'ai' ? (bioCoins || []).filter((t) => !(picks || []).some((p) => p.token.address === t.address)) : [];
+  }
+
   avatarHtml(t) {
     const h = hue(t.address);
     return `<div class="ava" style="--h1:hsl(${h} 70% 45%);--h2:hsl(${(h + 50) % 360} 70% 30%)" data-img="${esc(t.image || '')}">${esc((t.symbol || '?').replace(/^\$/, '').slice(0, 2).toUpperCase())}</div>`;
@@ -909,7 +918,8 @@ class Radar {
 
   hydrateImages() {
     this.bodyEl.querySelectorAll('.ava[data-img]').forEach((el) => {
-      const url = el.dataset.img;
+      // DexScreener serves logos at 800px, 166 KB for a 40px circle. Its CDN also has 128px, about 7 KB.
+      const url = el.dataset.img.replace(/^(https:\/\/cdn\.dexscreener\.com\/cms\/images\/[^?]+\?)width=800&height=800/, '$1width=128&height=128');
       if (!url) return;
       el.removeAttribute('data-img');
       send('image', { url }).then((src) => { el.innerHTML = `<img alt="" src="${src}">`; }).catch(() => {});
@@ -1108,10 +1118,14 @@ class Radar {
         if (r.insiderWallets) html += row(level(r.insiderPct ?? 0, 8, 20), 'Insider wallets', `${r.insiderWallets}`, r.insiderPct != null ? `hold ${pctPlain(r.insiderPct)}` : 'linked by transfers');
       }
       const auth = !r.mintAuthority && !r.freezeAuthority;
-      html += row(auth ? 'good' : 'bad', 'Mint / freeze', `${r.mintAuthority ? 'Mintable' : 'Renounced'} / ${r.freezeAuthority ? 'Freezable' : 'Renounced'}`);
-      if (!t.onCurve) html += row(r.lpLockedPct >= 90 ? 'good' : r.lpLockedPct >= 50 ? 'warn' : 'bad', 'LP locked / burned', pctPlain(r.lpLockedPct, 0));
-      const danger = r.risks.filter((x) => x.level === 'danger');
-      html += row(r.rugged ? 'bad' : level(r.score, 20, 50), 'RugCheck', r.rugged ? 'RUGGED' : `${r.score ?? '—'}/100 risk`, danger[0]?.name || (r.risks[0]?.name ?? 'no flags'));
+      if (r.authorityKnown !== false) html += row(auth ? 'good' : 'bad', 'Mint / freeze', `${r.mintAuthority ? 'Mintable' : 'Renounced'} / ${r.freezeAuthority ? 'Freezable' : 'Renounced'}`);
+      if (r.source === 'larpcheck') {
+        html += `<div class="row note"><span class="dot"></span><span class="k">Holder data</span><span class="v"><a href="${esc(r.page)}" target="_blank" rel="noopener noreferrer">Larpcheck ↗</a></span></div>`;
+      } else {
+        if (!t.onCurve) html += row(r.lpLockedPct >= 90 ? 'good' : r.lpLockedPct >= 50 ? 'warn' : 'bad', 'LP locked / burned', pctPlain(r.lpLockedPct, 0));
+        const danger = r.risks.filter((x) => x.level === 'danger');
+        html += row(r.rugged ? 'bad' : level(r.score, 20, 50), 'RugCheck', r.rugged ? 'RUGGED' : `${r.score ?? '—'}/100 risk`, danger[0]?.name || (r.risks[0]?.name ?? 'no flags'));
+      }
       const h = card.querySelector('[data-k="holders"]');
       if (h) h.textContent = num(r.holders);
     } else if (a.rugErr) {
@@ -1332,9 +1346,13 @@ class Radar {
     if (!a.rug && !a.rugErr) return;
     const why = marketBlock(t) || reportBlock(a.rug);
     el.className = `hc ${why ? 'no' : 'ok'}`;
+    // Larpcheck's own line, credited and linked, when its read stands in for RugCheck's.
+    const by = a.rug?.source === 'larpcheck' ? `<a class="hc-by" href="${esc(a.rug.page)}" target="_blank" rel="noopener noreferrer">Larpcheck ↗</a>` : '';
     el.innerHTML = why
-      ? `<span class="hc-mark">✕</span><span>${esc(why.charAt(0).toUpperCase() + why.slice(1))}</span><em>Reroute skips it</em>`
-      : `<span class="hc-mark">✓</span><span>Real holders · ${num(a.rug.holders)}</span><em>Passes the check</em>`;
+      ? `<span class="hc-mark">✕</span><span>${esc(why.charAt(0).toUpperCase() + why.slice(1))}</span>${by || '<em>Reroute skips it</em>'}`
+      : by
+        ? `<span class="hc-mark">✓</span><span>${esc(a.rug.line || `Real holders · ${num(a.rug.holders)}`)}</span>${by}`
+        : `<span class="hc-mark">✓</span><span>Real holders · ${num(a.rug.holders)}</span><em>Passes the check</em>`;
   }
 
   // Coins on the post that share this one's ticker: copycats are the usual trap on a hot narrative.
@@ -1444,7 +1462,7 @@ class Radar {
 
   renderFoot() {
     const ts = this.state.ts;
-    this.footEl.innerHTML = `<span>DexScreener · RugCheck · Solana RPC</span><span data-ago>${ts ? 'updated just now' : 'not scanned'}</span>`;
+    this.footEl.innerHTML = `<span>DexScreener · RugCheck · Larpcheck</span><span data-ago>${ts ? 'updated just now' : 'not scanned'}</span>`;
     clearInterval(this.agoTimer);
     if (ts) this.agoTimer = setInterval(() => {
       const s = Math.round((Date.now() - this.state.ts) / 1000);

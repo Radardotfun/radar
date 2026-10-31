@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Radar
 // @namespace    https://tryradar.fun
-// @version      1.7.31
+// @version      1.7.32
 // @description  See the coins behind any post on X and instantly reroute to the biggest match that passes available on-chain safety checks.
 // @homepageURL  https://tryradar.fun
 // @supportURL   https://tryradar.fun
@@ -31,7 +31,7 @@
 // @downloadURL  https://tryradar.fun/radar.user.js
 // ==/UserScript==
 
-// Radar 1.7.31: built from the extension source at https://tryradar.fun. Not financial advice.
+// Radar 1.7.32: built from the extension source at https://tryradar.fun. Not financial advice.
 (() => {
   var __defProp = Object.defineProperty;
   var __export = (target, all) => {
@@ -112,10 +112,10 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     if (!text) return [];
     const scores = /* @__PURE__ */ new Map();
     const add = (term, w, strong2 = true) => {
-      const key = norm(term);
-      if (key.length < 2 || STOP.has(key) || FILLER.has(key)) return;
-      const prev = scores.get(key);
-      scores.set(key, { term: prev?.term || term, w: (prev?.w || 0) + w, strong: strong2 || !!prev?.strong });
+      const key2 = norm(term);
+      if (key2.length < 2 || STOP.has(key2) || FILLER.has(key2)) return;
+      const prev = scores.get(key2);
+      scores.set(key2, { term: prev?.term || term, w: (prev?.w || 0) + w, strong: strong2 || !!prev?.strong });
     };
     let t = text.replace(/https?:\/\/\S+/g, " ").replace(/@\w+/g, " ").replace(/[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}]/gu, " ");
     for (const [, tag] of t.matchAll(/\$([A-Za-z][A-Za-z0-9]{1,14})\b/g)) {
@@ -132,8 +132,8 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       };
       words.forEach((raw, i) => {
         const w = raw.replace(/^['-]+|['-]+$/g, "").replace(/'s$/i, "");
-        const lower = w.toLowerCase();
-        if (!w || STOP.has(lower) || FILLER.has(lower) || /^\d+%?$/.test(w)) {
+        const lower2 = w.toLowerCase();
+        if (!w || STOP.has(lower2) || FILLER.has(lower2) || /^\d+%?$/.test(w)) {
           flush();
           return;
         }
@@ -146,7 +146,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
           return;
         }
         flush();
-        if (lower.length >= 5) add(lower, 0.8, false);
+        if (lower2.length >= 5) add(lower2, 0.8, false);
       });
       flush();
     }
@@ -176,7 +176,17 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     return null;
   }
   function reportBlock(report, rules = RULES) {
-    if (!report) return "no RugCheck report";
+    if (!report) return "no holder report";
+    if (report.source === "larpcheck") {
+      if (!report.authorityKnown) return "mint and freeze authority unknown";
+      if (report.freezeAuthority) return "freeze authority is on";
+      if (report.mintAuthority) return "mint authority is on";
+      if (!report.ok) return report.line ? `Larpcheck: ${report.line}` : "Larpcheck's holder check didn't pass";
+      if (report.holders == null) return "holder count unknown";
+      if (report.holders < rules.minHolders) return `only ${report.holders} holders`;
+      if ((report.top10Pct || 0) > rules.maxTop10) return `top 10 hold ${pct(report.top10Pct)}`;
+      return null;
+    }
     if (report.rugged) return "liquidity pulled";
     if (report.freezeAuthority) return "freeze authority is on";
     if (report.mintAuthority) return "mint authority is on";
@@ -267,9 +277,9 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     const byToken = /* @__PURE__ */ new Map();
     for (const p of pairs) {
       if (!p?.baseToken?.address || QUOTES.has(quoteKey(p.baseToken.address))) continue;
-      const key = `${p.chainId}:${p.baseToken.address}`;
-      if (!byToken.has(key)) byToken.set(key, []);
-      const list = byToken.get(key);
+      const key2 = `${p.chainId}:${p.baseToken.address}`;
+      if (!byToken.has(key2)) byToken.set(key2, []);
+      const list = byToken.get(key2);
       if (!list.some((q) => q.pairAddress === p.pairAddress)) list.push(p);
     }
     const tokens = [];
@@ -321,7 +331,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     return tokens;
   }
   function relevance(token, keywords) {
-    const sym = norm(token.symbol || "");
+    const sym2 = norm(token.symbol || "");
     const name = norm(token.name || "");
     const words = new Set(`${token.name} ${token.symbol}`.split(/[^A-Za-z0-9À-ɏ]+/).map(norm).filter(Boolean));
     let score = 0;
@@ -331,12 +341,12 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       if (k.length < 2) return;
       const w = 1 / (1 + i * 0.25);
       let hit = 0;
-      if (sym === k || name === k) hit = 4;
+      if (sym2 === k || name === k) hit = 4;
       else if (words.has(k)) hit = 2.5;
-      else if (k.length >= 5 && (sym.includes(k) || name.includes(k))) hit = 2;
+      else if (k.length >= 5 && (sym2.includes(k) || name.includes(k))) hit = 2;
       else if (kw.includes(" ")) {
         const parts = kw.split(/\s+/).map(norm).filter((p) => p.length >= 3);
-        if (parts.length && parts.every((p) => name.includes(p) || sym.includes(p))) hit = 3;
+        if (parts.length && parts.every((p) => name.includes(p) || sym2.includes(p))) hit = 3;
       }
       if (hit) {
         score += hit * w;
@@ -430,15 +440,15 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
   async function linkedSymbol(chain, address) {
     const r = await gmFetch(`https://api.dexscreener.com/tokens/v1/${chain}/${address}`, { signal: AbortSignal.timeout(8e3) });
     const pairs = r.ok ? await r.json() : [];
-    const key = address.toLowerCase();
-    const pair = (Array.isArray(pairs) ? pairs : []).find((p) => [p.baseToken?.address, p.quoteToken?.address].some((a) => a?.toLowerCase() === key));
-    return pair ? (pair.baseToken.address.toLowerCase() === key ? pair.baseToken : pair.quoteToken).symbol : null;
+    const key2 = address.toLowerCase();
+    const pair = (Array.isArray(pairs) ? pairs : []).find((p) => [p.baseToken?.address, p.quoteToken?.address].some((a) => a?.toLowerCase() === key2));
+    return pair ? (pair.baseToken.address.toLowerCase() === key2 ? pair.baseToken : pair.quoteToken).symbol : null;
   }
   async function mentionedTokens(text, chains, search = searchPairs) {
     const cas = [.../* @__PURE__ */ new Set([...text.match(SOL_CA) || [], ...text.match(EVM_CA) || []])].slice(0, 3);
     const found = await Promise.all(cas.map(async (ca) => {
-      const key = ca.toLowerCase();
-      const hit = aggregate(await search(ca).catch(() => [])).find((t) => t.address.toLowerCase() === key || t.pairAddresses?.some((p) => p.toLowerCase() === key));
+      const key2 = ca.toLowerCase();
+      const hit = aggregate(await search(ca).catch(() => [])).find((t) => t.address.toLowerCase() === key2 || t.pairAddresses?.some((p) => p.toLowerCase() === key2));
       if (!hit) return null;
       return aggregate(await allPairsMany([hit]).catch(() => [])).find((t) => t.address === hit.address && chains.includes(t.chain)) || null;
     }));
@@ -447,6 +457,40 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
 
   // extension/src/lib/rugcheck.js
   var RC = "https://api.rugcheck.xyz/v1";
+  async function standInReport(mint, holders, rpc) {
+    const [lc, info] = await Promise.all([
+      holders().catch(() => null),
+      rpc("getAccountInfo", [mint, { encoding: "jsonParsed", commitment: "confirmed" }]).catch(() => null)
+    ]);
+    if (!lc?.ready) return null;
+    const parsed = info?.value?.data?.parsed?.info;
+    return {
+      source: "larpcheck",
+      page: lc.page,
+      line: lc.line,
+      ok: !!lc.ok,
+      authorityKnown: !!parsed,
+      mintAuthority: parsed?.mintAuthority || null,
+      freezeAuthority: parsed?.freezeAuthority || null,
+      holders: lc.holders ?? null,
+      top10Pct: lc.top10 ?? null,
+      score: null,
+      rugged: false,
+      risks: [],
+      topHolder: null,
+      insiderWallets: 0,
+      insiderPct: null,
+      creator: null,
+      creatorPct: null,
+      lpLockedPct: null,
+      poolTokens: null,
+      supplyTokens: null,
+      copycat: false,
+      launchpad: null,
+      tokenProgram: null,
+      detectedAt: null
+    };
+  }
   async function rugReport(mint, pairAddresses = []) {
     const res = await gmFetch(`${RC}/tokens/${mint}/report`);
     if (res.status === 429) throw new Error("RugCheck rate limited");
@@ -493,6 +537,36 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     };
   }
 
+  // extension/src/lib/bio.js
+  var SOL_CA2 = /\b[1-9A-HJ-NP-Za-km-z]{32,44}\b/g;
+  var EVM_CAS = /\b0x[a-fA-F0-9]{40}\b/g;
+  var sym = (t) => String(t?.symbol || "").replace(/^\$+/, "").toUpperCase();
+  var lower = (s) => String(s || "").toLowerCase().trim();
+  var key = (s) => String(s || "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
+  var tickersIn = (text) => [...String(text || "").matchAll(/(?:^|[^\w$])\$([A-Za-z][A-Za-z0-9]{0,11})\b/g)].map((m) => m[1].toUpperCase());
+  var VAGUE = new Set("the and for with coin coins token tokens meme memes crypto official new baby cat cats kitten kitty dog dogs puppy frog bird".split(" "));
+  var telling = (s) => lower(s).split(/[^\p{L}\p{N}]+/u).filter((w) => w.length >= 3 && !VAGUE.has(w));
+  function tiedToPost(t, words) {
+    const whole = new Set(words.map(key).filter((k) => k.length >= 2));
+    if (whole.has(key(t.symbol)) || whole.has(key(t.name))) return true;
+    const used = new Set(words.flatMap(telling));
+    return [...telling(t.symbol), ...telling(t.name)].some((w) => used.has(w));
+  }
+  function bioCas(post) {
+    return [.../* @__PURE__ */ new Set([...String(post?.bio || "").match(SOL_CA2) || [], ...String(post?.bio || "").match(EVM_CAS) || []])].slice(0, 2);
+  }
+  function tiedToBio(t, post, words, typed = []) {
+    if (!t?.address) return false;
+    if (typed.length && !typed.includes(sym(t))) return false;
+    if (typed.includes(sym(t)) || tiedToPost(t, words)) return true;
+    const handle = key(post?.author);
+    if (!handle) return false;
+    const links2 = [...(t.socials || []).map((s) => s?.url || s), ...t.links || []].map((u) => String(u || "").toLowerCase());
+    if (links2.some((u) => new RegExp(`(^|//)(www\\.)?(x|twitter)\\.com/${handle}([/?#]|$)`, "i").test(u))) return true;
+    const own = key(t.symbol).length >= 3 && handle.includes(key(t.symbol));
+    return own || key(t.name).length >= 4 && handle.includes(key(t.name));
+  }
+
   // extension/src/lib/narrative.js
   var passthrough = (_k, _ttl, fn) => fn();
   async function engine(apiBase, path, body, timeoutMs = 15e3) {
@@ -523,6 +597,20 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     const h = (Date.now() - ms) / 36e5;
     return h < 1 ? `${Math.round(h * 60)}m` : h < 48 ? `${Math.round(h)}h` : `${Math.round(h / 24)}d`;
   };
+  async function bioCoins(post, read, fullText, chains, apiBase, cached) {
+    if (post.skipBio) return [];
+    const bio = post.bio ?? await (post.url ? cached(`bio:${post.url}`, 36e5, async () => {
+      const res = await gmFetch(`${apiBase}/tweet?url=${encodeURIComponent(post.url)}`, { signal: AbortSignal.timeout(8e3) });
+      return res.ok ? (await res.json()).post?.bio || "" : "";
+    }).catch(() => "") : "");
+    const typed = tickersIn(fullText);
+    const words = [...read.anchors || [], ...read.terms || [], ...fullText.split(/[^\p{L}\p{N}]+/u).filter((w) => w.length >= 3)];
+    for (const ca of bioCas({ bio })) {
+      const [t] = await mentionedTokens(ca, chains, (q) => cached(`q:${q}`, 2e4, () => searchPairs(q))).catch(() => []);
+      if (t && ((t.marketCap || 0) >= 1e3 || typed.includes(sym(t))) && tiedToBio(t, post, words, typed)) return [t];
+    }
+    return [];
+  }
   async function readPost(post, chains, { apiBase, cached = passthrough }) {
     const fullText = [post.text, post.quoted, post.card, post.parent].filter(Boolean).join("\n");
     for (const k of extractKeywords(fullText.replace(SOL_CA, " ").replace(EVM_CA, " "), 3, { strongOnly: true })) {
@@ -550,16 +638,17 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     if (fromImages.length) {
       mentioned.push(...await mentionedTokens(fromImages.join(" "), chains, (q) => cached(`q:${q}`, 2e4, () => searchPairs(q))).catch(() => []));
     }
-    return { narrative: read.narrative, coinable: read.coinable, terms: read.terms || [], anchors: read.anchors || [], judge: read.judge !== false && !read.anchors?.length, mentioned, tickers: read.tickers || [], post: full };
+    const fromBio = mentioned.length ? [] : await bioCoins(post, read, fullText, chains, apiBase, cached);
+    return { narrative: read.narrative, coinable: read.coinable, terms: read.terms || [], anchors: read.anchors || [], judge: read.judge !== false && !read.anchors?.length, mentioned, bioCoins: fromBio, tickers: read.tickers || [], post: full };
   }
   function anchorHits(t, anchors) {
     const name = norm(t.name || "");
-    const sym = norm(t.symbol || "");
+    const sym2 = norm(t.symbol || "");
     const words = new Set(`${t.name} ${t.symbol}`.split(/[^A-Za-z0-9À-ɏ]+/).map(norm).filter(Boolean));
     return anchors.filter((a) => {
       const k = norm(a);
       if (!k) return false;
-      return k.length <= 3 ? words.has(k) || sym === k : name.includes(k) || sym.includes(k);
+      return k.length <= 3 ? words.has(k) || sym2 === k : name.includes(k) || sym2.includes(k);
     }).length;
   }
   var TECH_CUES = /\b(?:technology|tech|software|hardware|application|app|platform|tool|open[- ]?source|github|repository|repo|developer|coding|code|artificial intelligence|ai|large language model|llm|model|agent|robot(?:ics)?|gpu|chip|semiconductor|compute|computing|protocol|framework|library|browser|operating system|cloud|saas|api)\b/i;
@@ -581,13 +670,13 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     const best = matches.filter((m) => m.anchorIndex === firstAnchor).sort((a, b) => b.score - a.score || Number(Boolean(b.token.mcapBacked)) - Number(Boolean(a.token.mcapBacked)) || (b.token.marketCap || 0) - (a.token.marketCap || 0))[0];
     return { ...best.token, techAnchor: anchors[firstAnchor] };
   }
-  async function findCoins({ narrative, coinable, terms, anchors = [], judge = true, mentioned, tickers = [], post, engineError }, chains, { apiBase, cached = passthrough }) {
+  async function findCoins({ narrative, coinable, terms, anchors = [], judge = true, mentioned, bioCoins: fromBio = [], tickers = [], post, engineError }, chains, { apiBase, cached = passthrough }) {
     const t0 = Date.now();
     const timing = {};
     const lap = (k) => {
       timing[k] = Date.now() - t0;
     };
-    const base = { mode: "ai", narrative, coinable, mentioned, tickers, anchors, terms, engineError, ts: Date.now(), timing, techMatch: null };
+    const base = { mode: "ai", narrative, coinable, mentioned, bioCoins: fromBio, tickers, anchors, terms, engineError, ts: Date.now(), timing, techMatch: null };
     if (!terms.length) return { ...base, picks: [], others: [], techMatch: findTechMatch([], mentioned, anchors, /* @__PURE__ */ new Map(), narrative, post) };
     const statusId = post.url?.match(/status\/(\d+)/)?.[1] || null;
     let failed = 0;
@@ -1049,30 +1138,30 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       return rpcState.rpc;
     }
     const memo = /* @__PURE__ */ new Map();
-    function cached(key, ttl, fn) {
-      const hit = memo.get(key);
+    function cached(key2, ttl, fn) {
+      const hit = memo.get(key2);
       if (hit && Date.now() - hit.t < ttl) return hit.p;
       const p = fn();
-      memo.set(key, { t: Date.now(), p });
-      p.catch(() => memo.delete(key));
+      memo.set(key2, { t: Date.now(), p });
+      p.catch(() => memo.delete(key2));
       if (memo.size > 500) memo.delete(memo.keys().next().value);
       return p;
     }
     const postKey = (p, chains) => JSON.stringify([p, chains]);
-    async function forgetIfFailed(key, p) {
+    async function forgetIfFailed(key2, p) {
       const res = await p;
-      if (res?.engineError) memo.delete(key);
+      if (res?.engineError) memo.delete(key2);
       return res;
     }
     async function read({ post }) {
       const s = await host.settings();
-      const key = `rd:${postKey(post, s.chains)}`;
-      return forgetIfFailed(key, cached(key, 3e5, () => readPost(post, s.chains, { apiBase: API_BASE, cached })));
+      const key2 = `rd:${postKey(post, s.chains)}`;
+      return forgetIfFailed(key2, cached(key2, 3e5, () => readPost(post, s.chains, { apiBase: API_BASE, cached })));
     }
     async function coins({ post, judge = false }) {
       const s = await host.settings();
-      const key = `co:${judge ? "j:" : ""}${postKey(post, s.chains)}`;
-      return forgetIfFailed(key, cached(key, 12e4, async () => {
+      const key2 = `co:${judge ? "j:" : ""}${postKey(post, s.chains)}`;
+      return forgetIfFailed(key2, cached(key2, 12e4, async () => {
         const r = await read({ post });
         return findCoins(judge ? { ...r, judge: true } : r, s.chains, { apiBase: API_BASE, cached });
       }));
@@ -1143,15 +1232,35 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       }
       return { tokens: updated, ranking };
     }
+    let rugFails = 0;
+    let rugOffUntil = 0;
+    async function holderReport(mint, pairs) {
+      if (Date.now() >= rugOffUntil) {
+        try {
+          const report2 = await rugReport(mint, pairs);
+          rugFails = 0;
+          return report2;
+        } catch {
+          if (++rugFails >= 3) {
+            rugFails = 0;
+            rugOffUntil = Date.now() + 3e5;
+          }
+        }
+      }
+      const s = await host.settings();
+      const report = await standInReport(mint, () => lcHolders({ address: mint, chain: "solana" }), rpcFor(await host.rpcUrl(s)));
+      if (!report) throw new Error("Holder data isn't available right now");
+      return report;
+    }
     async function safety({ mint, pairs }) {
-      return cached(`rc:${mint}`, 6e4, () => rugReport(mint, pairs));
+      return cached(`rc:${mint}`, 6e4, () => holderReport(mint, pairs));
     }
     async function bundle({ mint, launchMs, pairs, launchPair, launchDex }) {
       const s = await host.settings();
       await host.ready;
       return cached(`bd:${mint}`, 45e3, async () => {
-        const key = `launch:${mint}`;
-        const stored = await host.store.get(key) || null;
+        const key2 = `launch:${mint}`;
+        const stored = await host.store.get(key2) || null;
         const birthKnown = LAUNCHPADS.has(launchDex) && launchMs && Date.now() - launchMs < 3 * 864e5;
         const rc = stored || birthKnown ? null : await safety({ mint, pairs }).catch(() => null);
         const seen = rc?.detectedAt ? Date.parse(rc.detectedAt) : Infinity;
@@ -1166,7 +1275,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
           if (/No block time near slot|cleaned up|does not exist on node/i.test(String(e?.message))) throw new Error(host.prunedNote || "Launch block is too old for this RPC");
           throw e;
         });
-        if (result.ok && !stored) await host.store.set(key, result.cache);
+        if (result.ok && !stored) await host.store.set(key2, result.cache);
         delete result.cache;
         return result;
       });
@@ -1405,7 +1514,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       worst = "risk";
       facts.push({ k: "Mint authority", text: "Active: supply can grow", lvl: "risk" });
     }
-    if (rug && !token?.onCurve && rug.lpLockedPct < 50) {
+    if (rug && !token?.onCurve && rug.lpLockedPct != null && rug.lpLockedPct < 50) {
       score -= 15;
       if (worst === "ok") worst = "watch";
       facts.push({ k: "Liquidity", text: `${Math.round(rug.lpLockedPct)}% locked or burned`, lvl: "watch" });
@@ -1582,6 +1691,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     mover: { label: "THE MOVER", icon: I.bolt },
     tech: { label: "TECH MATCH", icon: I.spark },
     ca: { label: "MENTIONED CA", icon: I.pin },
+    bio: { label: "POSTER'S BIO", icon: I.pin },
     more: { label: "MATCH", icon: I.pin }
   };
   var CHAIN_LABEL = { solana: "SOL", robinhood: "Robinhood" };
@@ -1829,7 +1939,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
         this.bodyEl.dataset.timing = JSON.stringify(res.timing || {});
         this.state = { ...this.state, ...res, loading: false };
         this.tokens.clear();
-        for (const t of [...res.mentioned, ...res.techMatch ? [res.techMatch] : [], ...res.roleCandidates || [], ...res.picks.map((x) => x.token), ...res.others]) this.tokens.set(t.address, t);
+        for (const t of [...res.mentioned, ...res.bioCoins || [], ...res.techMatch ? [res.techMatch] : [], ...res.roleCandidates || [], ...res.picks.map((x) => x.token), ...res.others]) this.tokens.set(t.address, t);
         this.renderHead();
         this.renderBody();
         this.renderFoot();
@@ -1869,7 +1979,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       if (this.lastPost) this.scan({ post: this.lastPost });
     }
     cardTokens() {
-      const tokens = [...this.state.mentioned, ...this.state.techMatch ? [this.state.techMatch] : [], ...this.state.picks.map((p) => p.token), ...this.state.others.filter((t) => this.expanded.has(t.address))];
+      const tokens = [...this.state.mentioned, ...this.bioCards(), ...this.state.techMatch ? [this.state.techMatch] : [], ...this.state.picks.map((p) => p.token), ...this.state.others.filter((t) => this.expanded.has(t.address))];
       return [...new Map(tokens.map((t) => [t.address, t])).values()].map((t) => this.tokens.get(t.address) || t);
     }
     loadAudits() {
@@ -2248,7 +2358,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     }
     async loadStory(post, narrative, res, id) {
       if (this.state.source?.kind === "Search" || !post?.text && !post?.images?.length) return;
-      const t = res.mentioned[0] || res.picks[0]?.token || null;
+      const t = res.mentioned[0] || res.bioCoins?.[0] || res.picks[0]?.token || null;
       if (!t) return;
       const coin = t ? { name: t.name, symbol: t.symbol, address: t.address, createdAt: t.createdAt, socials: t.socials, websites: t.websites, fromPost: !!t.fromPost, mentioned: res.mentioned.includes(t) } : null;
       this.state = { ...this.state, story: { loading: true } };
@@ -2308,12 +2418,13 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
         ${this.inline && (this.alerts?.watches.length || this.alerts?.feed.length) ? this.alertsHtml() : ""}`;
         return;
       }
-      if (!picks.length && !mentioned.length && !techMatch && this.state.mode === "ai" && this.state.coinable === false) {
+      const bio = this.bioCards();
+      if (!picks.length && !mentioned.length && !bio.length && !techMatch && this.state.mode === "ai" && this.state.coinable === false) {
         this.bodyEl.innerHTML = `<div class="empty"><div class="big">No coin narrative here</div>
         <p>This post doesn't carry anything people trade. Try a news post, a trend, or a meme.</p>${this.launchHtml()}</div>`;
         return;
       }
-      if (!picks.length && !mentioned.length && !techMatch) {
+      if (!picks.length && !mentioned.length && !bio.length && !techMatch) {
         this.bodyEl.innerHTML = `<div class="empty"><div class="big">No live coins for this narrative</div>
         <p>Nothing trading on-chain is about this yet.</p>${this.watchHtml({ cta: true })}${this.launchHtml()}</div>`;
         return;
@@ -2321,6 +2432,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       let html = "";
       html += `<div class="reroute-bar"><span>Instant reroute</span><button type="button" data-reroute>Open best match</button></div>`;
       if (mentioned.length) html += `<div class="section-label"><span>In the post</span></div>` + mentioned.map((t) => this.cardHtml(t, { role: "ca" })).join("");
+      if (bio.length) html += `<div class="section-label"><span>In the poster's bio</span></div>` + bio.map((t) => this.cardHtml(t, { role: "bio" })).join("");
       const techIsAlreadyShown = techMatch && (mentioned.some((t) => t.address === techMatch.address) || picks.some((p) => p.token.address === techMatch.address));
       if (techMatch && !techIsAlreadyShown) {
         const t = this.tokens.get(techMatch.address) || techMatch;
@@ -2366,13 +2478,18 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
         this.renderLarp(t.address);
       }
     }
+    // The poster's bio coin gets its own card, unless a scan's own pick already shows it. A search has no poster.
+    bioCards() {
+      const { mode, bioCoins: bioCoins2, picks } = this.state;
+      return mode === "ai" ? (bioCoins2 || []).filter((t) => !(picks || []).some((p) => p.token.address === t.address)) : [];
+    }
     avatarHtml(t) {
       const h = hue(t.address);
       return `<div class="ava" style="--h1:hsl(${h} 70% 45%);--h2:hsl(${(h + 50) % 360} 70% 30%)" data-img="${esc2(t.image || "")}">${esc2((t.symbol || "?").replace(/^\$/, "").slice(0, 2).toUpperCase())}</div>`;
     }
     hydrateImages() {
       this.bodyEl.querySelectorAll(".ava[data-img]").forEach((el) => {
-        const url = el.dataset.img;
+        const url = el.dataset.img.replace(/^(https:\/\/cdn\.dexscreener\.com\/cms\/images\/[^?]+\?)width=800&height=800/, "$1width=128&height=128");
         if (!url) return;
         el.removeAttribute("data-img");
         send("image", { url }).then((src) => {
@@ -2562,10 +2679,14 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
           if (r.insiderWallets) html += row(level2(r.insiderPct ?? 0, 8, 20), "Insider wallets", `${r.insiderWallets}`, r.insiderPct != null ? `hold ${pctPlain(r.insiderPct)}` : "linked by transfers");
         }
         const auth = !r.mintAuthority && !r.freezeAuthority;
-        html += row(auth ? "good" : "bad", "Mint / freeze", `${r.mintAuthority ? "Mintable" : "Renounced"} / ${r.freezeAuthority ? "Freezable" : "Renounced"}`);
-        if (!t.onCurve) html += row(r.lpLockedPct >= 90 ? "good" : r.lpLockedPct >= 50 ? "warn" : "bad", "LP locked / burned", pctPlain(r.lpLockedPct, 0));
-        const danger = r.risks.filter((x) => x.level === "danger");
-        html += row(r.rugged ? "bad" : level2(r.score, 20, 50), "RugCheck", r.rugged ? "RUGGED" : `${r.score ?? "\u2014"}/100 risk`, danger[0]?.name || (r.risks[0]?.name ?? "no flags"));
+        if (r.authorityKnown !== false) html += row(auth ? "good" : "bad", "Mint / freeze", `${r.mintAuthority ? "Mintable" : "Renounced"} / ${r.freezeAuthority ? "Freezable" : "Renounced"}`);
+        if (r.source === "larpcheck") {
+          html += `<div class="row note"><span class="dot"></span><span class="k">Holder data</span><span class="v"><a href="${esc2(r.page)}" target="_blank" rel="noopener noreferrer">Larpcheck \u2197</a></span></div>`;
+        } else {
+          if (!t.onCurve) html += row(r.lpLockedPct >= 90 ? "good" : r.lpLockedPct >= 50 ? "warn" : "bad", "LP locked / burned", pctPlain(r.lpLockedPct, 0));
+          const danger = r.risks.filter((x) => x.level === "danger");
+          html += row(r.rugged ? "bad" : level2(r.score, 20, 50), "RugCheck", r.rugged ? "RUGGED" : `${r.score ?? "\u2014"}/100 risk`, danger[0]?.name || (r.risks[0]?.name ?? "no flags"));
+        }
         const h = card.querySelector('[data-k="holders"]');
         if (h) h.textContent = num(r.holders);
       } else if (a.rugErr) {
@@ -2604,7 +2725,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       const a = this.audits.get(t.address) || {};
       const why = a.rug || a.rugErr ? marketBlock(t) || reportBlock(a.rug) : null;
       const busy = this.frBusy.has(t.address);
-      const sym = esc2(String(t.symbol).trim());
+      const sym2 = esc2(String(t.symbol).trim());
       const wl = (w) => `${esc2(w.name || "Frontrun wallet")} \xB7 ${short(w.address)} \xB7 ~${w.sol.toFixed(3)} SOL`;
       return `<div class="fr-sheet">
       <div class="fr-presets">${["0.1", "0.25", "0.5", "1"].map((v) => `<button data-fr-sol="${t.address}" data-v="${v}" class="${String(s.sol) === v ? "on" : ""}">${v} SOL</button>`).join("")}</div>
@@ -2614,7 +2735,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       </div>
       ${wallets.length > 1 ? `<label class="fr-wsel"><span>Wallet</span><select data-fr-wallet="${t.address}">${wallets.map((w) => `<option value="${w.address}"${w.address === s.wallet ? " selected" : ""}>${wl(w)}</option>`).join("")}</select></label>` : `<div class="fr-wone">${wallets.length ? wl(wallets[0]) : "No Frontrun wallet yet. Create one on frontrun.pro."}</div>`}
       ${why ? `<div class="fr-warn"><span>\u2715</span>${esc2(why.charAt(0).toUpperCase() + why.slice(1))}</div>` : ""}
-      <button class="fr-go" data-fr-go="${t.address}"${busy || !wallets.length ? " disabled" : ""}>${busy ? "Buying\u2026" : `Buy $${sym} \xB7 ${esc2(s.sol)} SOL`}</button>
+      <button class="fr-go" data-fr-go="${t.address}"${busy || !wallets.length ? " disabled" : ""}>${busy ? "Buying\u2026" : `Buy $${sym2} \xB7 ${esc2(s.sol)} SOL`}</button>
       ${this.frMsg.has(t.address) ? `<div class="fr-msg">${this.frMsg.get(t.address)}</div>` : ""}
       <div class="fr-fine">Bought with your Frontrun wallet. Frontrun's fees apply. Not financial advice.</div>
     </div>`;
@@ -2743,8 +2864,8 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     }
     async frConnect() {
       const input = this.bodyEl.querySelector("[data-fr-key]");
-      const key = input?.value.trim() || "";
-      if (!/^fr_sk_[A-Za-z0-9]{64}$/.test(key)) {
+      const key2 = input?.value.trim() || "";
+      if (!/^fr_sk_[A-Za-z0-9]{64}$/.test(key2)) {
         this.toast("A Frontrun key starts with fr_sk_ and has 70 characters", 3e3);
         return;
       }
@@ -2760,7 +2881,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       }
       input.value = "";
       try {
-        this.frontrun = await send("frontrun:connect", { key });
+        this.frontrun = await send("frontrun:connect", { key: key2 });
         this.toast("Frontrun connected", 2e3);
       } catch (err) {
         this.frontrun = { connected: false, error: err.message };
@@ -2783,14 +2904,15 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       if (!a.rug && !a.rugErr) return;
       const why = marketBlock(t) || reportBlock(a.rug);
       el.className = `hc ${why ? "no" : "ok"}`;
-      el.innerHTML = why ? `<span class="hc-mark">\u2715</span><span>${esc2(why.charAt(0).toUpperCase() + why.slice(1))}</span><em>Reroute skips it</em>` : `<span class="hc-mark">\u2713</span><span>Real holders \xB7 ${num(a.rug.holders)}</span><em>Passes the check</em>`;
+      const by = a.rug?.source === "larpcheck" ? `<a class="hc-by" href="${esc2(a.rug.page)}" target="_blank" rel="noopener noreferrer">Larpcheck \u2197</a>` : "";
+      el.innerHTML = why ? `<span class="hc-mark">\u2715</span><span>${esc2(why.charAt(0).toUpperCase() + why.slice(1))}</span>${by || "<em>Reroute skips it</em>"}` : by ? `<span class="hc-mark">\u2713</span><span>${esc2(a.rug.line || `Real holders \xB7 ${num(a.rug.holders)}`)}</span>${by}` : `<span class="hc-mark">\u2713</span><span>Real holders \xB7 ${num(a.rug.holders)}</span><em>Passes the check</em>`;
     }
     // Coins on the post that share this one's ticker: copycats are the usual trap on a hot narrative.
     nameTwins(t) {
-      const key = (x) => String(x.symbol || "").trim().replace(/^\$/, "").toLowerCase();
-      const k = key(t);
+      const key2 = (x) => String(x.symbol || "").trim().replace(/^\$/, "").toLowerCase();
+      const k = key2(t);
       if (!k) return null;
-      const group = [...this.tokens.values()].filter((x) => key(x) === k);
+      const group = [...this.tokens.values()].filter((x) => key2(x) === k);
       if (group.length < 3) return null;
       const oldest = group.filter((x) => x.createdAt).sort((a, b) => a.createdAt - b.createdAt)[0];
       return { n: group.length, oldest: oldest?.address === t.address };
@@ -2890,7 +3012,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     }
     renderFoot() {
       const ts = this.state.ts;
-      this.footEl.innerHTML = `<span>DexScreener \xB7 RugCheck \xB7 Solana RPC</span><span data-ago>${ts ? "updated just now" : "not scanned"}</span>`;
+      this.footEl.innerHTML = `<span>DexScreener \xB7 RugCheck \xB7 Larpcheck</span><span data-ago>${ts ? "updated just now" : "not scanned"}</span>`;
       clearInterval(this.agoTimer);
       if (ts) this.agoTimer = setInterval(() => {
         const s = Math.round((Date.now() - this.state.ts) / 1e3);
@@ -3011,8 +3133,8 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       const chartBtn = e.target.closest("[data-chart]");
       if (chartBtn) {
         const addr = chartBtn.dataset.chart;
-        const key = `ch:${addr}`;
-        this.expanded.has(key) ? this.expanded.delete(key) : this.expanded.add(key);
+        const key2 = `ch:${addr}`;
+        this.expanded.has(key2) ? this.expanded.delete(key2) : this.expanded.add(key2);
         const t = this.tokens.get(addr);
         const card = this.bodyEl.querySelector(`.card[data-addr="${addr}"]`);
         if (t && card) {
@@ -3068,8 +3190,8 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       }
       const tm = e.target.closest("[data-term-menu]");
       if (tm) {
-        const key = `tm:${tm.dataset.termMenu}`;
-        this.expanded.has(key) ? this.expanded.delete(key) : this.expanded.add(key);
+        const key2 = `tm:${tm.dataset.termMenu}`;
+        this.expanded.has(key2) ? this.expanded.delete(key2) : this.expanded.add(key2);
         this.renderActions(tm.dataset.termMenu);
         return;
       }
@@ -3120,8 +3242,8 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       }
       const w = e.target.closest("[data-wallets]");
       if (w) {
-        const key = `w:${w.dataset.wallets}`;
-        this.expanded.has(key) ? this.expanded.delete(key) : this.expanded.add(key);
+        const key2 = `w:${w.dataset.wallets}`;
+        this.expanded.has(key2) ? this.expanded.delete(key2) : this.expanded.add(key2);
         this.renderAudit(w.dataset.wallets);
       }
     }
@@ -3989,19 +4111,19 @@ svg { display: block; }\r
   var PUBLIC_NODE = "https://solana-rpc.publicnode.com";
   var gm = typeof GM !== "undefined" ? GM : {};
   var store = {
-    async get(key) {
+    async get(key2) {
       try {
-        const raw = gm.getValue ? await gm.getValue(key) : localStorage.getItem(`nr:${key}`);
+        const raw = gm.getValue ? await gm.getValue(key2) : localStorage.getItem(`nr:${key2}`);
         return raw == null ? null : JSON.parse(raw);
       } catch {
         return null;
       }
     },
-    async set(key, value) {
+    async set(key2, value) {
       try {
         const raw = JSON.stringify(value);
-        if (gm.setValue) await gm.setValue(key, raw);
-        else localStorage.setItem(`nr:${key}`, raw);
+        if (gm.setValue) await gm.setValue(key2, raw);
+        else localStorage.setItem(`nr:${key2}`, raw);
       } catch {
       }
     }
@@ -4043,8 +4165,8 @@ svg { display: block; }\r
         return { ok: false, error: String(e?.message || e) };
       }
     },
-    get: (key) => store.get(key),
-    set: (key, value) => store.set(key, value),
+    get: (key2) => store.get(key2),
+    set: (key2, value) => store.set(key2, value),
     radar: async () => radar_exports
   };
 
@@ -4055,8 +4177,8 @@ svg { display: block; }\r
     const ext2 = globalThis.browser ?? globalThis.chrome;
     const host = globalThis.__nrHost || {
       send: (msg) => ext2.runtime.sendMessage(msg),
-      get: (key) => ext2.storage.local.get(key).then((r) => r[key]),
-      set: (key, value) => ext2.storage.local.set({ [key]: value }),
+      get: (key2) => ext2.storage.local.get(key2).then((r) => r[key2]),
+      set: (key2, value) => ext2.storage.local.set({ [key2]: value }),
       radar: () => import(ext2.runtime.getURL("src/ui/radar.js"))
     };
     let radar = null;

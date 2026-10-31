@@ -193,7 +193,8 @@ async function replyFor(postUrl, known = null, fresh = false) {
   const h = fresh ? makeHandlers(HOST) : handlers;
   const p = (async () => {
     const { post: read } = await h.tweet({ url: postUrl });
-    const post = read.videoUrl ? { ...read, watchVideo: true } : read;
+    // The bot looks at the poster's bio itself (coins.js), so the scan doesn't.
+    const post = { ...read, skipBio: true, ...(read.videoUrl ? { watchVideo: true } : {}) };
     // A tag under one of @radardotfunn's own posts (people trying the bot under its announcement): no scan of our
     // own words, just how to use it.
     if (String(post.author || '').toLowerCase() === 'radardotfunn') {

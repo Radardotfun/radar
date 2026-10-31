@@ -30,7 +30,18 @@ export function marketBlock(token) {
 
 // Holder side, from rugReport(). Returns why the coin fails, or null when it passes. An unknown report never passes.
 export function reportBlock(report, rules = RULES) {
-  if (!report) return 'no RugCheck report';
+  if (!report) return 'no holder report';
+  // Larpcheck's read, while RugCheck is down: it has no score, so its own verdict stands in for one.
+  if (report.source === 'larpcheck') {
+    if (!report.authorityKnown) return 'mint and freeze authority unknown';
+    if (report.freezeAuthority) return 'freeze authority is on';
+    if (report.mintAuthority) return 'mint authority is on';
+    if (!report.ok) return report.line ? `Larpcheck: ${report.line}` : "Larpcheck's holder check didn't pass";
+    if (report.holders == null) return 'holder count unknown';
+    if (report.holders < rules.minHolders) return `only ${report.holders} holders`;
+    if ((report.top10Pct || 0) > rules.maxTop10) return `top 10 hold ${pct(report.top10Pct)}`;
+    return null;
+  }
   if (report.rugged) return 'liquidity pulled';
   if (report.freezeAuthority) return 'freeze authority is on';
   if (report.mintAuthority) return 'mint authority is on';

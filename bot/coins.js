@@ -9,6 +9,9 @@
 // - keeps the story's main runner (its biggest real coin, carrying a name the post uses) even when the judge rates it
 //   low, so a pile of small copies can't take Highest MC from it.
 import { aggregate, pickThree, alive } from '../extension/src/lib/market.js';
+import { sym, lower, key, telling, tiedToPost, bioCas, tiedToBio } from '../extension/src/lib/bio.js';
+
+export { tiedToPost, bioCas, tiedToBio };
 
 // PEPE, DOGE and SHIB live on chains the bot doesn't scan, so what it finds under those tickers are copies (a $2M "PEPE"
 // on Base as Highest MC on a Pepe meme).
@@ -16,8 +19,6 @@ const MAJORS = new Set('BTC ETH SOL HYPE XRP BNB USDC USDT WBTC WETH WSOL PEPE D
 // The real $RADAR (RADAR_MINT in the server's wrangler.toml). An $84K "Radar" on BNB Chain was Highest MC on a post
 // that mentions Radar, which sent people to a copy of our own coin.
 const RADAR_MINT = 'HyDSdtgiSa5mHqkTVoz8cTFTeVLFKdZ8amPvtNYfpump';
-const sym = (t) => String(t?.symbol || '').replace(/^\$+/, '').toUpperCase();
-const lower = (s) => String(s || '').toLowerCase().trim();
 // Not dust: what the reply would show at all.
 const live = (t) => (t.marketCap || 0) >= 1000 || (t.volume?.h24 || 0) >= 1000;
 
@@ -65,7 +66,6 @@ const EVM_CAS = /\b0x[a-fA-F0-9]{40}\b/g;
 // The story's main runner: the biggest liquidity-backed coin the judge kept at all (60+) whose ticker or name is a name
 // the post itself uses. The judge sometimes rates it only "the same subject": a $9.7M GTA VI trading $24M a day got 62
 // next to 85 for an $836K "GTA memes", and the reply's Highest MC went to a coin a tenth its size.
-const key = (s) => String(s || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
 const MAJOR_NAME = new Set('bitcoin ethereum solana hyperliquid ripple binance pepe dogecoin shibainu'.split(' '));
 const isMajor = (t) => MAJORS.has(sym(t)) || MAJOR_NAME.has(key(t.name));
 const isRadarCopy = (t) => (sym(t) === 'RADAR' || key(t.name) === 'radar') && t.address !== RADAR_MINT;
@@ -78,43 +78,14 @@ export function runnerOf(tokens, words) {
     .sort((a, b) => (b.marketCap || 0) - (a.marketCap || 0))[0] || null;
 }
 
-// The judge's 90+ means made for this exact story. Its 80-89 is looser and varies between runs ("Burn" on an account
-// update, "Pussy Cat Club" on a Cash Cat post), so there a coin also needs a name the post's story uses: its whole ticker
-// or name, or a telling word of it. Kinds of animal and words like "coin" say nothing.
-const VAGUE = new Set('the and for with coin coins token tokens meme memes crypto official new baby cat cats kitten kitty dog dogs puppy frog bird'.split(' '));
-const telling = (s) => lower(s).split(/[^\p{L}\p{N}]+/u).filter((w) => w.length >= 3 && !VAGUE.has(w));
-export function tiedToPost(t, words) {
-  const whole = new Set(words.map(key).filter((k) => k.length >= 2));
-  if (whole.has(key(t.symbol)) || whole.has(key(t.name))) return true;
-  const used = new Set(words.flatMap(telling));
-  return [...telling(t.symbol), ...telling(t.name)].some((w) => used.has(w));
-}
-
-// A contract address in the poster's bio counts only when it's tied to this post: the post uses its ticker or name, the coin's
-// own links name this account, or the account is plainly the coin's (@cashcat_token with $CASHCAT). A bio often pins a coin
-// the post has nothing to do with, and a news account's post isn't about the coin in its bio.
-export function bioCas(post) {
-  return [...new Set([...(String(post?.bio || '').match(SOL_CA) || []), ...(String(post?.bio || '').match(EVM_CAS) || [])])].slice(0, 2);
-}
-export function tiedToBio(t, post, words, typed = []) {
-  if (!t?.address) return false;
-  if (typed.length && !typed.includes(sym(t))) return false; // the post names a different coin
-  if (typed.includes(sym(t)) || tiedToPost(t, words)) return true;
-  const handle = key(post?.author);
-  if (!handle) return false;
-  const links = [...(t.socials || []).map((s) => s?.url || s), ...(t.links || [])].map((u) => String(u || '').toLowerCase());
-  if (links.some((u) => new RegExp(`(^|//)(www\\.)?(x|twitter)\\.com/${handle}([/?#]|$)`, 'i').test(u))) return true;
-  const own = key(t.symbol).length >= 3 && handle.includes(key(t.symbol));
-  return own || (key(t.name).length >= 4 && handle.includes(key(t.name)));
-}
-
 // The story's words, without the poster's own name unless the post itself uses it. The read lists the author among its
 // names, so "$Elon" counted as on the story when Elon Musk posted about California. A word that is most of the handle
 // stays: that's a project's own account (@Juggernautrh on $JUGGERNAUT), not a person with a name.
+// A project's handle often wraps its name: @usepurpsfun, @cashcat_token, @HackInu4meme.
+const handleCore = (post) => key(post?.author).replace(/^(use|get|try|the|join|official)|(4meme|meme|onsol|onbase|onbsc|fun|app|xyz|hq|labs|token|coin|sol|official|cto|community)$/g, '');
 const posterWord = (post, text) => {
-  // A project's handle often wraps its name: @usepurpsfun, @cashcat_token.
   const handle = key(post?.author);
-  const core = handle.replace(/^(use|get|try|the|join|official)|(fun|app|xyz|hq|labs|token|coin|sol|official)$/g, '');
+  const core = handleCore(post);
   const who = [handle, key(post?.authorName)];
   const said = plain(text);
   return (w) => key(w).length >= 3 && !/^(use|get|try|the|join|official|fun|app|xyz|labs|token|coin|sol)$/.test(key(w)) && who.some((x) => x.includes(key(w))) && key(w).length / (core.length || 1) < 0.7 && !said.includes(` ${lower(w)} `);
@@ -129,6 +100,17 @@ export function storyWords(words, post, text) {
 export function namedAfterPoster(t, post, text) {
   const byAuthor = posterWord(post, text);
   return [sym(t).toLowerCase(), ...telling(t.name)].some(byAuthor);
+}
+
+// The account's own coin: its handle is mostly the coin's name (@HackInu4meme on $Hackinu, @cashcatss on $CASHCAT). The judge
+// can't tell a project's small coin from dust, and the post seldom types its own name, so these two were left out. A big
+// account's handle is a person or a brand whose name anyone can launch a coin under, so an unknown or large following doesn't count.
+const OWN_MAX_FOLLOWERS = 250_000;
+export function ownCoin(t, post) {
+  const handle = key(post?.author);
+  const core = handleCore(post);
+  if (!core || !(post?.followers < OWN_MAX_FOLLOWERS)) return false;
+  return [key(t?.symbol), key(t?.name)].some((k) => k.length >= 4 && handle.includes(k) && k.length / core.length >= 0.7);
 }
 
 // The judge is a sampled model call (no temperature control on the judge's model), and DexScreener's search results
@@ -230,11 +212,14 @@ export async function botCoins(res, post, { search, lookupCa, lookupBio = lookup
   // Under $10K a coin needs the judge's 90+: a name in common is no reason to call dust the post's coin.
   const onStory = (t) => (t.relevance || 0) >= 90 || ((t.relevance || 0) >= ON_STORY && (t.marketCap || 0) >= 10_000 && tiedToPost(t, postWords));
   const seen = new Set();
-  let story = scanned.filter((t) => {
+  const isOwn = (t) => ownCoin(t, post) && live(t);
+  let story = [...scanned, ...(res?.pool || []).filter((t) => t?.address && isOwn(t))].filter((t) => {
     if (seen.has(t.address)) return false;
     seen.add(t.address);
-    return (onStory(t) || t.address === runner?.address) && !isMajor(t) && !isRadarCopy(t) && !namedAfterPoster(t, post, post?.text) && !elsewhere.has(sym(t)) && !(named && sameCoin(t, named));
-  }).map((t) => (t.address === runner?.address ? { ...t, relevance: Math.max(t.relevance || 0, 90) } : t));
+    return (onStory(t) || isOwn(t) || t.address === runner?.address) && !isMajor(t) && !isRadarCopy(t) && (isOwn(t) || !namedAfterPoster(t, post, post?.text)) && !elsewhere.has(sym(t)) && !(named && sameCoin(t, named));
+  }).map((t) => (t.address === runner?.address || isOwn(t) ? { ...t, relevance: Math.max(t.relevance || 0, 90) } : t));
+  // With the account's own coin found, dust that only the judge tied to the story is noise beside it.
+  if (story.some(isOwn)) story = story.filter((t) => isOwn(t) || (t.marketCap || 0) >= 10_000);
   // With no coin named in the post, newer coins copying the biggest one's ticker or name are its copies, not the OG or
   // the mover (a launch post got two "PURPS" beside the real one). An older one stays: it may be the original.
   const lead = named ? null : leadOf(story.filter((t) => t.mcapBacked && alive(t)));

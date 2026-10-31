@@ -63,7 +63,7 @@ One tap opens the biggest coin on the post that passes the holder check, or tell
 
 - it is trading;
 - it has no rug, mint or freeze flags and no RugCheck danger flag;
-- its RugCheck score is 30 or lower;
+- its RugCheck score is 30 or lower (when RugCheck can't answer, Larpcheck's holder verdict has to be organic instead, and the mint and freeze authorities are read from the chain);
 - it has 150+ holders;
 - no single wallet holds more than 15%;
 - the top 10 hold less than 50%;
@@ -145,7 +145,7 @@ test/        offline tests and live checks against real posts and coins
 1. **Read:** the server (`server/`) has an AI model read the post the way a trader would: text, author, replies, the quoted post, the link preview, images and video. It returns the story and the names coins for it launch under.
 2. **Search:** those names are looked up on DexScreener, from your own browser.
 3. **Pick:** matches are ranked against the story, and the top coin, the OG and the mover are picked.
-4. **Check:** holders and rug flags come from RugCheck, and bundles are read straight from the coin's launch block on Solana (`extension/src/lib/solana.js`).
+4. **Check:** holders and rug flags come from RugCheck, or Larpcheck's holder read and the mint account when RugCheck can't answer, and bundles are read straight from the coin's launch block on Solana (`extension/src/lib/solana.js`).
 
 ## Run it yourself
 

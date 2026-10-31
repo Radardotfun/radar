@@ -11,7 +11,7 @@ const rep = (over = {}) => ({ ...clean, ...over });
 
 // Report rules, one failure each.
 assert.equal(reportBlock(clean), null);
-assert.equal(reportBlock(null), 'no RugCheck report');
+assert.equal(reportBlock(null), 'no holder report');
 assert.equal(reportBlock(rep({ rugged: true })), 'liquidity pulled');
 assert.equal(reportBlock(rep({ freezeAuthority: 'x' })), 'freeze authority is on');
 assert.equal(reportBlock(rep({ mintAuthority: 'x' })), 'mint authority is on');
@@ -65,6 +65,6 @@ assert.equal(r.token, null);
 assert.equal(rejectionLine(r.rejected), '$BIG2 only 40 holders');
 r = await pickReroute([coin('X', 1)], async () => { throw new Error('429'); });
 assert.equal(r.token, null);
-assert.equal(rejectionLine(r.rejected), '$X no RugCheck report');
+assert.equal(rejectionLine(r.rejected), '$X no holder report');
 
 console.log('PASS reroute rules, pick order, batching and messages');

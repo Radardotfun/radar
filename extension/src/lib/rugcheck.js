@@ -1,6 +1,24 @@
 // Holder / authority / insider data from RugCheck (Solana).
 const RC = 'https://api.rugcheck.xyz/v1';
 
+// The same shape from Larpcheck's holder read and the mint account, for when RugCheck can't answer. It says nothing about
+// LP locks or insiders, because neither source gives them here. Null when Larpcheck has no read of this coin yet.
+export async function standInReport(mint, holders, rpc) {
+  const [lc, info] = await Promise.all([
+    holders().catch(() => null),
+    rpc('getAccountInfo', [mint, { encoding: 'jsonParsed', commitment: 'confirmed' }]).catch(() => null),
+  ]);
+  if (!lc?.ready) return null;
+  const parsed = info?.value?.data?.parsed?.info;
+  return {
+    source: 'larpcheck', page: lc.page, line: lc.line, ok: !!lc.ok,
+    authorityKnown: !!parsed, mintAuthority: parsed?.mintAuthority || null, freezeAuthority: parsed?.freezeAuthority || null,
+    holders: lc.holders ?? null, top10Pct: lc.top10 ?? null,
+    score: null, rugged: false, risks: [], topHolder: null, insiderWallets: 0, insiderPct: null,
+    creator: null, creatorPct: null, lpLockedPct: null, poolTokens: null, supplyTokens: null, copycat: false, launchpad: null, tokenProgram: null, detectedAt: null,
+  };
+}
+
 export async function rugReport(mint, pairAddresses = []) {
   const res = await fetch(`${RC}/tokens/${mint}/report`);
   if (res.status === 429) throw new Error('RugCheck rate limited');

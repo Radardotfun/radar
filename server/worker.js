@@ -175,7 +175,7 @@ export function smallestMp4(video) {
 async function readTweet(url, ctx) {
   const id = String(url || '').match(/^https?:\/\/(?:www\.|mobile\.)?(?:x|twitter)\.com\/\w+\/status\/(\d+)/i)?.[1];
   if (!id) return json(400, { error: 'That is not a link to a post on X' });
-  const key = new Request(`https://cache.narrative-radar/tw3/${id}`);
+  const key = new Request(`https://cache.narrative-radar/tw4/${id}`);
   const hit = await caches.default.match(key);
   if (hit) return new Response(hit.body, { headers: { 'content-type': 'application/json', ...CORS } });
   const t = await fxStatus(id);
@@ -206,6 +206,7 @@ async function readTweet(url, ctx) {
     images: images.slice(0, 3),
     hasVideo: !!video,
     bio: clip(t.author?.raw_description?.text || t.author?.description, 320),
+    followers: Number.isFinite(t.author?.followers) ? t.author.followers : null,
     ...(videoFile ? { videoUrl: videoFile, gif: video.type === 'gif' } : {}),
   };
   const label = (post.text || post.quoted || (video ? 'Video post' : images.length ? 'Image post' : '')).replace(/\s+/g, ' ').slice(0, 90);

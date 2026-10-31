@@ -4,6 +4,7 @@
 //   readPost()  -> narrative + search terms (+ coins written in the post, video speech)
 //   findCoins() -> candidates from DexScreener, judged, picked
 import { searchPairs, aggregate, relevance, pickThree, fullTokens, mentionedTokens, isMemecoin, SOL_CA, EVM_CA } from './market.js';
+import { bioCas, tiedToBio, tickersIn, sym } from './bio.js';
 import { extractKeywords, norm } from './keywords.js';
 
 const passthrough = (_k, _ttl, fn) => fn();
@@ -37,6 +38,22 @@ const fmtAge = (ms) => {
   const h = (Date.now() - ms) / 3.6e6;
   return h < 1 ? `${Math.round(h * 60)}m` : h < 48 ? `${Math.round(h)}h` : `${Math.round(h / 24)}d`;
 };
+
+// The coin in the poster's bio, when it's this post's coin. A post read off the page on X has no bio, so it's fetched.
+async function bioCoins(post, read, fullText, chains, apiBase, cached) {
+  if (post.skipBio) return [];
+  const bio = post.bio ?? await (post.url ? cached(`bio:${post.url}`, 3_600_000, async () => {
+    const res = await fetch(`${apiBase}/tweet?url=${encodeURIComponent(post.url)}`, { signal: AbortSignal.timeout(8_000) });
+    return res.ok ? (await res.json()).post?.bio || '' : '';
+  }).catch(() => '') : '');
+  const typed = tickersIn(fullText);
+  const words = [...(read.anchors || []), ...(read.terms || []), ...fullText.split(/[^\p{L}\p{N}]+/u).filter((w) => w.length >= 3)];
+  for (const ca of bioCas({ bio })) {
+    const [t] = await mentionedTokens(ca, chains, (q) => cached(`q:${q}`, 20_000, () => searchPairs(q))).catch(() => []);
+    if (t && ((t.marketCap || 0) >= 1000 || typed.includes(sym(t))) && tiedToBio(t, post, words, typed)) return [t];
+  }
+  return [];
+}
 
 /** Stage 1: what is this post's coin narrative? */
 export async function readPost(post, chains, { apiBase, cached = passthrough }) {
@@ -76,7 +93,8 @@ export async function readPost(post, chains, { apiBase, cached = passthrough }) 
   if (fromImages.length) {
     mentioned.push(...await mentionedTokens(fromImages.join(' '), chains, (q) => cached(`q:${q}`, 20_000, () => searchPairs(q))).catch(() => []));
   }
-  return { narrative: read.narrative, coinable: read.coinable, terms: read.terms || [], anchors: read.anchors || [], judge: read.judge !== false && !read.anchors?.length, mentioned, tickers: read.tickers || [], post: full };
+  const fromBio = mentioned.length ? [] : await bioCoins(post, read, fullText, chains, apiBase, cached);
+  return { narrative: read.narrative, coinable: read.coinable, terms: read.terms || [], anchors: read.anchors || [], judge: read.judge !== false && !read.anchors?.length, mentioned, bioCoins: fromBio, tickers: read.tickers || [], post: full };
 }
 
 /** Stage 2: which on-chain coins are really about it? */
@@ -119,11 +137,11 @@ function findTechMatch(tokens, mentioned, anchors, scores, narrative, post) {
   return { ...best.token, techAnchor: anchors[firstAnchor] };
 }
 
-export async function findCoins({ narrative, coinable, terms, anchors = [], judge = true, mentioned, tickers = [], post, engineError }, chains, { apiBase, cached = passthrough }) {
+export async function findCoins({ narrative, coinable, terms, anchors = [], judge = true, mentioned, bioCoins: fromBio = [], tickers = [], post, engineError }, chains, { apiBase, cached = passthrough }) {
   const t0 = Date.now();
   const timing = {};
   const lap = (k) => { timing[k] = Date.now() - t0; };
-  const base = { mode: 'ai', narrative, coinable, mentioned, tickers, anchors, terms, engineError, ts: Date.now(), timing, techMatch: null };
+  const base = { mode: 'ai', narrative, coinable, mentioned, bioCoins: fromBio, tickers, anchors, terms, engineError, ts: Date.now(), timing, techMatch: null };
   if (!terms.length) return { ...base, picks: [], others: [], techMatch: findTechMatch([], mentioned, anchors, new Map(), narrative, post) };
 
   const statusId = post.url?.match(/status\/(\d+)/)?.[1] || null;

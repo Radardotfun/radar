@@ -73,7 +73,7 @@ export function coinCheck(token, rug, bundle) {
   // Hard controls: a live mint can print supply, a live freeze can stop holders from selling.
   if (rug?.freezeAuthority) { score -= 45; worst = 'risk'; facts.push({ k: 'Freeze authority', text: 'Active: holders can be frozen', lvl: 'risk' }); }
   if (rug?.mintAuthority) { score -= 30; worst = 'risk'; facts.push({ k: 'Mint authority', text: 'Active: supply can grow', lvl: 'risk' }); }
-  if (rug && !token?.onCurve && rug.lpLockedPct < 50) { score -= 15; if (worst === 'ok') worst = 'watch'; facts.push({ k: 'Liquidity', text: `${Math.round(rug.lpLockedPct)}% locked or burned`, lvl: 'watch' }); }
+  if (rug && !token?.onCurve && rug.lpLockedPct != null && rug.lpLockedPct < 50) { score -= 15; if (worst === 'ok') worst = 'watch'; facts.push({ k: 'Liquidity', text: `${Math.round(rug.lpLockedPct)}% locked or burned`, lvl: 'watch' }); }
   if (rug?.copycat) { score -= 10; if (worst === 'ok') worst = 'watch'; facts.push({ k: 'Copycat', text: 'Same name as an older coin', lvl: 'watch' }); }
   if (!token?.onCurve && token?.liquidity != null && token.liquidity < 5000) { score -= 8; if (worst === 'ok') worst = 'watch'; }
   if (rug?.rugged) { score = Math.min(score, 5); worst = 'risk'; facts.unshift({ k: 'Status', text: 'Liquidity pulled', lvl: 'risk' }); }
