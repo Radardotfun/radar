@@ -34,7 +34,8 @@ assert.match(reply, /🔥 Mover: ROBOTAXI · \$48\.0K vol 24h\nEy6dZr4q1KxV8nB2m
 assert.ok((reply.match(/\$[A-Za-z]/g) || []).length <= 1, 'X allows one cashtag per post');
 assert.ok(!/@|https?:|tryradar\.fun/.test(reply), 'no mentions or links in the reply');
 const linked = botReply({ picks: [coin('top', 'NOWHEEL', '86QepwFpKzt5fS9BugCwt3nwmL67EdkEtpoZ8ZRpump')] }, 'https://x.com/i/status/2115501119296463056', now, { links: true });
-assert.ok(linked.endsWith('Full scan + Insta Buy: https://tryradar.fun/scan?url=https%3A%2F%2Fx.com%2Fi%2Fstatus%2F2115501119296463056&from=bot'), 'a reply with links ends on its scan, the link X previews');
+assert.equal(linked.match(/https:\S+/)[0], 'https://tryradar.fun/scan?url=https%3A%2F%2Fx.com%2Fi%2Fstatus%2F2115501119296463056&from=bot', 'the scan is a reply\'s first link');
+assert.match(linked, /🏆 Highest MC: \$NOWHEEL · \$12\.2K\nhttps:\/\/dexscreener\.com\/solana\/86QepwFpKzt5fS9BugCwt3nwmL67EdkEtpoZ8ZRpump$/);
 assert.equal(contract('ARiZ@fq6.dK19:/'), 'ARiZfq6dK19', 'an address prints as address characters only');
 assert.ok(xLength(reply) <= 1000, `a Premium post (${xLength(reply)} characters)`);
 assert.equal(botReply({ picks: [] }, 'x'), null);

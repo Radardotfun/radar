@@ -65,11 +65,13 @@ export function botReply(result, postUrl, now = Date.now(), { full = true, links
   }
   if (!full) lines.push('');
   // X bills a post with a URL at $0.20 against $0.01 for a reply to a tag (docs.x.com pricing, 29 Oct 2026). A reply
-  // that already has links also gets its scan, last, so X previews Radar's card; the others point at the bot's bio.
-  // from=bot lets the page count the visit (webapp/main.js).
+  // that already has links also gets its scan, ahead of them: with the scan last, X previewed DexScreener's card
+  // (31 Oct 2026). The others point at the bot's bio. from=bot lets the page count the visit (webapp/main.js).
   // The time keeps two replies about the same post from being identical, which X refuses as duplicates.
   const at = new Date(now).toISOString().slice(11, 16);
-  return [`Coins on this post (${at} UTC):`, '', ...lines, `Full scan + Insta Buy: ${links ? `${scanUrl(postUrl)}&from=bot` : 'link in bio'}`].join('\n');
+  const head = `Coins on this post (${at} UTC):`;
+  if (links) return [head, `Full scan + Insta Buy: ${scanUrl(postUrl)}&from=bot`, '', ...lines].join('\n').trimEnd();
+  return [head, '', ...lines, 'Full scan + Insta Buy: link in bio'].join('\n');
 }
 
 export const NO_COINS = 'No coins on this one yet.';
