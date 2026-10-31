@@ -46,9 +46,34 @@
     return null;
   }
 
+  // Phantom's Auto-Confirm signs with no popup, so the popup is no longer what stops a bad link. These rules take its place.
+  // A buy only starts by itself when Radar's own panel opened the window and vouches for this coin and amount, up to
+  // AUTO_MAX_SOL. Anything else waits for a tap on the page.
+  const AUTO_MAX_SOL = 1;
+  const AUTO_OPENERS = new Set(['https://x.com', 'https://twitter.com', 'https://pro.x.com', 'https://tryradar.fun']);
+  const SOLANA_MAINNET = 'solana:101'; // Phantom's own name for it, from its SDK
+  const autoIsOn = (status) => !!(status && status.enabled && Array.isArray(status.chains) && status.chains.includes(SOLANA_MAINNET));
+  // With no popup to read, a buy must at least name the coin the page shows.
+  function mintBlock(tx, mint) {
+    const keys = ((tx && tx.message && tx.message.staticAccountKeys) || []).map((k) => (typeof k === 'string' ? k : k.toBase58()));
+    return keys.includes(mint) ? null : 'This transaction does not name the coin on this page. Nothing was signed.';
+  }
+  // May this buy start without a tap?
+  function mayAutoStart({ auto, vouched, sol }) {
+    if (!auto) return true; // the wallet's own popup still asks
+    return vouched === true && Number.isFinite(sol) && sol > 0 && sol <= AUTO_MAX_SOL;
+  }
+  // Is this message Radar's panel vouching for this buy?
+  function vouches(event, opener, mint, sol) {
+    return !!event && !!opener && event.source === opener && AUTO_OPENERS.has(event.origin)
+      && event.data?.type === 'radar:insta-go' && event.data?.mint === mint && Number(event.data?.sol) === sol;
+  }
+
   // Plain words for a failed simulation.
   function simulationWhy(err, logs) {
     const text = `${JSON.stringify(err || '')} ${(logs || []).join(' ')}`;
+    // A coin paired to another token, like $RADAR to $LARPCHECK: PumpPortal's builder can't buy those (31 Oct 2026).
+    if (/UnsupportedQuoteMint|"Custom":6063/.test(text)) return "Quick Buy can't buy this coin yet: it's paired to another token, not SOL. Open it on a terminal below. Nothing was signed.";
     // An empty wallet has no account on chain yet: AccountNotFound.
     if (/insufficient (lamports|funds)|InsufficientFunds|AccountNotFound|0x1\b/i.test(text)) return 'Not enough SOL in this wallet for the buy and fees.';
     if (/slippage|TooMuchSol|TooLittleSol|ExceededSlippage|0x1772|0x1773/i.test(text)) return 'The price moved past your slippage. Raise it or try again.';
@@ -86,5 +111,5 @@
     return `Quick Buy can't buy this coin yet. It trades on ${where}, and PumpPortal, which builds Radar's buys, only covers pump.fun, PumpSwap and Raydium. Open it on a terminal below. Nothing was signed.`;
   }
 
-  root.RadarQuickBuyGuard = { PROGRAMS, QUICK_MARKETS, txBlock, spendBlock, simulationWhy, coinFromPairs, quickBuyable, marketWhy };
+  root.RadarQuickBuyGuard = { AUTO_MAX_SOL, AUTO_OPENERS, SOLANA_MAINNET, autoIsOn, mintBlock, mayAutoStart, vouches, PROGRAMS, QUICK_MARKETS, txBlock, spendBlock, simulationWhy, coinFromPairs, quickBuyable, marketWhy };
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -11,11 +11,11 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&family=Geist+Mono:wght@500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/trade.css?v=1.7.28" />
+  <link rel="stylesheet" href="/trade.css?v=1.7.29" />
   <script defer src="/solana-web3.min.js?v=1.98.4"></script>
-  <script defer src="/quickbuy-guard.js?v=1.7.28"></script>
-  <script defer src="/trade.js?v=1.7.28"></script>
-  <script defer src="/larp-verdict.js?v=1.7.28"></script>
+  <script defer src="/quickbuy-guard.js?v=1.7.29-2"></script>
+  <script defer src="/trade.js?v=1.7.29-3"></script>
+  <script defer src="/larp-verdict.js?v=1.7.29"></script>
 </head>
 <body>
   <header class="nav">
@@ -82,6 +82,14 @@
       <div class="fee-box">
         <b>Fees and checks</b>
         <p>PumpPortal builds the buy and charges 0.5% of it. Radar adds a 0.0001 SOL priority fee so it lands, and Solana network fees apply. Before your wallet sees it, Radar checks that only your wallet pays, that it uses known swap programs, and that a simulation spends no more than your amount plus fees. <a href="https://github.com/Radardotfun/radar/blob/main/web/quickbuy-guard.js" target="_blank" rel="noopener noreferrer">Read the checks</a></p>
+      </div>
+
+      <div id="auto-box" class="fee-box auto-box" hidden>
+        <div class="auto-head"><b>Buy with no popup</b><span id="auto-state">Off</span></div>
+        <p>Phantom's Auto-Confirm signs for tryradar.fun without asking you first. Radar still checks each buy, starts one by itself only from your Radar panel, and only up to 1 SOL. Everything else waits for a tap.</p>
+        <p><b>The risk:</b> if tryradar.fun were ever hacked, it could sign transactions with no popup while this is on. Use a wallet holding only what you could lose, and turn it off when you're done. You can also turn it off in Phantom.</p>
+        <label class="auto-agree"><input id="auto-agree" type="checkbox" /><span>I understand my wallet won't ask before signing while this is on.</span></label>
+        <button id="auto-toggle" class="button secondary" type="button" disabled>Turn on Auto-Confirm</button>
       </div>
 
       <button id="buy-button" class="button primary" type="button" disabled>Connect a wallet to buy</button>

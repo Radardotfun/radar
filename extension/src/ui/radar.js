@@ -1630,6 +1630,8 @@ class Radar {
     const h = 780;
     const left = Math.max(0, (window.screenX || 0) + (window.outerWidth || w) - w - 32);
     const top = Math.max(0, (window.screenY || 0) + 72);
+    // What this click started, so the window can ask the panel to vouch for it (Auto-Confirm, see web/quickbuy-guard.js).
+    this.instaAsk = hood ? null : { mint: addr, sol: Number(instaSol()), at: Date.now() };
     const win = window.open(hood ? hoodBuyUrl(addr, instaEth()) : instaUrl(addr, instaSol()), 'radar-insta', `popup=yes,width=${w},height=${h},left=${left},top=${top}`);
     if (!win) {
       window.open(hood ? hoodBuyUrl(addr) : quickBuyUrl({ address: addr }), '_blank', 'noopener');
@@ -1644,6 +1646,14 @@ class Radar {
     window.addEventListener('message', (e) => {
       if (e.origin === 'https://tryradar.fun' && e.data?.type === 'radar:holder') {
         send('holderSave', { token: e.data.token, exp: e.data.exp }).then((h) => { this.holder = h; this.renderHead(); this.renderBody(); this.toast('Holder check passed', 2400); }).catch(() => {});
+        return;
+      }
+      if (e.origin === 'https://tryradar.fun' && e.data?.type === 'radar:insta-ready') {
+        const ask = this.instaAsk;
+        // Once, for the coin and amount this panel's own click just opened.
+        if (!ask || Date.now() - ask.at > 30_000 || e.data.mint !== ask.mint || Number(e.data.sol) !== ask.sol) return;
+        this.instaAsk = null;
+        e.source?.postMessage({ type: 'radar:insta-go', mint: ask.mint, sol: ask.sol }, 'https://tryradar.fun');
         return;
       }
       if (e.origin !== 'https://tryradar.fun' || e.data?.type !== 'radar:bought') return;

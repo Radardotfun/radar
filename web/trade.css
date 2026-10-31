@@ -97,6 +97,15 @@ footer a { text-decoration:none; }
 .lc-verdict a { display:inline-block; margin-top:6px; color:var(--text); font-size:12px; text-underline-offset:3px; }
 .lc-verdict p:empty { display:none; }
 
+/* Auto-Confirm */
+.auto-box.on { border-color:rgba(255,204,102,.6); }
+.auto-head { display:flex; justify-content:space-between; align-items:center; gap:10px; }
+.auto-head span { color:var(--muted); font:700 10px "Geist Mono",monospace; }
+.auto-box.on .auto-head span { color:#ffcc66; }
+.auto-agree { display:flex; align-items:flex-start; gap:8px; margin:9px 0 0; font-size:12px; line-height:1.4; cursor:pointer; }
+.auto-agree input { width:16px; height:16px; flex:none; margin:1px 0 0; accent-color:var(--accent); }
+.auto-box .button { width:100%; margin-top:10px; }
+
 /* Launch page */
 .visually-hidden { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); }
 .launch-post { display:block; }

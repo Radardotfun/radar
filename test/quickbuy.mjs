@@ -97,3 +97,32 @@ if (process.argv.includes('--live')) {
   assert.equal(G.quickBuyable(pairs, wif), false, '$WIF should read as not covered');
   console.log('PASS live: Orca ($WIF) is refused by PumpPortal and read as not covered');
 }
+
+// Phantom's Auto-Confirm: with no popup, a link must not be able to start a buy.
+{
+  const g = G;
+  assert.match(g.simulationWhy({ InstructionError: [3, { Custom: 6063 }] }, []), /paired to another token/, 'why $RADAR itself fails today');
+  const opener = {};
+  const go = (over = {}) => ({ source: opener, origin: 'https://x.com', data: { type: 'radar:insta-go', mint: 'MINT', sol: 0.1 }, ...over });
+  assert.equal(g.autoIsOn({ enabled: true, chains: ['solana:101'] }), true);
+  assert.equal(g.autoIsOn({ enabled: true, chains: ['eip155:1'] }), false, 'on for another chain is not on for Solana');
+  assert.equal(g.autoIsOn({ enabled: false, chains: ['solana:101'] }), false);
+  assert.equal(g.autoIsOn(null), false);
+  assert.equal(g.mayAutoStart({ auto: false, vouched: false, sol: 25 }), true, "without Auto-Confirm the wallet's popup still asks");
+  assert.equal(g.mayAutoStart({ auto: true, vouched: false, sol: 0.1 }), false, 'a bare link waits for a tap');
+  assert.equal(g.mayAutoStart({ auto: true, vouched: true, sol: 0.1 }), true, "the panel's own buy goes");
+  assert.equal(g.mayAutoStart({ auto: true, vouched: true, sol: 1 }), true);
+  assert.equal(g.mayAutoStart({ auto: true, vouched: true, sol: 1.01 }), false, 'over the cap waits');
+  assert.equal(g.mayAutoStart({ auto: true, vouched: true, sol: NaN }), false);
+  assert.equal(g.vouches(go(), opener, 'MINT', 0.1), true);
+  assert.equal(g.vouches(go({ origin: 'https://evil.example' }), opener, 'MINT', 0.1), false, 'another site cannot vouch');
+  assert.equal(g.vouches(go({ source: {} }), opener, 'MINT', 0.1), false, 'only the window that opened this one');
+  assert.equal(g.vouches(go(), null, 'MINT', 0.1), false, 'a window with no opener');
+  assert.equal(g.vouches(go(), opener, 'OTHER', 0.1), false, 'another coin');
+  assert.equal(g.vouches(go(), opener, 'MINT', 0.2), false, 'another amount');
+  assert.equal(g.vouches(go({ data: { type: 'x', mint: 'MINT', sol: 0.1 } }), opener, 'MINT', 0.1), false);
+  const tx = { message: { staticAccountKeys: ['AAA', 'MINT'] } };
+  assert.equal(g.mintBlock(tx, 'MINT'), null);
+  assert.match(g.mintBlock(tx, 'OTHER'), /does not name the coin/);
+  console.log('PASS quickbuy: with Auto-Confirm on, only the panel can start a buy, up to the cap');
+}

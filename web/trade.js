@@ -35,6 +35,15 @@
 
   $('coin-mint').textContent = validMint ? mint : 'Invalid token address';
 
+  // Never inside someone else's page: with Auto-Confirm on, a hidden frame could trick a tap into a buy.
+  if (window.top !== window) {
+    setTimeout(() => {
+      message.textContent = 'This page has to be opened on its own, not inside another site.';
+      connectButton.disabled = true;
+    });
+    return;
+  }
+
   // Insta Buy: a coin card opened this page as a small window with the amount already picked. It connects the wallet
   // if it already trusts this site, starts the buy (the wallet still asks to approve it), tells the card when Solana
   // confirms it, and then closes itself.
@@ -177,6 +186,7 @@
     $('wallet-address').textContent = address;
     walletAddressRow.hidden = false;
     connectButton.textContent = 'Disconnect';
+    readAuto();
     buyButton.disabled = false;
     buyButton.textContent = 'Review buy in wallet';
     setMessage('Connected. Your wallet stays in control and must approve every transaction.');
@@ -189,6 +199,8 @@
       try { await connectedProvider.disconnect?.(); } catch {}
       connectedProvider = null;
       connectedAddress = '';
+      autoOn = false;
+      autoBox.hidden = true;
       walletStatus.textContent = 'Not connected';
       walletStatus.classList.remove('connected');
       walletAddressRow.hidden = true;
@@ -209,7 +221,7 @@
       if (!publicKey) throw new Error('The wallet did not return a public address.');
       updateConnected(provider, publicKey);
       saved.set('wallet', label);
-      if (instaPending) { instaPending = false; runBuy(); }
+      if (instaPending) { instaPending = false; startInsta(); }
     } catch (error) {
       setMessage(error?.message === 'User rejected the request.' ? 'Wallet connection was cancelled.' : 'Could not connect wallet. Unlock it and try again.', 'error');
     } finally {
@@ -273,6 +285,84 @@
       await delay(1500);
     }
     return { pending: true };
+  };
+
+  // ---------- Phantom's Auto-Confirm: the user's own opt-in, so buys go through with no popup (see the guard's rules) ----------
+  const autoBox = $('auto-box');
+  const autoAgree = $('auto-agree');
+  const autoToggle = $('auto-toggle');
+  let autoOn = false;
+  const phantomApp = () => (window.phantom?.solana && connectedProvider === window.phantom.solana ? window.phantom.app : null);
+  const showAuto = () => {
+    const app = phantomApp();
+    autoBox.hidden = !app;
+    if (!app) return;
+    autoBox.classList.toggle('on', autoOn);
+    // What the page says about approving has to stay true while this is on.
+    const note = document.querySelector('.wallet-note span');
+    note.dataset.usual ||= note.textContent;
+    note.textContent = autoOn ? "Radar never asks for your seed phrase or private key and never holds your SOL. With Auto-Confirm on, Phantom signs Radar's buys without asking you. Turn it off above to go back." : note.dataset.usual;
+    if (autoOn && /must approve every transaction/.test(message.textContent)) setMessage('Connected, with Auto-Confirm on. Phantom signs buys here without asking.');
+    $('auto-state').textContent = autoOn ? 'On for tryradar.fun' : 'Off';
+    autoAgree.closest('label').hidden = autoOn;
+    autoToggle.textContent = autoOn ? 'Turn off Auto-Confirm' : 'Turn on Auto-Confirm';
+    autoToggle.disabled = !autoOn && !autoAgree.checked;
+    if (!busy && connectedProvider && !unbuyable) buyButton.textContent = autoOn ? 'Buy now, no popup' : 'Review buy in wallet';
+  };
+  const readAuto = async () => {
+    const app = phantomApp();
+    autoOn = false;
+    if (app) {
+      try { autoOn = guard.autoIsOn(await app.request({ method: 'phantom_auto_confirm_status', params: {} })); } catch { autoOn = false; }
+    }
+    showAuto();
+    return autoOn;
+  };
+  autoAgree.addEventListener('change', showAuto);
+  autoToggle.addEventListener('click', async () => {
+    const app = phantomApp();
+    if (!app || busy) return;
+    autoToggle.disabled = true;
+    try {
+      if (autoOn) {
+        await app.request({ method: 'phantom_auto_confirm_disable', params: {} });
+        autoAgree.checked = false;
+        setMessage('Auto-Confirm is off. Your wallet asks before every buy again.');
+      } else {
+        setMessage('Approve Auto-Confirm in Phantom.');
+        await app.request({ method: 'phantom_auto_confirm_enable', params: { chains: [guard.SOLANA_MAINNET] } });
+        setMessage('Auto-Confirm is on. Check Phantom shows it too.', 'success');
+      }
+    } catch (e) {
+      setMessage(/reject|cancel|denied/i.test(e?.message || '') ? 'Nothing changed. Auto-Confirm stays as it was.' : "Phantom couldn't change Auto-Confirm here. You can still set it in Phantom.", 'error');
+    }
+    await readAuto();
+  });
+  // Asks the window that opened this one to vouch for this exact buy. Only Radar's panel answers, and only for a buy it just
+  // started. A link from anywhere else gets no answer.
+  const askPanel = () => new Promise((resolve) => {
+    const opener = window.opener;
+    if (!opener) return resolve(false);
+    const sol = Number(amountInput.value);
+    const timer = setTimeout(() => { window.removeEventListener('message', hear); resolve(false); }, 1500);
+    function hear(e) {
+      if (!guard.vouches(e, opener, mint, sol)) return;
+      clearTimeout(timer);
+      window.removeEventListener('message', hear);
+      resolve(true);
+    }
+    window.addEventListener('message', hear);
+    try { opener.postMessage({ type: 'radar:insta-ready', mint, sol }, '*'); } catch { clearTimeout(timer); window.removeEventListener('message', hear); resolve(false); }
+  });
+  // Insta Buy's start: with Auto-Confirm on, a buy starts by itself only when the panel vouches for it, up to the cap.
+  const startInsta = async () => {
+    await readAuto();
+    const vouched = autoOn ? await askPanel() : false;
+    const sol = Number(amountInput.value);
+    if (guard.mayAutoStart({ auto: autoOn, vouched, sol })) { runBuy(); return; }
+    setMessage(sol > guard.AUTO_MAX_SOL && vouched
+      ? `Auto-Confirm is on and this is over ${guard.AUTO_MAX_SOL} SOL, so it waits for you. Check it, then tap Buy.`
+      : 'Auto-Confirm is on, and this buy did not come from your Radar panel. Check the coin and amount, then tap Buy.');
   };
 
   // Insta Buy, after Solana confirms: tell the card (only public facts: the coin and the signature), then close
@@ -341,7 +431,12 @@
       if (spend) throw new Error(spend);
 
       // 3. The wallet shows it and signs it. If it adds its own guard, the signed one is checked again.
-      setMessage('Review the token, amount and fees in your wallet. Approve only if it looks right.');
+      const noPopup = await readAuto();
+      if (noPopup) {
+        const named = guard.mintBlock(transaction, mint);
+        if (named) throw new Error(named);
+      }
+      setMessage(noPopup ? 'Auto-Confirm is on. Signing with no popup…' : 'Review the token, amount and fees in your wallet. Approve only if it looks right.');
       const signed = await connectedProvider.signTransaction(transaction);
       if (!signed || typeof signed.serialize !== 'function') throw new Error('The wallet did not return a signed transaction.');
       const after = guard.txBlock(signed, connectedAddress);
@@ -408,7 +503,7 @@
       const publicKey = provider.publicKey || result?.publicKey;
       if (!publicKey) throw new Error('not trusted yet');
       updateConnected(provider, publicKey);
-      runBuy();
+      startInsta();
     } catch {
       instaPending = true;
       setMessage('Connect your wallet and the buy starts right after.');

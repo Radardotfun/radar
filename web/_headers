@@ -1,0 +1,9 @@
+/trade
+  X-Frame-Options: DENY
+  Content-Security-Policy: frame-ancestors 'none'
+/trade.html
+  X-Frame-Options: DENY
+  Content-Security-Policy: frame-ancestors 'none'
+/trade-robinhood
+  X-Frame-Options: DENY
+  Content-Security-Policy: frame-ancestors 'none'

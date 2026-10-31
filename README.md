@@ -42,6 +42,17 @@ All of it is in [web/trade.js](web/trade.js) and [web/quickbuy-guard.js](web/qui
 
 `node test/quickbuy.mjs` runs the guard against fake transactions: a foreign fee payer, extra signers, an unknown program and overspending. `--live` also has PumpPortal build real buys for a throwaway, unfunded wallet and checks that they pass. Nothing is signed or sent.
 
+### Auto-Confirm (optional, Phantom only)
+
+Normally your wallet asks before every buy. Phantom's own Auto-Confirm setting removes that popup, and you can turn it on from the buy page after a warning and a tick. With it on, nothing stands between a page and a signature, so Radar adds its own rules (`web/quickbuy-guard.js`):
+
+- **A link can't start a buy.** A buy only starts by itself when Radar's panel opened the window and vouches for that exact coin and amount, once, within 30 seconds. Anything else waits for a tap.
+- **Up to 1 SOL.** Anything larger waits for a tap too.
+- **The page refuses to open inside another site**, so a tap can't be tricked.
+- **All the usual checks still run**, and the transaction must name the coin on the page.
+
+**The risk that remains:** while Auto-Confirm is on, a hacked tryradar.fun could sign transactions with no popup. Use a wallet holding only what you could lose, and turn it off when you're done.
+
 ## Instant Reroute
 
 One tap opens the biggest coin on the post that passes the holder check, or tells you why none did. A contract address written in the post gets the same check. The rules are in [extension/src/ui/holdercheck.js](extension/src/ui/holdercheck.js). A coin passes only if:
