@@ -48,3 +48,9 @@ assert.equal(launchedVsPost(posted + 5_000, LUMI_POST), '1m after the post', 'un
 assert.equal(launchedVsPost(posted, null), null, 'a search has no post');
 assert.equal(launchedVsPost(null, LUMI_POST), null, 'no launch time, no line');
 console.log('PASS launched vs post: reads the time from the post id');
+
+const { postTimeOf } = await import('../extension/src/ui/radar.js');
+assert.equal(postTimeOf(LUMI_POST), posted);
+assert.equal(postTimeOf('halloween'), null, 'no post, no time');
+assert.equal(postTimeOf(undefined), null);
+console.log('PASS post time: read from the post link, none on a search');

@@ -66,11 +66,17 @@ const pct = (n, digits = 1) => (n == null || !Number.isFinite(+n) ? '—' : `${+
 const soldPct = (bought, held) => (bought > 0 ? Math.max(0, Math.min(100, (1 - held / bought) * 100)) : 0);
 const pctPlain = (n, d = 1) => (n == null || !Number.isFinite(+n) ? '—' : `${(+n).toFixed(d)}%`);
 const num = (n) => (n == null ? '—' : n >= 1e6 ? `${(n / 1e6).toFixed(2)}M` : n >= 1e4 ? `${(n / 1e3).toFixed(1)}K` : Math.round(n).toLocaleString('en-US'));
-// When a coin launched against the post it's on: X's post ids carry their time.
-export function launchedVsPost(createdAt, postUrl) {
+// X's post ids carry their time.
+export function postTimeOf(postUrl) {
   const id = String(postUrl || '').match(/\/status\/(\d+)/)?.[1];
-  if (!id || !createdAt) return null;
-  const gap = createdAt - Number((BigInt(id) >> 22n) + 1288834974657n);
+  return id ? Number((BigInt(id) >> 22n) + 1288834974657n) : null;
+}
+
+// When a coin launched against the post it's on.
+export function launchedVsPost(createdAt, postUrl) {
+  const posted = postTimeOf(postUrl);
+  if (!posted || !createdAt) return null;
+  const gap = createdAt - posted;
   return `${age(Date.now() - Math.abs(gap))} ${gap < 0 ? 'before' : 'after'} the post`;
 }
 
@@ -527,6 +533,7 @@ class Radar {
 
   renderHead() {
     const { source } = this.state;
+    const postUrl = this.lastPost?.url;
     // A redraw (the holder check answering, say) must not wipe what's being typed or pasted.
     const typed = this.input?.value;
     const typing = this.input && this.input.getRootNode().activeElement === this.input;
@@ -545,7 +552,7 @@ class Radar {
         <input type="text" placeholder="Search a narrative, paste a post or a CA" spellcheck="false" autocomplete="off" />
         <span class="kbd">↵</span>
       </form>` : ''}
-      ${source ? `<div class="source"><b>${esc(source.kind)}</b><span>${esc(source.label)}</span></div>` : ''}
+      ${source ? `<div class="source"><b>${esc(source.kind)}</b><span>${esc(source.label)}</span>${isPostLink(postUrl) && postTimeOf(postUrl) ? `<a href="${esc(postUrl)}" target="_blank" rel="noopener noreferrer" title="Open the post">${age(postTimeOf(postUrl))} ago ↗</a>` : ''}</div>` : ''}
       ${this.watchHtml()}
       ${this.narrativeHtml()}`;
     // Search lives in the toolbar popup; on X the panel only shows what was scanned.

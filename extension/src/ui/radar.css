@@ -155,6 +155,8 @@ svg { display: block; }
 .source { margin-top: 10px; color: var(--muted); font-size: 12px; display: flex; gap: 6px; align-items: baseline; min-width: 0; }
 .source b { color: var(--text); font-weight: 600; white-space: nowrap; }
 .source span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.source a { flex: none; margin-left: auto; color: var(--muted); font: 500 11px var(--mono); text-decoration: none; white-space: nowrap; }
+.source a:hover { color: var(--text); }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
 .chip {
   display: inline-flex;

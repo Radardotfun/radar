@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Radar
 // @namespace    https://tryradar.fun
-// @version      1.7.24
+// @version      1.7.25
 // @description  See the coins behind any post on X and instantly reroute to the biggest match that passes available on-chain safety checks.
 // @homepageURL  https://tryradar.fun
 // @supportURL   https://tryradar.fun
@@ -31,7 +31,7 @@
 // @downloadURL  https://tryradar.fun/radar.user.js
 // ==/UserScript==
 
-// Radar 1.7.24: built from the extension source at https://tryradar.fun. Not financial advice.
+// Radar 1.7.25: built from the extension source at https://tryradar.fun. Not financial advice.
 (() => {
   var __defProp = Object.defineProperty;
   var __export = (target, all) => {
@@ -1293,6 +1293,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     launchedVsPost: () => launchedVsPost,
     mountFloating: () => mountFloating,
     mountInline: () => mountInline,
+    postTimeOf: () => postTimeOf,
     price: () => price,
     scansOnPaste: () => scansOnPaste,
     usd: () => usd,
@@ -1485,10 +1486,14 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
   var soldPct = (bought, held) => bought > 0 ? Math.max(0, Math.min(100, (1 - held / bought) * 100)) : 0;
   var pctPlain = (n2, d = 1) => n2 == null || !Number.isFinite(+n2) ? "\u2014" : `${(+n2).toFixed(d)}%`;
   var num = (n2) => n2 == null ? "\u2014" : n2 >= 1e6 ? `${(n2 / 1e6).toFixed(2)}M` : n2 >= 1e4 ? `${(n2 / 1e3).toFixed(1)}K` : Math.round(n2).toLocaleString("en-US");
-  function launchedVsPost(createdAt, postUrl) {
+  function postTimeOf(postUrl) {
     const id = String(postUrl || "").match(/\/status\/(\d+)/)?.[1];
-    if (!id || !createdAt) return null;
-    const gap = createdAt - Number((BigInt(id) >> 22n) + 1288834974657n);
+    return id ? Number((BigInt(id) >> 22n) + 1288834974657n) : null;
+  }
+  function launchedVsPost(createdAt, postUrl) {
+    const posted = postTimeOf(postUrl);
+    if (!posted || !createdAt) return null;
+    const gap = createdAt - posted;
     return `${age(Date.now() - Math.abs(gap))} ${gap < 0 ? "before" : "after"} the post`;
   }
   function age(ms) {
@@ -1960,6 +1965,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     }
     renderHead() {
       const { source } = this.state;
+      const postUrl = this.lastPost?.url;
       const typed = this.input?.value;
       const typing = this.input && this.input.getRootNode().activeElement === this.input;
       this.headEl.innerHTML = `
@@ -1977,7 +1983,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
         <input type="text" placeholder="Search a narrative, paste a post or a CA" spellcheck="false" autocomplete="off" />
         <span class="kbd">\u21B5</span>
       </form>` : ""}
-      ${source ? `<div class="source"><b>${esc2(source.kind)}</b><span>${esc2(source.label)}</span></div>` : ""}
+      ${source ? `<div class="source"><b>${esc2(source.kind)}</b><span>${esc2(source.label)}</span>${isPostLink(postUrl) && postTimeOf(postUrl) ? `<a href="${esc2(postUrl)}" target="_blank" rel="noopener noreferrer" title="Open the post">${age(postTimeOf(postUrl))} ago \u2197</a>` : ""}</div>` : ""}
       ${this.watchHtml()}
       ${this.narrativeHtml()}`;
       this.input = this.headEl.querySelector("input");
@@ -3166,6 +3172,8 @@ svg { display: block; }
 .source { margin-top: 10px; color: var(--muted); font-size: 12px; display: flex; gap: 6px; align-items: baseline; min-width: 0; }
 .source b { color: var(--text); font-weight: 600; white-space: nowrap; }
 .source span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.source a { flex: none; margin-left: auto; color: var(--muted); font: 500 11px var(--mono); text-decoration: none; white-space: nowrap; }
+.source a:hover { color: var(--text); }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
 .chip {
   display: inline-flex;
