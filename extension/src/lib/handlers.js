@@ -6,6 +6,7 @@ import { readPost, findCoins, postCoins as coinsInPost } from './narrative.js';
 import { makeRpc, analyzeLaunch, PUBLIC_RPC } from './solana.js';
 import { pickReroute, marketBlock, reportBlock, rejectionLine } from './reroute.js';
 import { RECENT_KEY, addRecent } from '../ui/recent.js';
+import { WATCHLIST_KEY, toggleStar } from '../ui/watchlist.js';
 
 // Hosted narrative engine (Cloudflare Worker). Runs 24/7; nobody needs a key.
 export const API_BASE = 'https://narrative-radar.millenia-portfolio.workers.dev';
@@ -355,9 +356,15 @@ export function makeHandlers(host) {
   const recentList = async () => (await host.store.get(RECENT_KEY)) || [];
   const recentAdd = async ({ item }) => { await host.store.set(RECENT_KEY, addRecent(await recentList(), item)); };
   const recentClear = () => host.store.set(RECENT_KEY, []);
+  const starList = async () => (await host.store.get(WATCHLIST_KEY)) || [];
+  const starToggle = async ({ star }) => {
+    const list = toggleStar(await starList(), star);
+    await host.store.set(WATCHLIST_KEY, list);
+    return list;
+  };
   const launchState = () => cached('launch:state', 600_000, async () => (await fetch(`${API_BASE}/launch/settings`, { signal: AbortSignal.timeout(6000) })).json());
 
-  const handlers = { videoInfo, tweet, read, coins, postCoins, mentioned, story, larpcheck, refresh, safety, bundle, image, openWindow, reroute, holderStatus, holderSave, holderWho, holderActive, recentList, recentAdd, recentClear, launchState, lcHolders, lcBoard, lcSettings, lcStart, lcAsk, lcPoll, settings: () => host.settings() };
+  const handlers = { starList, starToggle, videoInfo, tweet, read, coins, postCoins, mentioned, story, larpcheck, refresh, safety, bundle, image, openWindow, reroute, holderStatus, holderSave, holderWho, holderActive, recentList, recentAdd, recentClear, launchState, lcHolders, lcBoard, lcSettings, lcStart, lcAsk, lcPoll, settings: () => host.settings() };
   // Changing the RPC drops cached bundle results so they're re-read through the new one.
   handlers.resetBundles = () => memo.forEach((_, k) => k.startsWith('bd:') && memo.delete(k));
   return handlers;

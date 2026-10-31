@@ -743,3 +743,35 @@ svg { display: block; }
 .lc-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 10px; font-size: 10.5px; line-height: 1.35; color: var(--faint); }
 .lc-foot b { font-weight: 700; color: var(--muted); }
 .lc-foot .lc-btn { flex: none; height: 26px; padding: 0 10px; font-size: 10px; border-radius: 8px; }
+
+/* Watchlist */
+.star-head.has { color: var(--text); }
+.star-head.on { background: var(--card-2); color: var(--text); }
+.star-head.has svg, .star-head.on svg { fill: currentColor; }
+.star-btn { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 9px; color: var(--muted); background: var(--card-2); border: 1px solid var(--line); transition: color 0.15s, border-color 0.15s; }
+.star-btn + .toggle-card { margin-left: 0; }
+.card-top .star-btn { margin-left: auto; order: 2; }
+.card-top .cc ~ .star-btn { margin-left: 0; }
+.card-top .toggle-card { order: 3; }
+.star-btn:hover { color: var(--text); border-color: var(--line-2); }
+.star-btn.on { color: var(--text); }
+.star-btn.on svg { fill: currentColor; }
+.star-list { padding: 4px 2px; }
+.star-list .empty { padding: 28px 8px; }
+.star-row { display: grid; grid-template-columns: minmax(0, 1fr) 32px; align-items: center; gap: 2px 4px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.star-open { display: flex; align-items: center; gap: 10px; min-width: 0; width: 100%; min-height: 44px; text-align: left; border-radius: 10px; }
+.star-open:hover .star-names b { text-decoration: underline; }
+.star-open .ava { flex: none; }
+.star-names { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.star-names b { font-weight: 700; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.star-names span { font-size: 12px; color: var(--muted); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.star-nums { flex: none; display: flex; flex-direction: column; align-items: flex-end; text-align: right; }
+.star-nums b { font: 600 13px var(--mono); }
+.star-nums b i { font-style: normal; font-weight: 500; font-size: 10px; color: var(--faint); }
+.star-nums em { font: 500 11px var(--mono); font-style: normal; color: var(--faint); white-space: nowrap; }
+.star-nums em.up { color: var(--up); }
+.star-nums em.down { color: var(--down); }
+.star-remove { width: 32px; height: 44px; display: grid; place-items: center; border-radius: 9px; color: var(--faint); }
+.star-remove:hover { color: var(--text); background: var(--card-2); }
+.star-lc { grid-column: 1 / -1; margin-top: 4px; }
+.star-lc .lc-btn { min-height: 30px; padding-block: 5px; font-size: 11px; }

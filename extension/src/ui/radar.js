@@ -2,6 +2,7 @@ import { TERMINAL_ICONS } from './terminal-icons.js';
 import { coinCheck } from './coincheck.js';
 import { marketBlock, reportBlock } from './holdercheck.js';
 import { recentItem } from './recent.js';
+import { MAX_STARS, starOf, toggleStar, sinceStar } from './watchlist.js';
 
 import { lcButtonHtml, lcStoryHtml, lcCheckItHtml, lcStamp } from './larpcheck.js';
 
@@ -121,6 +122,7 @@ const I = {
   og: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M6 3h12M6 21h12M7 3c0 5 10 6 10 9s-10 4-10 9M17 3c0 5-10 6-10 9"/></svg>',
   gear: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.8-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1.1-1.5 1.7 1.7 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.8 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.1a1.7 1.7 0 001.5-1.1 1.7 1.7 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.8.3H9a1.7 1.7 0 001-1.5V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.8V9a1.7 1.7 0 001.5 1H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z"/></svg>',
   bolt: '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z"/></svg>',
+  star: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"><path d="M12 3l2.7 5.8 6.3.8-4.6 4.3 1.2 6.2L12 17.1 6.4 20.1l1.2-6.2L3 9.6l6.3-.8z"/></svg>',
   bell: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 1112 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 003.4 0"/></svg>',
   pin: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 21s-7-6.2-7-11a7 7 0 1114 0c0 4.8-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></svg>',
   copy: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2.5"/><path d="M5 15V5a2 2 0 012-2h10"/></svg>',
@@ -265,7 +267,9 @@ class Radar {
     this.refreshSec = 10;
     this.timers = [];
     this.scanId = 0;
-    this.view = 'scan'; // or 'settings' (toolbar popup only)
+    this.view = 'scan'; // or 'settings' (toolbar popup only), or 'stars' (the watchlist)
+    this.stars = [];
+    send('starList').then((list) => { this.stars = list || []; this.renderHead(); if (this.view === 'scan' && this.state.ts) this.syncStarButtons(); }).catch(() => {});
     this.frontrun = null; // { connected, wallets, error } from the background
     this.frSel = new Map(); // address -> { sol, bps, wallet } for the buy sheet
     this.frBusy = new Set();
@@ -339,6 +343,7 @@ class Radar {
     const id = ++this.scanId;
     const stale = () => id !== this.scanId;
     const asked = post?.url || post?.text;
+    if (this.view === 'stars') this.view = 'scan';
     this.stopTimers();
     this.lastPost = post;
     this.state = { ...this.state, loading: true, early: [], error: null, narrative: null, engineError: null, source: source ?? this.state.source };
@@ -614,6 +619,7 @@ class Radar {
       else if (b.dataset.act === 'rescan') this.rescan();
       else if (b.dataset.act === 'share') this.share();
       else if (b.dataset.act === 'settings') { this.view = this.view === 'settings' ? 'scan' : 'settings'; this.renderBody(); }
+      else if (b.dataset.act === 'stars') this.toggleStarsView();
       else if (b.dataset.act === 'watch') this.watch();
       else if (b.dataset.lcCheck) this.runLcCheck(b.dataset.lcCheck);
       else if (b.dataset.act === 'unwatch') this.unwatch(b.dataset.id);
@@ -643,6 +649,7 @@ class Radar {
         ${MARK}
         <div class="title">Radar</div>
         <div class="live paused"><i></i><span>READY</span></div>
+        <button class="icon-btn star-head${this.stars?.length ? ' has' : ''}${this.view === 'stars' ? ' on' : ''}" data-act="stars" title="Watchlist">${I.star}</button>
         ${this.inline && canSettings() ? `<button class="icon-btn" data-act="settings" title="Settings">${I.gear}</button>` : ''}
         ${this.state.ts && this.state.picks?.length ? `<button class="icon-btn" data-act="share" title="Copy a summary to share">${I.share}</button>` : ''}
         ${this.state.ts ? `<button class="icon-btn" data-act="rescan" title="Rescan">${I.refresh}</button>` : ''}
@@ -856,6 +863,7 @@ class Radar {
 
   renderBody() {
     if (this.view === 'settings') { this.bodyEl.innerHTML = this.settingsHtml(); return; }
+    if (this.view === 'stars') { this.bodyEl.innerHTML = this.starsHtml(); this.hydrateImages(); return; }
     const { loading, error, picks, others, mentioned, techMatch, ts } = this.state;
     if (loading) {
       const early = this.state.early || [];
@@ -945,6 +953,86 @@ class Radar {
     return mode === 'ai' ? (bioCoins || []).filter((t) => !(picks || []).some((p) => p.token.address === t.address)) : [];
   }
 
+  // ---------- Watchlist ----------
+  isStarred(addr) { return !!this.stars?.some((s) => s.address === addr); }
+
+  syncStarButtons() {
+    this.bodyEl.querySelectorAll('[data-star]').forEach((b) => {
+      const on = this.isStarred(b.dataset.star);
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-pressed', String(on));
+    });
+  }
+
+  toggleStar(addr) {
+    const t = this.tokens.get(addr);
+    if (!t) return;
+    const was = this.isStarred(addr);
+    if (!was && this.stars.length >= MAX_STARS) { this.toast(`Your watchlist is full (${MAX_STARS})`); return; }
+    const star = starOf(t);
+    this.stars = toggleStar(this.stars, star);
+    this.syncStarButtons();
+    this.renderHead();
+    this.toast(was ? 'Off your watchlist' : 'On your watchlist');
+    send('starToggle', { star }).then((list) => { this.stars = list || []; }).catch(() => {});
+  }
+
+  removeStar(addr) {
+    const star = this.stars.find((s) => s.address === addr);
+    if (!star) return;
+    this.stars = toggleStar(this.stars, star);
+    this.renderHead();
+    this.renderBody();
+    send('starToggle', { star }).then((list) => { this.stars = list || []; }).catch(() => {});
+  }
+
+  toggleStarsView() {
+    this.view = this.view === 'stars' ? 'scan' : 'stars';
+    this.renderHead();
+    this.renderBody();
+    this.refreshStars();
+  }
+
+  // Live numbers while the list is open, and each coin's Larpcheck verdict, a few at a time (they count against Radar's API key).
+  async refreshStars() {
+    clearTimeout(this.starTimer);
+    if (this.view !== 'stars' || !this.stars.length) return;
+    if (!document.hidden) {
+      const res = await send('refresh', { tokens: this.stars.map((s) => ({ chain: s.chain, address: s.address })) }).catch(() => null);
+      if (this.view !== 'stars') return;
+      if (res?.tokens) this.starLive = res.tokens;
+      this.renderBody();
+      this.starLc ||= new Map();
+      const list = [...this.stars];
+      for (let i = 0; i < list.length; i += 4) {
+        await Promise.all(list.slice(i, i + 4).map((s) => send('larpcheck', { address: s.address }).then((lc) => this.starLc.set(s.address, lc)).catch(() => {})));
+        if (this.view !== 'stars') return;
+        this.renderBody();
+      }
+    }
+    this.starTimer = setTimeout(() => this.refreshStars(), 30_000);
+  }
+
+  starsHtml() {
+    const top = `<div class="recent-top"><span>Watchlist${this.stars.length ? ` · ${this.stars.length}` : ''}</span><button data-act-back>Back</button></div>`;
+    if (!this.stars.length) return `<div class="star-list">${top}<div class="empty"><div class="big">Nothing starred yet</div><p>Tap the star on a coin card to keep it here, with its change since you starred it.</p></div></div>`;
+    return `<div class="star-list">${top}${this.stars.map((s) => {
+      const live = this.starLive?.[s.address];
+      const cap = live?.marketCap ?? s.cap;
+      const since = live ? sinceStar(s, live.marketCap) : null;
+      const lc = this.starLc?.get(s.address);
+      return `<div class="star-row">
+        <button class="star-open" data-star-open="${esc(s.address)}" data-star-sym="${esc(s.symbol)}" title="Scan $${esc(s.symbol)}">
+          ${this.avatarHtml({ address: s.address, symbol: s.symbol, image: live?.image || s.image })}
+          <span class="star-names"><b>$${esc(s.symbol)}</b><span>${esc(s.name)}</span></span>
+          <span class="star-nums"><b>${usd(cap)}${live && !live.mcapBacked && !live.onCurve ? ' <i title="Market cap not backed by real liquidity">· thin</i>' : ''}</b><em class="${since == null ? '' : since >= 0 ? 'up' : 'down'}">${since == null ? '—' : `${pct(since, Math.abs(since) >= 100 ? 0 : 1)} since star`}</em></span>
+        </button>
+        <button class="star-remove" data-star-remove="${esc(s.address)}" title="Take off the watchlist">${I.xs}</button>
+        ${lc?.checked ? `<div class="star-lc">${lcButtonHtml(lc)}</div>` : ''}
+      </div>`;
+    }).join('')}</div>`;
+  }
+
   avatarHtml(t) {
     const h = hue(t.address);
     return `<div class="ava" style="--h1:hsl(${h} 70% 45%);--h2:hsl(${(h + 50) % 360} 70% 30%)" data-img="${esc(t.image || '')}">${esc((t.symbol || '?').replace(/^\$/, '').slice(0, 2).toUpperCase())}</div>`;
@@ -1031,6 +1119,7 @@ class Radar {
           <span class="badge">${r.icon}${r.label}</span>
           ${tags.map((x) => `<span class="tag${x.startsWith('launched') ? ' hot' : x.startsWith('looks') ? ' rug' : /^oldest of|named \$/.test(x) ? ' twins' : ''}">${esc(x)}</span>`).join('')}
           ${t.chain === 'solana' ? `<span class="cc" data-cc="${t.address}"></span>` : ''}
+          <button class="star-btn${this.isStarred(t.address) ? ' on' : ''}" data-star="${t.address}" aria-pressed="${this.isStarred(t.address)}" title="Watchlist">${I.star}</button>
           <button class="toggle-card" data-toggle="${t.address}" aria-expanded="${open}" title="${open ? 'Show less' : 'Show everything'}">${I.chevron}</button>
         </header>
         <div class="ident">
@@ -1519,7 +1608,13 @@ class Radar {
   }
 
   async onBodyClick(e) {
-    if (e.target.closest('[data-act-back]')) { this.view = 'scan'; this.renderBody(); return; }
+    if (e.target.closest('[data-act-back]')) { this.view = 'scan'; this.renderHead(); this.renderBody(); return; }
+    const starBtn = e.target.closest('[data-star]');
+    if (starBtn) { this.toggleStar(starBtn.dataset.star); return; }
+    const starGone = e.target.closest('[data-star-remove]');
+    if (starGone) { this.removeStar(starGone.dataset.starRemove); return; }
+    const starOpen = e.target.closest('[data-star-open]');
+    if (starOpen) { this.scan({ post: { text: starOpen.dataset.starOpen }, source: { kind: 'Watchlist', label: `$${starOpen.dataset.starSym}` } }); return; }
     if (e.target.closest('[data-act="watch"]')) { await this.watch(); return; }
     const stop = e.target.closest('[data-act="unwatch"]');
     if (stop) { await this.unwatch(stop.dataset.id); return; }
