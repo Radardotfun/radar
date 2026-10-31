@@ -66,6 +66,14 @@ const pct = (n, digits = 1) => (n == null || !Number.isFinite(+n) ? '—' : `${+
 const soldPct = (bought, held) => (bought > 0 ? Math.max(0, Math.min(100, (1 - held / bought) * 100)) : 0);
 const pctPlain = (n, d = 1) => (n == null || !Number.isFinite(+n) ? '—' : `${(+n).toFixed(d)}%`);
 const num = (n) => (n == null ? '—' : n >= 1e6 ? `${(n / 1e6).toFixed(2)}M` : n >= 1e4 ? `${(n / 1e3).toFixed(1)}K` : Math.round(n).toLocaleString('en-US'));
+// When a coin launched against the post it's on: X's post ids carry their time.
+export function launchedVsPost(createdAt, postUrl) {
+  const id = String(postUrl || '').match(/\/status\/(\d+)/)?.[1];
+  if (!id || !createdAt) return null;
+  const gap = createdAt - Number((BigInt(id) >> 22n) + 1288834974657n);
+  return `${age(Date.now() - Math.abs(gap))} ${gap < 0 ? 'before' : 'after'} the post`;
+}
+
 export function age(ms) {
   if (!ms) return '—';
   const m = (Date.now() - ms) / 60000;
@@ -812,7 +820,9 @@ class Radar {
     const buyShare = buys + sells ? (buys / (buys + sells)) * 100 : 50;
     const tags = [pick.alsoOg && 'also the OG', pick.alsoTop && 'also top MC', pick.alsoMover && 'also the mover'].filter(Boolean);
     if (this.state.techMatch?.address === t.address && role !== 'tech') tags.push('TECH MATCH');
-    if (t.fromPost) tags.unshift('launched off this post');
+    const vsPost = launchedVsPost(t.createdAt, this.lastPost?.url);
+    if (t.fromPost) tags.unshift(vsPost?.includes('after') ? `launched ${vsPost}` : 'launched off this post');
+    else if (vsPost) tags.push(vsPost);
     const twins = this.nameTwins(t);
     if (twins) tags.push(twins.oldest ? `oldest of ${twins.n}` : `${twins.n} named $${String(t.symbol).trim()}`);
     const matched = t.reason ? esc(t.reason) : t.matched?.length ? `matches “${esc(t.matched.slice(0, 2).join('”, “'))}”` : '';

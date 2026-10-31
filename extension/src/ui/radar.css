@@ -214,7 +214,7 @@ svg { display: block; }
 .card.ca { --role: var(--accent); }
 .card.more { --role: var(--muted); }
 
-.card-top { display: flex; align-items: center; gap: 6px; position: relative; }
+.card-top { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; position: relative; }
 .badge {
   display: inline-flex;
   align-items: center;

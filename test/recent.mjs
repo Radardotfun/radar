@@ -37,3 +37,14 @@ const { scansOnPaste } = await import('../extension/src/ui/radar.js');
 for (const yes of ['https://x.com/a/status/123', ' https://twitter.com/a/status/123?s=20 ', 'HyDSdtgiSa5mHqkTVoz8cTFTeVLFKdZ8amPvtNYfpump', '0x21CFCFc3d8F98fC728f48341D10Ad8283F6EB7AB']) assert.ok(scansOnPaste(yes), yes);
 for (const no of ['', null, 'halloween', 'a dog in a hat', 'https://x.com/a', '0x21CF', 'https://example.com/a/status/123', 'check HyDSdtgiSa5mHqkTVoz8cTFTeVLFKdZ8amPvtNYfpump']) assert.ok(!scansOnPaste(no), String(no));
 console.log('PASS paste: a post link or a CA scans by itself, other words wait for Enter');
+
+const { launchedVsPost } = await import('../extension/src/ui/radar.js');
+const LUMI_POST = 'https://x.com/lightberry/status/2116326790033781021';
+const posted = Number((2116326790033781021n >> 22n) + 1288834974657n);
+assert.equal(new Date(posted).toISOString().slice(0, 10), '2026-10-31', "a post id gives the post's time");
+assert.equal(launchedVsPost(posted + 8 * 60_000, LUMI_POST), '8m after the post');
+assert.equal(launchedVsPost(posted - 3 * 3_600_000, LUMI_POST), '3h before the post');
+assert.equal(launchedVsPost(posted + 5_000, LUMI_POST), '1m after the post', 'under a minute reads as 1m');
+assert.equal(launchedVsPost(posted, null), null, 'a search has no post');
+assert.equal(launchedVsPost(null, LUMI_POST), null, 'no launch time, no line');
+console.log('PASS launched vs post: reads the time from the post id');
