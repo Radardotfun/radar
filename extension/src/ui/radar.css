@@ -632,6 +632,13 @@ svg { display: block; }
 .recent-row:hover span { color: var(--text); }
 .launch-btn { display: block; width: 100%; min-height: 40px; margin-top: 14px; border: 1px solid var(--line-2); border-radius: 10px; font-weight: 700; color: var(--text); text-align: center; }
 .launch-btn:hover { background: var(--card-2); }
+.chart-btn { flex: 1 1 100%; height: 32px; border: 1px solid var(--line); border-radius: 10px; font: 700 12px var(--font); color: var(--text); background: var(--card-2); }
+.chart-btn:hover, .chart-btn.on { border-color: var(--line-2); }
+.chart-box:empty { display: none; }
+.chart-box { margin-top: 8px; }
+.chart-frame { display: block; width: 100%; height: 360px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); }
+.chart-full { display: block; margin-top: 6px; font-size: 11px; color: var(--faint); text-decoration: none; text-align: right; }
+.chart-full:hover { color: var(--text); }
 .hc-by { margin-left: auto; flex: none; font: 600 10px var(--mono); letter-spacing: 0.06em; color: var(--faint); text-decoration: none; white-space: nowrap; }
 .hc-by:hover { color: var(--text); }
 .hc > span:nth-child(2) { min-width: 0; }

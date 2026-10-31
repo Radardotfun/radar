@@ -66,6 +66,22 @@ const pct = (n, digits = 1) => (n == null || !Number.isFinite(+n) ? '—' : `${+
 const soldPct = (bought, held) => (bought > 0 ? Math.max(0, Math.min(100, (1 - held / bought) * 100)) : 0);
 const pctPlain = (n, d = 1) => (n == null || !Number.isFinite(+n) ? '—' : `${(+n).toFixed(d)}%`);
 const num = (n) => (n == null ? '—' : n >= 1e6 ? `${(n / 1e6).toFixed(2)}M` : n >= 1e4 ? `${(n / 1e3).toFixed(1)}K` : Math.round(n).toLocaleString('en-US'));
+// GeckoTerminal's embed of a coin's chart, with no trades list or info column. DexScreener's own embed sits behind a
+// Cloudflare check that a frame can't pass (31 Oct 2026). It charts a pool, so a coin needs a known pair.
+const GECKO_NETWORK = { solana: 'solana', robinhood: 'robinhood', base: 'base', bsc: 'bsc', ethereum: 'eth' };
+export function chartEmbed(t, theme = 'dark') {
+  const network = GECKO_NETWORK[t?.chain];
+  if (!network || !/^[A-Za-z0-9]{20,70}$/.test(t?.pair || '')) return null;
+  return `https://www.geckoterminal.com/${network}/pools/${t.pair}?embed=1&info=0&swaps=0&light_chart=${theme === 'light' ? 1 : 0}`;
+}
+// On X a page frame is refused, so the chart goes through an extension page (ui/chart.html). Without one, as in the
+// userscript on X, there's no chart to show here, only the link.
+export function chartFrameSrc(embed, { onX = /(^|\.)(x|twitter)\.com$/.test(location.hostname), getURL = globalThis.chrome?.runtime?.getURL } = {}) {
+  if (!embed) return null;
+  if (!onX) return embed;
+  return getURL ? `${getURL('src/ui/chart.html')}?u=${encodeURIComponent(embed)}` : null;
+}
+
 const launchUrl = (post) => `https://tryradar.fun/launch?post=${encodeURIComponent(post)}`;
 // A coin launched on tryradar.fun/launch carries this as its website, and says so on its card.
 export const launchedWithRadar = (t) => (t.websites || []).some((w) => /^https:\/\/tryradar\.fun\/launched/.test(w?.url || w));
@@ -910,6 +926,15 @@ class Radar {
   }
 
   // A card's actions: one Trade button (▾ for the other terminals) and Larpcheck's verdict as a yellow button.
+  chartHtml(t) {
+    if (!this.expanded.has(`ch:${t.address}`)) return '';
+    const embed = chartEmbed(t, this.root.dataset.theme);
+    const src = chartFrameSrc(embed);
+    const full = esc(t.url || `https://dexscreener.com/${t.chain}/${t.address}`);
+    return `${src ? `<iframe class="chart-frame" title="Chart of $${esc(t.symbol)}" src="${esc(src)}" referrerpolicy="no-referrer"></iframe>` : ''}
+      <a class="chart-full" href="${full}" target="_blank" rel="noopener noreferrer">${src ? 'Open on DexScreener ↗' : 'Open the chart on DexScreener ↗'}</a>`;
+  }
+
   actionsHtml(t) {
     const terms = terminals(t);
     const pick = terms.find((x) => x.id === prefTerm()) || terms[0];
@@ -935,7 +960,9 @@ class Radar {
         ${instaOpen ? `<div class="insta-menu">${(hood ? INSTA_ETH : INSTA_SOL).map((v) => `<button type="button" data-insta-sol="${v}" data-unit="${unit}" data-addr="${t.address}"${v === sol ? ' class="on"' : ''}>${v}</button>`).join('')}
           <a href="${esc(hood ? hoodBuyUrl(t.address) : quickBuyUrl(t))}" target="_blank" rel="noopener noreferrer">Full buy page: any amount, slippage ↗</a></div>` : ''}
       </div>` : '';
-    return `${quick}${buyBtn}${trade}<span class="lc-slot" data-lc="${t.address}">${lcButtonHtml(this.larp.get(t.address)?.lc)}</span>${frOpen ? this.frSheetHtml(t) : ''}`;
+    const chartOn = this.expanded.has(`ch:${t.address}`);
+    const chart = chartEmbed(t) ? `<button type="button" class="chart-btn${chartOn ? ' on' : ''}" data-chart="${t.address}" aria-expanded="${chartOn}">${chartOn ? 'Hide chart' : 'Chart'}</button>` : '';
+    return `${quick}${buyBtn}${trade}${chart}<span class="lc-slot" data-lc="${t.address}">${lcButtonHtml(this.larp.get(t.address)?.lc)}</span>${frOpen ? this.frSheetHtml(t) : ''}`;
   }
 
   cardHtml(t, pick) {
@@ -980,6 +1007,7 @@ class Radar {
         </div>
         ${t.chain === 'solana' ? `<div class="hc" data-hc="${t.address}"><span class="hc-mark wait"></span><span>Checking holders…</span></div>` : `<div class="hc" data-lch="${t.address}" hidden></div>`}
         <div class="actions" data-actions="${t.address}">${this.actionsHtml(t)}</div>
+        <div class="chart-box" data-chart-box="${t.address}">${this.chartHtml(t)}</div>
         <div class="card-body" aria-hidden="${!open}">
           <div class="card-inner">
             ${matched ? `<div class="reason">${t.reason ? I.spark : ''}<span>${matched}</span></div>` : ''}
@@ -1493,6 +1521,20 @@ class Radar {
     }
     const trend = e.target.closest('[data-trend]');
     if (trend) { this.scan({ post: { text: `Trending on X: ${trend.dataset.trend}` }, source: { kind: 'Trend', label: trend.dataset.trend } }); return; }
+    const chartBtn = e.target.closest('[data-chart]');
+    if (chartBtn) {
+      const addr = chartBtn.dataset.chart;
+      const key = `ch:${addr}`;
+      this.expanded.has(key) ? this.expanded.delete(key) : this.expanded.add(key);
+      const t = this.tokens.get(addr);
+      const card = this.bodyEl.querySelector(`.card[data-addr="${addr}"]`);
+      if (t && card) {
+        card.querySelector(`[data-actions="${addr}"]`).innerHTML = this.actionsHtml(t);
+        card.querySelector(`[data-chart-box="${addr}"]`).innerHTML = this.chartHtml(t);
+        this.renderLarp(addr);
+      }
+      return;
+    }
     const tab = e.target.closest('[data-board]');
     if (tab) { this.board = []; this.loadBoard(tab.dataset.board); this.renderBody(); return; }
     const listed = e.target.closest('[data-board-coin]');
