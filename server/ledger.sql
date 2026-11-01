@@ -34,7 +34,9 @@ CREATE TABLE IF NOT EXISTS launch_meta (
   wallet TEXT NOT NULL,
   image BLOB NOT NULL,
   type TEXT NOT NULL,
-  at INTEGER NOT NULL
+  at INTEGER NOT NULL,
+  story TEXT NOT NULL DEFAULT '',
+  pic TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS launches (
   mint TEXT PRIMARY KEY,
@@ -44,7 +46,9 @@ CREATE TABLE IF NOT EXISTS launches (
   name TEXT NOT NULL,
   symbol TEXT NOT NULL,
   signature TEXT NOT NULL,
-  at INTEGER NOT NULL
+  at INTEGER NOT NULL,
+  story TEXT NOT NULL DEFAULT '',
+  pic TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS launches_at ON launches (at DESC);
 CREATE INDEX IF NOT EXISTS launches_post ON launches (post, wallet);

@@ -4,8 +4,8 @@
 //   POST /match     { post, logos }                  -> { same: [i] }: coin logos showing the post's own picture
 //   GET  /larpcheck?address=<CA>                     -> Larpcheck's verdict on the coin (see below)
 import { lcBoard, lcHolders, lcSettings, lcStart, lcPoll, lcAsk, lcHandle } from './lc.js';
-import { launchState, launchMeta, launchMetaFile, launchRecord, launchList } from './launch.js';
-import { engine, interpret, judge, storyCheck, transcribe, watchVideo, sameImage, LOGO_HOST } from './narrative.js';
+import { launchState, launchMeta, launchMetaFile, launchRecord, launchList, launchTaken } from './launch.js';
+import { engine, interpret, judge, storyCheck, transcribe, watchVideo, sameImage, sameStory, LOGO_HOST } from './narrative.js';
 import { holderOn, holderConfig, holderVerify, holderWho } from './holder.js';
 import { recordPost, readStatus } from './ledger.js';
 
@@ -299,6 +299,7 @@ export default {
     // Launching a coin from a post (server/launch.js).
     if (pathname === '/launch/settings' && request.method === 'GET') return json(200, { state: launchState(env) });
     if (pathname === '/launch/list' && request.method === 'GET') return json(200, await launchList(env));
+    if (pathname === '/launch/taken' && request.method === 'GET') return json(200, await launchTaken(new URL(request.url).searchParams.get('post'), env));
     const launchFile = request.method === 'GET' && pathname.match(/^\/launch\/meta\/([0-9a-f]{24})\.(json|jpg|png|webp)$/);
     if (launchFile) return launchMetaFile(launchFile[1], launchFile[2], env, new URL(request.url).origin, CORS);
     if ((pathname === '/launch/meta' || pathname === '/launch/record') && request.method === 'POST') {
@@ -306,7 +307,8 @@ export default {
       if (Number(request.headers.get('content-length') || 0) > 500_000) return json(413, { error: 'That picture is too big.' });
       const body = await request.json().catch(() => ({}));
       const origin = new URL(request.url).origin;
-      const r = pathname === '/launch/meta' ? await launchMeta(body, env, origin) : await launchRecord(body, env, relayUrl(env) || 'https://api.mainnet-beta.solana.com', origin);
+      const launchAi = () => engine({ apiKey: env.ANTHROPIC_API_KEY, binding: env.AI, env });
+      const r = pathname === '/launch/meta' ? await launchMeta(body, env, origin, { readPost: readStatus, sameStory: (story, others) => sameStory(launchAi(), story, others) }) : await launchRecord(body, env, relayUrl(env) || 'https://api.mainnet-beta.solana.com', origin);
       return json(r.status, r.data);
     }
     // Scans opened from a bot reply: one number per day, nothing about who opened them.

@@ -3,7 +3,7 @@
 // dropped. Radar never sees the wallet's key or holds funds. Built into web/launch.js by scripts/build-webapp.mjs.
 import { Keypair, PublicKey, TransactionMessage, VersionedTransaction, ComputeBudgetProgram } from '@solana/web3.js';
 import { PUMP_SDK } from '@pump-fun/pump-sdk';
-import { txBlock, spendBlock, simulationWhy, suggestTicker, samePost } from './launch-guard.js';
+import { txBlock, spendBlock, simulationWhy, suggestTicker, suggestName, tickerFromName, samePost } from './launch-guard.js';
 
 const API = 'https://narrative-radar.millenia-portfolio.workers.dev';
 const RELAY = `${API}/rpc`;
@@ -70,7 +70,8 @@ async function loadPost() {
     if (!r.ok) throw new Error(d.error);
     $('post-author').textContent = d.source?.kind || 'The post';
     $('post-text').textContent = d.post?.text || d.source?.label || '';
-    ui.symbol.value ||= suggestTicker(d.post?.text);
+    ui.name.value ||= suggestName(d.post?.text);
+    ui.symbol.value ||= suggestTicker(d.post?.text) || tickerFromName(ui.name.value);
     checkTwins();
     const photo = (d.post?.images || []).find((u) => /^https:\/\/pbs\.twimg\.com\//.test(u));
     if (photo) {
@@ -113,6 +114,24 @@ function findWallets() {
   ui.choice.hidden = providers.length < 2;
 }
 
+const WALLET_KEY = 'radar.launch.wallet';
+const useWallet = (p, res) => {
+  const key = p.publicKey || res?.publicKey;
+  wallet = new PublicKey(key.toBase58 ? key.toBase58() : String(key)).toBase58();
+  provider = p;
+  ui.status.textContent = `${wallet.slice(0, 5)}…${wallet.slice(-5)}`;
+  ui.status.classList.add('connected');
+  ui.connect.textContent = 'Disconnect';
+};
+// A wallet that connected here before comes back without a prompt. It still has to approve every launch.
+async function reconnect() {
+  let label = null;
+  try { label = localStorage.getItem(WALLET_KEY); } catch {}
+  const found = providers.find(([l]) => l === label);
+  if (!found) return;
+  try { useWallet(found[1], await found[1].connect({ onlyIfTrusted: true })); refresh(); } catch {}
+}
+
 ui.connect.addEventListener('click', async () => {
   if (provider) {
     try { await provider.disconnect?.(); } catch {}
@@ -121,6 +140,7 @@ ui.connect.addEventListener('click', async () => {
     ui.status.textContent = 'Not connected';
     ui.status.classList.remove('connected');
     ui.connect.textContent = 'Connect wallet';
+    try { localStorage.removeItem(WALLET_KEY); } catch {}
     refresh();
     return;
   }
@@ -132,13 +152,8 @@ ui.connect.addEventListener('click', async () => {
   const [label, p] = providers[Math.min(Number(ui.choice.value || 0), providers.length - 1)];
   say(`Approve the connection in ${label}.`);
   try {
-    const res = await p.connect();
-    const key = p.publicKey || res?.publicKey;
-    wallet = new PublicKey(key.toBase58 ? key.toBase58() : String(key)).toBase58();
-    provider = p;
-    ui.status.textContent = `${wallet.slice(0, 5)}…${wallet.slice(-5)}`;
-    ui.status.classList.add('connected');
-    ui.connect.textContent = 'Disconnect';
+    useWallet(p, await p.connect());
+    try { localStorage.setItem(WALLET_KEY, label); } catch {}
     say('Connected. Your wallet shows the launch and must approve it.');
   } catch {
     say('Wallet connection was cancelled.', 'error');
@@ -194,12 +209,12 @@ const shown = (mint, signature) => {
 };
 
 async function waitFor(signature) {
-  for (let i = 0; i < 40; i++) {
+  for (let i = 0; i < 80; i++) {
     const { value } = await rpc('getSignatureStatuses', [[signature]]);
     const st = value?.[0];
     if (st?.err) throw new Error('The launch failed on-chain. Your wallet only paid the network fee.');
     if (st && ['confirmed', 'finalized'].includes(st.confirmationStatus)) return;
-    await new Promise((r) => setTimeout(r, 1500));
+    await new Promise((r) => setTimeout(r, 750));
   }
   throw new Error('Solana has not confirmed it yet. Check your wallet before trying again.');
 }
@@ -237,7 +252,8 @@ async function runLaunch() {
     // either way; this only decides when it shows on the list.
     for (let i = 0; i < 12; i++) {
       const r = await fetch(`${API}/launch/record`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: meta.id, mint, signature }) }).catch(() => null);
-      if (r?.ok || r?.status === 400) break;
+      if (r?.status === 409) say('Your coin is live on pump.fun, but this story already has a coin on Radar\'s list, so yours won\'t be listed.', 'error');
+      if (r?.ok || r?.status === 400 || r?.status === 409) break;
       await new Promise((res) => setTimeout(res, 5000));
     }
   } catch (e) {
@@ -257,6 +273,14 @@ $('copy-launched')?.addEventListener('click', async () => {
 fetch(`${API}/launch/settings`).then((r) => r.json()).then((s) => {
   if (s.state === 'off') { say('Launching is switched off right now.', 'error'); ui.launch.hidden = true; }
 }).catch(() => {});
+// One coin per story: a post that already has its coin says so before anyone fills anything in.
+if (samePost(post)) fetch(`${API}/launch/taken?post=${encodeURIComponent(post)}`).then((r) => r.json()).then((d) => {
+  if (!d.taken) return;
+  say(`This post already has a coin launched with Radar: $${d.taken.symbol}. One coin per story.`, 'error');
+  ui.launch.hidden = true;
+  $('link-pump').href = `https://pump.fun/coin/${d.taken.mint}`;
+}).catch(() => {});
 findWallets();
+reconnect();
 loadPost();
 refresh();

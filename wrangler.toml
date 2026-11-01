@@ -15,7 +15,9 @@ directory = "./dist/web"
 
 # Holder-only data (server/holder.js): the coin and how much of it counts. Off until the Frontrun key is set.
 [vars]
-RADAR_MINT = "HyDSdtgiSa5mHqkTVoz8cTFTeVLFKdZ8amPvtNYfpump"
+# Launching a coin from a post (server/launch.js): on in beta since 1 Nov 2026. "off" stops it with no store update.
+LAUNCH_STATE = "on"
+RADAR_MINT ="HyDSdtgiSa5mHqkTVoz8cTFTeVLFKdZ8amPvtNYfpump"
 HOLDER_MIN_USD = "10"
 
 # Radar's own record of which X accounts posted which coins (server/ledger.js, server/ledger.sql).

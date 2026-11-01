@@ -1,4 +1,4 @@
-// Radar 1.7.39 on the web: built from the extension source at https://tryradar.fun. Not financial advice.
+// Radar 1.7.40 on the web: built from the extension source at https://tryradar.fun. Not financial advice.
 (() => {
   // extension/src/lib/keywords.js
   var STOP = new Set(`a about above after again against all almost also am an and any are aren as at be because been before
@@ -2401,7 +2401,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     }
     // The way to launch a coin from the post being read, while the server has launching on.
     launchHtml() {
-      return this.launchOn && isPostLink(this.lastPost?.url) ? '<button type="button" class="launch-btn" data-launch>Launch a coin from this post</button>' : "";
+      return this.launchOn && isPostLink(this.lastPost?.url) ? '<button type="button" class="launch-btn" data-launch>Launch a coin from this post \xB7 Beta</button>' : "";
     }
     renderBody() {
       if (this.view === "settings") {

@@ -4,8 +4,8 @@
 import assert from 'node:assert/strict';
 import { Connection, Keypair, PublicKey, TransactionMessage, VersionedTransaction, ComputeBudgetProgram } from '@solana/web3.js';
 import { PUMP_SDK } from '@pump-fun/pump-sdk';
-import { txBlock, spendBlock, simulationWhy, suggestTicker, samePost } from '../webapp/launch-guard.js';
-import { launchFields, metadataJson, imageType, launchProblem, base58Bytes, launchState, MAX_IMAGE_BYTES } from '../server/launch.js';
+import { txBlock, spendBlock, simulationWhy, suggestTicker, suggestName, tickerFromName, samePost } from '../webapp/launch-guard.js';
+import { launchFields, metadataJson, imageType, launchProblem, base58Bytes, launchState, MAX_IMAGE_BYTES, plainClash, postId, storyProblem, launchMeta } from '../server/launch.js';
 
 const payer = Keypair.generate().publicKey;
 const mintKey = Keypair.generate();
@@ -84,7 +84,75 @@ assert.equal(launchProblem({ ...onChain, meta: { err: 'x' } }, claim), 'it faile
 assert.equal(launchProblem(onChain, { ...claim, wallet: mint.toBase58() }), 'another wallet paid for it');
 assert.equal(launchProblem(onChain, { ...claim, mint: Keypair.generate().publicKey.toBase58() }), 'it did not create this coin');
 assert.equal(launchProblem(onChain, { ...claim, uri: `${URI}x` }), 'it did not use this metadata');
+const withBuy = { ...onChain, transaction: { message: { ...onChain.transaction.message, instructions: [...onChain.transaction.message.instructions, onChain.transaction.message.instructions.at(-1)] } } };
+assert.equal(launchProblem(withBuy, claim), 'it did more than launch the coin', 'a buy in the launch transaction is not listed');
 console.log('PASS launch: a listing needs the launch itself on-chain');
+
+// One coin per story.
+assert.equal(postId('https://x.com/a/status/123'), '123');
+const dog = { post: 'https://x.com/a/status/1', symbol: 'DOG', name: 'A Dog', pic: 'p1' };
+assert.equal(plainClash({ post: 'https://x.com/b/status/1', symbol: 'X', name: 'Y', pic: 'p9' }, [dog]), dog, 'the same post under another handle');
+assert.equal(plainClash({ post: 'https://x.com/b/status/2', symbol: '$dog', name: 'Y', pic: 'p9' }, [dog]), dog, 'the same ticker');
+assert.equal(plainClash({ post: 'https://x.com/b/status/2', symbol: 'X', name: 'a-dog', pic: 'p9' }, [dog]), dog, 'the same name, spelled differently');
+assert.equal(plainClash({ post: 'https://x.com/b/status/2', symbol: 'X', name: 'Y', pic: 'p1' }, [dog]), dog, 'the same picture');
+assert.equal(plainClash({ post: 'https://x.com/b/status/2', symbol: 'CAT', name: 'A Cat', pic: 'p2' }, [dog]), null, 'a different coin');
+
+// A stand-in database: what launchMeta and storyProblem ask of D1.
+const db = (listed = [], pendingRows = []) => {
+  const claims = [...pendingRows];
+  const stmt = (sql) => ({
+    bind: (...a) => ({
+      first: async () => (/FROM counts/.test(sql) ? null : /post LIKE/.test(sql) ? listed.find((r) => postId(r.post) === String(a[0]).split('/status/')[1]) || null : null),
+      all: async () => ({ results: /FROM launches/.test(sql) ? listed : claims.filter((r) => r.at > a[0] && r.wallet !== a[1]) }),
+      run: async () => { if (/^DELETE/.test(sql)) { const i = claims.findIndex((r) => r.id === a[0]); if (i >= 0) claims.splice(i, 1); } return {}; },
+      insert: /INSERT INTO launch_meta/.test(sql) ? { id: a[0], name: a[1], symbol: a[2], post: a[4], wallet: a[5], at: a[8], story: a[9], pic: a[10] } : null,
+    }),
+  });
+  return { claims, prepare: stmt, batch: async (list) => { for (const s of list) if (s.insert) claims.push(s.insert); } };
+};
+const t0 = 1_800_000_000_000;
+const coin = { post: 'https://x.com/z/status/9', symbol: 'NEW', name: 'New Coin', pic: 'pz', wallet: 'w1', id: 'bbb', at: t0, story: 'New Coin ($NEW): a story' };
+const never = async () => { throw new Error('the AI should not run'); };
+assert.equal(await storyProblem(coin, { DB: db() }, never, t0), null, 'the first coin of a story needs no AI, so it is quick');
+assert.match((await storyProblem(coin, { DB: db([{ ...dog, post: coin.post, mint: 'm1', story: 's' }]) }, never, t0)).data.error, /already has a coin launched with Radar: \$DOG/);
+const told = { ...dog, mint: 'm2', story: 'A Dog ($DOG): the dog story' };
+let asked2 = null;
+const yes = await storyProblem(coin, { DB: db([told]) }, async (story, others) => { asked2 = [story, others]; return 0; }, t0);
+assert.deepEqual(asked2, [coin.story, [told.story]]);
+assert.equal(yes.status, 409, 'the AI calls it the same story');
+assert.match(yes.data.error, /\$DOG/);
+assert.equal(await storyProblem(coin, { DB: db([told]) }, async () => -1, t0), null, 'a different story goes through');
+const down = await storyProblem(coin, { DB: db([told]) }, async () => { throw new Error('no ai'); }, t0);
+assert.equal(down.status, 503, 'with no answer from the AI, nothing launches');
+const rival = { id: 'aaa', symbol: 'NEW', name: 'Z', post: 'https://x.com/q/status/5', story: 's', pic: 'q', wallet: 'w2', at: t0 - 1000 };
+assert.match((await storyProblem(coin, { DB: db([], [rival]) }, never, t0)).data.error, /launching this story right now/, 'a launch in progress holds its story');
+assert.equal(await storyProblem(coin, { DB: db([], [{ ...rival, at: t0 - 200_000 }]) }, never, t0), null, 'a claim runs out after 3 minutes');
+assert.equal(await storyProblem(coin, { DB: db([], [{ ...rival, wallet: 'w1' }]) }, never, t0), null, 'your own retry is not a rival');
+assert.equal(await storyProblem(coin, { DB: db([], [{ ...rival, id: 'zzz', at: t0 + 1 }]) }, never, t0), null, 'the earlier of two launches wins');
+
+// Through launchMeta: the story comes from the post, and a refused launch leaves no claim behind.
+const jpeg = btoa(String.fromCharCode(0xff, 0xd8, 0xff, 0xe0, 1, 2, 3));
+const body = { name: 'New Coin', symbol: 'NEW', post: 'https://x.com/z/status/9', wallet: payer.toBase58(), image: jpeg };
+const free = db();
+const okMeta = await launchMeta(body, { DB: free }, 'https://api.test', { readPost: async () => ({ text: 'a story', quote: { text: 'more' } }), sameStory: never }, t0);
+assert.equal(okMeta.status, 200);
+assert.equal(free.claims[0].story, 'New Coin ($NEW): a story / more');
+const full = db([told]);
+const refused = await launchMeta(body, { DB: full }, 'https://api.test', { readPost: async () => ({ text: 'a story' }), sameStory: async () => 0 }, t0);
+assert.equal(refused.status, 409);
+assert.equal(full.claims.length, 0, 'the refused claim is gone');
+assert.equal((await launchMeta(body, { DB: db() }, 'https://api.test', { readPost: async () => 'gone', sameStory: never }, t0)).status, 400);
+assert.equal((await launchMeta(body, { DB: db() }, 'https://api.test', { readPost: async () => null, sameStory: never }, t0)).status, 503);
+console.log('PASS launch: one coin per story');
+
+assert.equal(suggestName('Elon Musk adopts a goat named Greg https://t.co/x\nsecond line'), 'Elon Musk adopts a goat named');
+assert.equal(new TextEncoder().encode(suggestName('w'.repeat(40))).length, 0, 'a single long word is no name');
+assert.equal(suggestName('JUST IN: Meta develops a humanoid robot'), 'Meta develops a humanoid robot');
+assert.equal(suggestName('🚨 BREAKING: Meta develops'), 'Meta develops');
+assert.equal(tickerFromName('Meta develops a humanoid robot'), 'META');
+assert.equal(tickerFromName('the goat adopted greg'), 'ADOPTED');
+assert.equal(tickerFromName(''), '');
+console.log('PASS launch: the form starts filled in from the post');
 
 const simulateAt = process.argv.indexOf('--simulate');
 if (simulateAt > 0) {

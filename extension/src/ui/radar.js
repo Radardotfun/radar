@@ -860,7 +860,7 @@ class Radar {
 
   // The way to launch a coin from the post being read, while the server has launching on.
   launchHtml() {
-    return this.launchOn && isPostLink(this.lastPost?.url) ? '<button type="button" class="launch-btn" data-launch>Launch a coin from this post</button>' : '';
+    return this.launchOn && isPostLink(this.lastPost?.url) ? '<button type="button" class="launch-btn" data-launch>Launch a coin from this post · Beta</button>' : '';
   }
 
   renderBody() {

@@ -51,4 +51,24 @@ export function suggestTicker(text) {
   return m ? m[1].toUpperCase() : '';
 }
 
+// A name and ticker to start the form from, so a launch only needs a quick check: the post's opening words, and the word
+// in them most worth trading on. Guesses the launcher can change.
+export function suggestName(text) {
+  const line = String(text || '').replace(/https?:\/\/\S+|[@#$]\w+/g, ' ').split(/\n/).map((l) => l.replace(/^[^\p{L}\p{N}]*(just in|breaking( news)?|update|news)\s*[:\-–—]\s*/iu, '').trim()).find(Boolean);
+  const words = line?.split(/\s+/) || [];
+  let name = '';
+  for (const w of words) {
+    const next = name ? `${name} ${w}` : w;
+    if (new TextEncoder().encode(next).length > 32) break;
+    name = next;
+  }
+  return name;
+}
+export function tickerFromName(name) {
+  const words = String(name || '').split(/\s+/).map((w) => w.replace(/[^A-Za-z0-9]/g, '')).filter((w) => w.length >= 2);
+  const longest = (list) => [...list].sort((a, b) => Math.min(b.length, 10) - Math.min(a.length, 10))[0];
+  // A capitalised word is more likely the subject: "Meta", not "develops".
+  return (longest(words.filter((w) => /^[A-Z]/.test(w) && w.length >= 3)) || longest(words) || '').slice(0, 10).toUpperCase();
+}
+
 export const samePost = (url) => /^https:\/\/(?:www\.|mobile\.)?(?:x|twitter)\.com\/\w{1,15}\/status\/\d{1,25}(?:\?\S*)?$/.test(String(url || '').trim());

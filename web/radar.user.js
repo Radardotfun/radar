@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Radar
 // @namespace    https://tryradar.fun
-// @version      1.7.39
+// @version      1.7.40
 // @description  See the coins behind any post on X and instantly reroute to the biggest match that passes available on-chain safety checks.
 // @homepageURL  https://tryradar.fun
 // @supportURL   https://tryradar.fun
@@ -31,7 +31,7 @@
 // @downloadURL  https://tryradar.fun/radar.user.js
 // ==/UserScript==
 
-// Radar 1.7.39: built from the extension source at https://tryradar.fun. Not financial advice.
+// Radar 1.7.40: built from the extension source at https://tryradar.fun. Not financial advice.
 (() => {
   var __defProp = Object.defineProperty;
   var __export = (target, all) => {
@@ -2510,7 +2510,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     }
     // The way to launch a coin from the post being read, while the server has launching on.
     launchHtml() {
-      return this.launchOn && isPostLink(this.lastPost?.url) ? '<button type="button" class="launch-btn" data-launch>Launch a coin from this post</button>' : "";
+      return this.launchOn && isPostLink(this.lastPost?.url) ? '<button type="button" class="launch-btn" data-launch>Launch a coin from this post \xB7 Beta</button>' : "";
     }
     renderBody() {
       if (this.view === "settings") {
