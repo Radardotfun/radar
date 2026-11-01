@@ -124,6 +124,11 @@ footer a { text-decoration:none; }
 .launch-fine { margin:18px 2px 0; color:var(--muted); font-size:12px; }
 .launch-fine a { color:inherit; text-underline-offset:3px; }
 .launched-list { display:grid; gap:8px; margin-top:24px; }
+.launched-empty { padding:26px 20px; border:1px solid var(--line); border-radius:16px; text-align:center; }
+.launched-empty b { display:block; font-size:17px; }
+.launched-empty p { margin:6px 0 16px; color:var(--muted); font-size:14px; line-height:1.5; }
+.launched-empty-go { display:inline-block; padding:12px 22px; border-radius:12px; background:#fff; color:#0b0b0c; font-weight:700; text-decoration:none; }
+.wallet-get a { color:inherit; text-underline-offset:3px; }
 .launched-row { display:grid; grid-template-columns:44px minmax(0,1fr) auto; align-items:center; gap:12px; padding:11px 12px; background:var(--card); border:1px solid var(--line); border-radius:14px; }
 .launched-row img { width:44px; height:44px; object-fit:cover; border-radius:10px; }
 .launched-name { min-width:0; }

@@ -170,8 +170,10 @@
     });
     walletChoice.hidden = walletProviders.length < 2;
     if (!walletProviders.length) {
-      walletStatus.textContent = 'No compatible wallet found';
-      setMessage('Install a Solana browser wallet such as Phantom, Solflare or Backpack, then reload this page.', 'error');
+      walletStatus.classList.add('wallet-get');
+      walletStatus.innerHTML = 'No wallet found. Install <a href="https://phantom.com" target="_blank" rel="noopener">Phantom</a>, <a href="https://solflare.com" target="_blank" rel="noopener">Solflare</a> or <a href="https://backpack.app" target="_blank" rel="noopener">Backpack</a>, then reload.';
+      connectButton.hidden = true;
+      setMessage('Install a wallet to buy.', 'error');
       buyButton.disabled = true;
       buyButton.textContent = 'Connect a wallet to buy';
     } else {

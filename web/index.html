@@ -24,6 +24,9 @@
     .perks-live { margin-top: 24px; display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 15px; color: var(--muted); }
     .perks-live b { font-weight: 600; color: var(--ink); }
     .perks-live[hidden] { display: none; }
+    /* Chrome on a phone can't run extensions, so phones keep the Edge route. */
+    .hero-phone { display: none; }
+    @media (max-width: 600px) { .hero-wide { display: none; } .hero-phone { display: inline-flex; } }
   </style>
 </head>
 <body>
@@ -41,91 +44,15 @@
         <h1>The coins behind any post.</h1>
         <p class="lede">Tap the radar under a post on X. See its top coin, OG and mover with live stats and bundled supply. Or hit Instant Reroute and land on the biggest one with real holders.</p>
         <div class="hero-actions">
-          <a class="btn btn-solid" href="https://microsoftedge.microsoft.com/addons/detail/lchjfepnoaglhmnbbjffhbmfbchnojml" target="_blank" rel="noopener">Get it for Edge</a>
+          <a class="btn btn-solid hero-wide" href="https://chromewebstore.google.com/detail/radar/kmdcebkjjddnokaalamdlcigpmccheff" target="_blank" rel="noopener">Add to Chrome</a>
+          <a class="btn btn-solid hero-phone" href="https://microsoftedge.microsoft.com/addons/detail/lchjfepnoaglhmnbbjffhbmfbchnojml" target="_blank" rel="noopener">Get it for Edge</a>
           <a class="btn btn-ghost btn-web" href="/scan">Try it on the web</a>
         </div>
-        <p class="fine">On the Edge store. Works in Chrome, Brave, Firefox, Android and iPhone Safari. <a href="#install">All installs</a></p>
+        <p class="fine">On Chrome, Edge, Brave, Firefox, Android and iPhone Safari. <a href="#install">All installs</a></p>
       </div>
       <figure class="shot">
-        <img src="/shots/mobile-panel.webp" width="780" height="1688" alt="Radar open on a post on X, showing the top market cap coin and the OG with market cap, age and volume" />
+        <img src="/shots/mobile-panel-2.webp" width="780" height="1688" alt="Radar open on a post on X, showing the top market cap coin and the OG with market cap, age and volume" />
       </figure>
-    </section>
-
-    <section class="coin" id="coin">
-      <p class="eyebrow">The Radar coin</p>
-      <h2>Buy $RADAR</h2>
-      <div class="ca" data-ca>
-        <span class="ca-k">Contract</span>
-        <b class="ca-v">HyDSdtgiSa5mHqkTVoz8cTFTeVLFKdZ8amPvtNYfpump</b>
-      </div>
-      <div class="hero-actions">
-        <a class="btn btn-solid" href="https://pump.fun/coin/HyDSdtgiSa5mHqkTVoz8cTFTeVLFKdZ8amPvtNYfpump" target="_blank" rel="noopener">Buy on Pump.fun</a>
-        <a class="btn btn-ghost" href="https://dexscreener.com/solana/HyDSdtgiSa5mHqkTVoz8cTFTeVLFKdZ8amPvtNYfpump" target="_blank" rel="noopener">Chart</a>
-      </div>
-      <p class="fine">Only posted here and on <a href="https://x.com/radardotfunn" target="_blank" rel="noopener">@radardotfunn</a>. We never send a contract address by DM.</p>
-    </section>
-
-    <section class="install" id="install">
-      <h2>Install</h2>
-      <div class="platforms">
-        <article class="platform" id="edge">
-          <p class="eyebrow">Microsoft Edge</p>
-          <a class="btn btn-solid" href="https://microsoftedge.microsoft.com/addons/detail/lchjfepnoaglhmnbbjffhbmfbchnojml" target="_blank" rel="noopener">Get it from the Edge store</a>
-          <ol>
-            <li>Click Get, then Add extension.</li>
-            <li>Open x.com. The radar shows under every post.</li>
-            <li>Updates are automatic.</li>
-          </ol>
-        </article>
-        <article class="platform" id="desktop">
-          <p class="eyebrow">Chrome · Brave</p>
-          <a class="btn btn-solid" href="/radar-extension.zip" download>Download .zip</a>
-          <ol>
-            <li>Unzip the download.</li>
-            <li>Open <code>chrome://extensions</code>.</li>
-            <li>Turn on Developer mode.</li>
-            <li>Click Load unpacked and pick the unzipped folder.</li>
-            <li>Open x.com. The radar shows under every post.</li>
-          </ol>
-        </article>
-        <article class="platform" id="android">
-          <p class="eyebrow">Android</p>
-          <div class="apps">
-            <a class="btn btn-ghost btn-sm" href="https://play.google.com/store/apps/details?id=net.quetta.browser" target="_blank" rel="noopener">Quetta</a>
-            <a class="btn btn-ghost btn-sm" href="https://play.google.com/store/apps/details?id=com.lemurbrowser.exts" target="_blank" rel="noopener">Lemur</a>
-          </div>
-          <ol>
-            <li>Install Quetta or Lemur from the Play Store. Chrome on phones can't run extensions. These can.</li>
-            <li>In that browser, open <code>tryradar.fun</code> and tap <a href="https://microsoftedge.microsoft.com/addons/detail/lchjfepnoaglhmnbbjffhbmfbchnojml" target="_blank" rel="noopener">Get it from the Edge store</a>, then Get.</li>
-            <li>Open x.com in that browser (not the X app) and tap the radar under any post.</li>
-          </ol>
-          <p class="alt">Store button not working? <a href="/radar.crx" download>Download the .crx</a> and import it from the browser's Extensions menu.</p>
-        </article>
-        <article class="platform" id="iphone">
-          <p class="eyebrow">iPhone · Safari</p>
-          <a class="btn btn-solid" href="https://apps.apple.com/app/id1463298887" target="_blank" rel="noopener">Get the free Userscripts app</a>
-          <ol>
-            <li>Install Userscripts from the App Store and open it once.</li>
-            <li>In Settings, go to Apps, Safari, Extensions, Userscripts. Turn it on and allow All Websites.</li>
-            <li>In Safari, open <a href="/radar.user.js"><code>tryradar.fun/radar.user.js</code></a>, tap the page menu at the left of the address bar, then Userscripts, then Install.</li>
-            <li>Open x.com in Safari and tap the radar under any post.</li>
-          </ol>
-          <p class="alt">Other iPhone browsers: <a href="https://apps.apple.com/app/id6443938027" target="_blank" rel="noopener">Teak</a> or <a href="https://apps.apple.com/app/id1458962238" target="_blank" rel="noopener">Gear</a> can install Radar from the <a href="https://microsoftedge.microsoft.com/addons/detail/lchjfepnoaglhmnbbjffhbmfbchnojml" target="_blank" rel="noopener">Edge store</a>.</p>
-        </article>
-        <article class="platform" id="script">
-          <p class="eyebrow">Any browser · script</p>
-          <div class="apps">
-            <a class="btn btn-ghost btn-sm" href="https://www.tampermonkey.net/" target="_blank" rel="noopener">Tampermonkey</a>
-            <a class="btn btn-ghost btn-sm" href="https://violentmonkey.github.io/" target="_blank" rel="noopener">Violentmonkey</a>
-          </div>
-          <ol>
-            <li>Add Tampermonkey or Violentmonkey to your browser. Both are free and work in Chrome, Brave, Opera, Firefox and Firefox for Android.</li>
-            <li>In Chrome, Brave or Opera, open the manager's Details page in <code>chrome://extensions</code> and turn on Allow User Scripts.</li>
-            <li>Open <a href="/radar.user.js"><code>tryradar.fun/radar.user.js</code></a> and click Install.</li>
-            <li>Open x.com. The radar shows under every post. Updates install by themselves.</li>
-          </ol>
-        </article>
-      </div>
     </section>
 
     <section class="features" id="what">
@@ -186,12 +113,90 @@
       <p class="fine">Not financial advice. Memecoins are extremely risky.</p>
     </section>
 
+    <section class="install" id="install">
+      <h2>Install</h2>
+      <div class="platforms">
+        <article class="platform" id="edge">
+          <p class="eyebrow">Microsoft Edge</p>
+          <a class="btn btn-solid" href="https://microsoftedge.microsoft.com/addons/detail/lchjfepnoaglhmnbbjffhbmfbchnojml" target="_blank" rel="noopener">Get it from the Edge store</a>
+          <ol>
+            <li>Click Get, then Add extension.</li>
+            <li>Open x.com. The radar shows under every post.</li>
+            <li>Updates are automatic.</li>
+          </ol>
+        </article>
+        <article class="platform" id="desktop">
+          <p class="eyebrow">Chrome · Brave</p>
+          <a class="btn btn-solid" href="https://chromewebstore.google.com/detail/radar/kmdcebkjjddnokaalamdlcigpmccheff" target="_blank" rel="noopener">Add to Chrome</a>
+          <ol>
+            <li>Click Add to Chrome.</li>
+            <li>Open x.com. The radar shows under every post.</li>
+            <li>Updates are automatic.</li>
+          </ol>
+          <p class="fine">Want the newest build right away? <a href="/radar-extension.zip" download>Download the .zip</a> and load it unpacked from <code>chrome://extensions</code>.</p>
+        </article>
+        <article class="platform" id="android">
+          <p class="eyebrow">Android</p>
+          <div class="apps">
+            <a class="btn btn-ghost btn-sm" href="https://play.google.com/store/apps/details?id=net.quetta.browser" target="_blank" rel="noopener">Quetta</a>
+            <a class="btn btn-ghost btn-sm" href="https://play.google.com/store/apps/details?id=com.lemurbrowser.exts" target="_blank" rel="noopener">Lemur</a>
+          </div>
+          <ol>
+            <li>Install Quetta or Lemur from the Play Store. Chrome on phones can't run extensions. These can.</li>
+            <li>In that browser, open <code>tryradar.fun</code> and tap <a href="https://microsoftedge.microsoft.com/addons/detail/lchjfepnoaglhmnbbjffhbmfbchnojml" target="_blank" rel="noopener">Get it from the Edge store</a>, then Get.</li>
+            <li>Open x.com in that browser (not the X app) and tap the radar under any post.</li>
+          </ol>
+          <p class="alt">Store button not working? <a href="/radar.crx" download>Download the .crx</a> and import it from the browser's Extensions menu.</p>
+        </article>
+        <article class="platform" id="iphone">
+          <p class="eyebrow">iPhone · Safari</p>
+          <a class="btn btn-solid" href="https://apps.apple.com/app/id1463298887" target="_blank" rel="noopener">Get the free Userscripts app</a>
+          <ol>
+            <li>Install Userscripts from the App Store and open it once.</li>
+            <li>In Settings, go to Apps, Safari, Extensions, Userscripts. Turn it on and allow All Websites.</li>
+            <li>In Safari, open <a href="/radar.user.js"><code>tryradar.fun/radar.user.js</code></a>, tap the page menu at the left of the address bar, then Userscripts, then Install.</li>
+            <li>Open x.com in Safari and tap the radar under any post.</li>
+          </ol>
+          <p class="alt">Other iPhone browsers: <a href="https://apps.apple.com/app/id6443938027" target="_blank" rel="noopener">Teak</a> or <a href="https://apps.apple.com/app/id1458962238" target="_blank" rel="noopener">Gear</a> can install Radar from the <a href="https://microsoftedge.microsoft.com/addons/detail/lchjfepnoaglhmnbbjffhbmfbchnojml" target="_blank" rel="noopener">Edge store</a>.</p>
+        </article>
+        <article class="platform" id="script">
+          <p class="eyebrow">Any browser · script</p>
+          <div class="apps">
+            <a class="btn btn-ghost btn-sm" href="https://www.tampermonkey.net/" target="_blank" rel="noopener">Tampermonkey</a>
+            <a class="btn btn-ghost btn-sm" href="https://violentmonkey.github.io/" target="_blank" rel="noopener">Violentmonkey</a>
+          </div>
+          <ol>
+            <li>Add Tampermonkey or Violentmonkey to your browser. Both are free and work in Chrome, Brave, Opera, Firefox and Firefox for Android.</li>
+            <li>In Chrome, Brave or Opera, open the manager's Details page in <code>chrome://extensions</code> and turn on Allow User Scripts.</li>
+            <li>Open <a href="/radar.user.js"><code>tryradar.fun/radar.user.js</code></a> and click Install.</li>
+            <li>Open x.com. The radar shows under every post. Updates install by themselves.</li>
+          </ol>
+        </article>
+      </div>
+    </section>
+
+    <section class="coin" id="coin">
+      <p class="eyebrow">The Radar coin</p>
+      <h2>Buy $RADAR</h2>
+      <div class="ca" data-ca>
+        <span class="ca-k">Contract</span>
+        <b class="ca-v">HyDSdtgiSa5mHqkTVoz8cTFTeVLFKdZ8amPvtNYfpump</b>
+      </div>
+      <div class="hero-actions">
+        <a class="btn btn-solid" href="https://pump.fun/coin/HyDSdtgiSa5mHqkTVoz8cTFTeVLFKdZ8amPvtNYfpump" target="_blank" rel="noopener">Buy on Pump.fun</a>
+        <a class="btn btn-ghost" href="https://dexscreener.com/solana/HyDSdtgiSa5mHqkTVoz8cTFTeVLFKdZ8amPvtNYfpump" target="_blank" rel="noopener">Chart</a>
+      </div>
+      <p class="fine">Only posted here and on <a href="https://x.com/radardotfunn" target="_blank" rel="noopener">@radardotfunn</a>. We never send a contract address by DM.</p>
+    </section>
+
     <section class="proof">
       <p class="eyebrow">Real data only</p>
       <div class="sources">
         <span>DexScreener</span>
         <span>RugCheck</span>
         <span>Solana mainnet</span>
+        <span>Jupiter</span>
+        <span>Larpcheck</span>
       </div>
       <p class="fine">Prices refresh every 10 seconds. If a number can't be read, it isn't shown. All of Radar's code is public on <a href="https://github.com/Radardotfun/radar" target="_blank" rel="noopener">GitHub</a>.</p>
     </section>

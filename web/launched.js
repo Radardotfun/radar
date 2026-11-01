@@ -15,7 +15,7 @@
   try {
     coins = (await (await fetch(`${API}/launch/list`, { signal: AbortSignal.timeout(10000) })).json()).coins || [];
   } catch { return say('Could not load the list. Try again in a moment.'); }
-  if (!coins.length) return say('No coins have been launched with Radar yet.');
+  if (!coins.length) return box.replaceChildren(el('div', { className: 'launched-empty' }, el('b', { textContent: 'No coins launched yet' }), el('p', { textContent: 'Launching starts from a post. Scan one, then tap Launch a coin from this post.' }), el('a', { className: 'launched-empty-go', href: '/scan', textContent: 'Scan a post' })));
   const caps = new Map();
   for (let i = 0; i < coins.length; i += 30) {
     try {

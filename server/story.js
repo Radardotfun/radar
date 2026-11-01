@@ -129,11 +129,21 @@ export async function gatherEvidence(post, coin) {
   return { lines, author, coinX, site: site_ };
 }
 
+// The model is asked for one short line and sometimes writes more. A long one ends at a full stop or a whole word, never mid-word.
+const CALL_MAX = 180;
+export function shortCall(text) {
+  const t = String(text || '').trim();
+  if (t.length <= CALL_MAX) return t;
+  const cut = t.slice(0, CALL_MAX);
+  const end = Math.max(cut.lastIndexOf('. '), cut.lastIndexOf('; '));
+  return end > 60 ? `${cut.slice(0, end)}.` : `${cut.replace(/\s+\S*$/, '')}…`;
+}
+
 // Keep the model's word and score consistent with each other.
 export function normaliseStory(r) {
   const word = STORY_WORDS.includes(r.word) ? r.word : 'UNCLEAR';
   const [lo, hi] = RANGES[word];
   const score = Math.min(hi, Math.max(lo, Math.round(Number(r.score) || lo)));
   const findings = (r.findings || []).slice(0, 5).map((f) => ({ kind: f.kind, text: String(f.text || '').slice(0, 140) })).filter((f) => f.text);
-  return { word, score, call: String(r.call || '').slice(0, 120), findings };
+  return { word, score, call: shortCall(r.call), findings };
 }

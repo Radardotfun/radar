@@ -1,6 +1,8 @@
 // Radar holder check: the wallet signs a message (never a transaction), the server checks the signature and the wallet's
 // $RADAR and $LARPCHECK balances on-chain (server/holder.js), and a token good for a day goes back to the Radar panel that opened this.
 (() => {
+  // Opened from a panel it's a small window. Opened directly, it's a normal page with the site's header.
+  if (!window.opener) document.body.classList.remove('insta');
   const API = 'https://narrative-radar.millenia-portfolio.workers.dev';
   // Only these get the token. Radar's panel on X and on this site; the store builds of the extension's own pages.
   const PANELS = ['https://x.com', 'https://twitter.com', 'https://pro.x.com', 'https://tryradar.fun', 'chrome-extension://kmdcebkjjddnokaalamdlcigpmccheff', 'chrome-extension://lchjfepnoaglhmnbbjffhbmfbchnojml'];

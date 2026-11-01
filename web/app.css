@@ -203,6 +203,10 @@ h3 { font-size: 18px; letter-spacing: -0.02em; font-weight: 700; }
   .scan-open .scan-copy { display: none; }
   .scan-steps, .scan-copy .fine { display: none; }
   .scan-panel { height: calc(100dvh - 92px); min-height: 520px; border-radius: 18px; }
+  /* A scan on a phone scrolls with the page, not in a box inside it. */
+  .scan-open .scan-panel { height: auto; min-height: 0; overflow: visible; }
+  .scan-open .scan-panel .shell { height: auto; }
+  .scan-open .scan-panel .scroll { overflow: visible; }
   .hero { grid-template-columns: minmax(0, 1fr); padding-top: 28px; gap: 24px; }
   .hero-copy { text-align: left; }
   .shot { width: min(100%, 340px); }

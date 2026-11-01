@@ -1,6 +1,6 @@
 import { TERMINAL_ICONS } from './terminal-icons.js';
 import { coinCheck } from './coincheck.js';
-import { marketBlock, reportBlock, reportSource, since, quiet, tradesLine } from './holdercheck.js';
+import { marketBlock, reportBlock, reportSource, since, quiet, tradesLine, seriousWarning } from './holdercheck.js';
 import { recentItem } from './recent.js';
 import { MAX_STARS, starOf, toggleStar, sinceStar } from './watchlist.js';
 
@@ -174,6 +174,10 @@ function links(t) {
 const TERM_KEY = 'nr:terminal';
 const prefTerm = () => { try { return localStorage.getItem(TERM_KEY) || 'axiom'; } catch { return 'axiom'; } };
 const setPrefTerm = (id) => { try { localStorage.setItem(TERM_KEY, id); } catch {} };
+// How the New tab is sorted: 'new' (first of their name, then newest, as the scan returns them) or 'big'.
+const SORT_KEY = 'nr:new-sort';
+const prefSort = () => { try { return localStorage.getItem(SORT_KEY) === 'big' ? 'big' : 'new'; } catch { return 'new'; } };
+const setPrefSort = (v) => { try { localStorage.setItem(SORT_KEY, v); } catch {} };
 
 // Trading terminals open on the user's own logged-in session; the CA is copied too,
 // so it can be pasted if a terminal lands somewhere other than the token page.
@@ -267,6 +271,7 @@ class Radar {
     this.larp = new Map(); // address -> { lc: Larpcheck verdict, at }
     this.expanded = new Set();
     this.tab = 'picks'; // or 'new': the story's newest pairs
+    this.newSort = prefSort();
     this.openCards = new Set(); // cards the user maximised
     this.refreshSec = 10;
     this.timers = [];
@@ -344,6 +349,7 @@ class Radar {
   }
 
   async scan({ post, source = null }) {
+    if (this.scrollEl) this.scrollEl.scrollTop = 0;
     send('launchState').then((s) => { this.launchOn = s?.state === 'on'; }).catch(() => {});
     const id = ++this.scanId;
     const stale = () => id !== this.scanId;
@@ -458,7 +464,15 @@ class Radar {
 
   // On the New tab the newest three get full cards and their checks; the rest wait until they're opened.
   newCards() {
-    return this.tab === 'new' ? (this.state.newPairs || []).filter((t, i) => i < 3 || this.expanded.has(t.address)) : [];
+    return this.tab === 'new' ? this.sortedNew().filter((t, i) => i < 3 || this.expanded.has(t.address)) : [];
+  }
+
+  // By the numbers from the scan, not the live ones, so cards don't swap places on every refresh. A cap with no real liquidity behind it counts for nothing.
+  sortedNew() {
+    const list = this.state.newPairs || [];
+    if (this.newSort !== 'big') return list;
+    const cap = (t) => (t.mcapBacked === false ? 0 : t.marketCap || 0);
+    return [...list].sort((a, b) => cap(b) - cap(a));
   }
 
   loadAudits() {
@@ -513,6 +527,7 @@ class Radar {
     if (!el || !v.line) return;
     el.hidden = false;
     el.className = `hc ${v.ok ? 'ok' : 'no'}`;
+    card.classList.toggle('danger', !v.ok && seriousWarning(v.line));
     el.innerHTML = `<span class="hc-mark">${v.ok ? '✓' : '✕'}</span><span class="hc-text">${esc(v.line)}<small>${esc(['Larpcheck', since(v.at)].filter(Boolean).join(' · '))}</small></span><a class="hc-by" href="${esc(v.page)}" target="_blank" rel="noopener noreferrer">Larpcheck ↗</a>`;
   }
 
@@ -581,9 +596,9 @@ class Radar {
         this.state.roleCandidates = ranked.roleCandidates;
         this.state.roleCut = ranked.roleCut;
         if (rolesChanged) {
-          const scrollTop = this.bodyEl.scrollTop;
+          const scrollTop = this.scrollEl.scrollTop;
           this.renderBody();
-          this.bodyEl.scrollTop = scrollTop;
+          this.scrollEl.scrollTop = scrollTop;
           this.loadAudits();
         }
       }
@@ -597,12 +612,17 @@ class Radar {
     this.root.innerHTML = `
       <div class="shell">
         <div class="head"></div>
-        <div class="body"></div>
+        <div class="scroll">
+          <div class="lead"></div>
+          <div class="body"></div>
+        </div>
         <div class="foot"></div>
         <div class="toast"></div>
       </div>`;
     this.shell = this.root.querySelector('.shell');
     this.headEl = this.root.querySelector('.head');
+    this.scrollEl = this.root.querySelector('.scroll');
+    this.leadEl = this.root.querySelector('.lead');
     this.bodyEl = this.root.querySelector('.body');
     this.footEl = this.root.querySelector('.foot');
     this.toastEl = this.root.querySelector('.toast');
@@ -622,10 +642,11 @@ class Radar {
       const w = e.target.closest('[data-fr-wallet]');
       if (w) this.frSelFor(w.dataset.frWallet).wallet = w.value;
     });
-    this.headEl.addEventListener('click', (e) => {
+    const onHeadClick = (e) => {
       const b = e.target.closest('button');
       if (!b) return;
-      if (b.dataset.act === 'close') this.close();
+      if ('holderConnect' in b.dataset) this.holderConnect();
+      else if (b.dataset.act === 'close') this.close();
       else if (b.dataset.act === 'rescan') this.rescan();
       else if (b.dataset.act === 'share') this.share();
       else if (b.dataset.act === 'settings') { this.view = this.view === 'settings' ? 'scan' : 'settings'; this.renderBody(); }
@@ -637,8 +658,10 @@ class Radar {
         this.expanded.has('story') ? this.expanded.delete('story') : this.expanded.add('story');
         this.renderHead();
       }
-    });
-    this.headEl.addEventListener('submit', (e) => {
+    };
+    this.headEl.addEventListener('click', onHeadClick);
+    this.leadEl.addEventListener('click', onHeadClick);
+    this.leadEl.addEventListener('submit', (e) => {
       const form = e.target.closest('[data-lc-ask]');
       if (!form) return;
       e.preventDefault();
@@ -671,8 +694,8 @@ class Radar {
         <span class="kbd">↵</span>
       </form>` : ''}
       ${source ? `<div class="source"><b>${esc(source.kind)}</b><span>${esc(source.label)}</span>${isPostLink(postUrl) && postTimeOf(postUrl) ? `<a href="${esc(postUrl)}" target="_blank" rel="noopener noreferrer" title="Open the post">${age(postTimeOf(postUrl))} ago ↗</a>` : ''}</div>` : ''}
-      ${this.watchHtml()}
-      ${this.narrativeHtml()}`;
+      ${this.holderLineHtml()}`;
+    this.leadEl.innerHTML = `${this.watchHtml()}${this.narrativeHtml()}`;
     // Search lives in the toolbar popup; on X the panel only shows what was scanned.
     this.input = this.headEl.querySelector('input');
     if (this.input && typed) this.input.value = typed;
@@ -702,15 +725,17 @@ class Radar {
     return send('holderStatus').then((h) => { this.holder = h; this.renderHead(); }).catch(() => { this.holder = { on: false }; });
   }
 
+  // For anyone who hasn't checked a wallet: one line, on every tab.
+  holderLineHtml() {
+    if (!this.holder?.on || this.holder.holder || !this.lastPost) return '';
+    return '<div class="holder-line"><span>Alerts and account history for holders</span><button type="button" data-holder-connect>Check my wallet</button></div>';
+  }
+
   whoHtml() {
     const handle = this.lastPost?.author;
     if (!this.holder?.on || !handle) return '';
     const head = '<div class="story-top who-top"><span class="story-k">Who posted this</span></div>';
-    if (!this.holder.holder) {
-      return `<div class="story who">${head}
-        <div class="story-call">${esc(this.holder.pitch || '')}</div>
-        <button type="button" class="who-connect" data-holder-connect>Check my wallet</button></div>`;
-    }
+    if (!this.holder.holder) return '';
     const w = this.who.get(handle);
     if (!w) { this.loadWho(handle); return `<div class="story who loading">${head}<div class="story-call"><span class="spinner"></span>Looking up @${esc(handle)}…</div></div>`; }
     if (w.error) return `<div class="story who">${head}<div class="story-call">${esc(w.error)}</div></div>`;
@@ -764,9 +789,9 @@ class Radar {
     const open = this.expanded.has('story');
     if (s.larpcheck) return lcStoryHtml(s.larpcheck, { open, symbol: s.coin, chevron: I.chevron, ask: open ? this.lcAskHtml(s.larpcheck) : '' });
     const tone = ['LIKELY LARP', 'LARP'].includes(s.word) ? 'risk' : ['REAL', 'LIKELY REAL'].includes(s.word) ? 'ok' : 'mid';
-    return `<div class="story ${tone}">
+    return `<div class="story ${tone}${open ? ' open' : ''}">
       <button class="story-top" data-story aria-expanded="${open}">
-        <span class="story-k">Larp check</span><span class="verdict ${tone}">${esc(s.word)} <b>${s.score}</b></span>${I.chevron}
+        <span class="story-k">Radar's larp check</span><span class="verdict ${tone}">${esc(s.word)} <b>${s.score}</b></span>${I.chevron}
       </button>
       <div class="story-call">${esc(s.call)}</div>
       ${open ? `<ul class="findings">${(s.findings || []).map((f) => `<li class="${esc(f.kind)}"><span>${esc(f.kind)}</span>${esc(f.text)}</li>`).join('')}</ul>
@@ -782,7 +807,7 @@ class Radar {
     if (!s.lcPage || !s.lcAddress) return '';
     const run = this.lcRun?.address === s.lcAddress ? this.lcRun : null;
     if (run?.error) return `<div class="story-note">${esc(run.error)}</div>`;
-    if (run) return `<div class="story-call"><span class="spinner"></span>Larpcheck is checking it${run.step ? `: ${esc(run.step)}` : '…'}</div>`;
+    if (run) return `<div class="story-call keep"><span class="spinner"></span>Larpcheck is checking it${run.step ? `: ${esc(run.step)}` : '…'}</div>`;
     return this.lcPerks ? `<button type="button" class="who-connect" data-lc-check="${esc(s.lcAddress)}">Check ${s.coin ? `$${esc(s.coin)}` : 'it'} on Larpcheck now</button>` : '';
   }
   lcAskHtml(lc) {
@@ -920,12 +945,12 @@ class Radar {
     }
     let html = tabs;
     html += `<div class="reroute-bar"><span>Instant reroute</span><button type="button" data-reroute>Open best match</button></div>`;
-    if (mentioned.length) html += `<div class="section-label"><span>In the post</span></div>` + mentioned.map((t) => this.cardHtml(t, { role: 'ca' })).join('');
-    if (bio.length) html += `<div class="section-label"><span>In the poster's bio</span></div>` + bio.map((t) => this.cardHtml(t, { role: 'bio' })).join('');
+    if (mentioned.length) html += mentioned.map((t) => this.cardHtml(t, { role: 'ca' })).join('');
+    if (bio.length) html += bio.map((t) => this.cardHtml(t, { role: 'bio' })).join('');
     const techIsAlreadyShown = techMatch && (mentioned.some((t) => t.address === techMatch.address) || picks.some((p) => p.token.address === techMatch.address));
     if (techMatch && !techIsAlreadyShown) {
       const t = this.tokens.get(techMatch.address) || techMatch;
-      html += '<div class="section-label"><span>Tech match</span><span>' + esc(techMatch.techAnchor || '') + '</span></div>' + this.cardHtml(t, { role: 'tech' });
+      html += this.cardHtml(t, { role: 'tech' });
     }
     if (picks.length) {
       const SHORT = { top: 'TOP MC', og: 'OG', mover: 'MOVER' };
@@ -974,13 +999,14 @@ class Radar {
 
   // The story's newest pairs. They're found by name, so the note says so, and new coins carry the most risk.
   newHtml() {
-    const list = this.state.newPairs || [];
+    const list = this.sortedNew();
     if (!list.length) return `<div class="empty"><div class="big">No new pairs on this story</div><p>Nothing named after it launched and traded in the last 24 hours.</p>${this.followHtml()}${this.launchHtml()}</div>`;
     const live = (t) => this.tokens.get(t.address) || t;
     const shown = this.newCards();
     const rest = list.filter((t) => !shown.includes(t)).map(live);
-    return `<div class="section-label"><span>New pairs</span><span>last 24h</span></div>
-      <p class="new-note">Newest first, matched by name to this story. New coins are the riskiest, so read the checks on each one.</p>
+    const sortBtn = (v, label) => `<button type="button" data-new-sort="${v}" aria-pressed="${this.newSort === v}">${label}</button>`;
+    return `<div class="section-label"><span>New pairs · last 24h</span><span class="new-sort">${sortBtn('new', 'Newest')}${sortBtn('big', 'Biggest')}</span></div>
+      <p class="new-note">${this.newSort === 'big' ? 'Biggest market cap first' : 'First of their name, then newest'}, matched by name to this story. New coins are the riskiest, so read the checks on each one.</p>
       ${shown.map((t) => this.cardHtml(live(t), { role: 'new', fresh: t })).join('')}
       ${rest.length ? `<div class="list">${rest.map((t) => `<button class="li" data-expand="${t.address}">${this.avatarHtml(t)}
         <div class="nm"><b>${esc(t.name)}</b><span>$${esc(t.symbol)} · ${age(t.createdAt)}${list.find((x) => x.address === t.address)?.copyOf ? ' · copy' : ''}</span></div>
@@ -1453,6 +1479,7 @@ class Radar {
     }
     // A holder perk (the background checks it too). A watch already running keeps running.
     if (this.holder && !this.holder.holder) {
+      if (!cta) return ''; // holderLineHtml says it
       return `<div class="watch on${cta ? ' cta' : ''}">${I.bell}<span>Launch alerts are for $RADAR and $LARPCHECK holders</span>${this.holder.on ? '<button type="button" data-holder-connect>Check my wallet</button>' : ''}</div>`;
     }
     return `<button type="button" class="watch${cta ? ' cta' : ''}" data-act="watch"${this.watchBusy ? ' disabled' : ''}>${I.bell}<span>${this.watchBusy ? 'Setting up the alert…' : 'Alert me when a coin launches off this post'}</span></button>`;
@@ -1568,6 +1595,7 @@ class Radar {
     const market = marketBlock(t);
     const why = market || reportBlock(a.rug);
     el.className = `hc ${why ? 'no' : 'ok'}`;
+    card.classList.toggle('danger', !!why && seriousWarning(why));
     // Larpcheck's own line, credited and linked, when its read stands in for RugCheck's.
     const by = a.rug?.source === 'larpcheck' ? `<a class="hc-by" href="${esc(a.rug.page)}" target="_blank" rel="noopener noreferrer">Larpcheck ↗</a>` : '';
     // Where the deciding answer came from. A fallback says so, and says what it can't see.
@@ -1723,7 +1751,9 @@ class Radar {
     if (starOpen) { this.scan({ post: { text: starOpen.dataset.starOpen }, source: { kind: 'Watchlist', label: `$${starOpen.dataset.starSym}` } }); return; }
     if (e.target.closest('[data-act="watch"]')) { await this.watch(); return; }
     const scanTab = e.target.closest('[data-scan-tab]');
-    if (scanTab) { this.tab = scanTab.dataset.scanTab === 'new' ? 'new' : 'picks'; this.renderBody(); this.loadAudits(); return; }
+    if (scanTab) { this.tab = scanTab.dataset.scanTab === 'new' ? 'new' : 'picks'; this.renderHead(); this.renderBody(); this.loadAudits(); return; }
+    const newSort = e.target.closest('[data-new-sort]');
+    if (newSort) { this.newSort = newSort.dataset.newSort === 'big' ? 'big' : 'new'; setPrefSort(this.newSort); this.renderBody(); this.loadAudits(); return; }
     const follow = e.target.closest('[data-act="follow"]');
     if (follow) { await this.follow(follow.dataset.word); return; }
     if (e.target.closest('[data-act="fresh-toggle"]')) { await this.toggleFresh(); return; }

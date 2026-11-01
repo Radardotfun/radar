@@ -1,4 +1,4 @@
-// Radar 1.7.45 on the web: built from the extension source at https://tryradar.fun. Not financial advice.
+// Radar 1.7.46 on the web: built from the extension source at https://tryradar.fun. Not financial advice.
 (() => {
   // extension/src/lib/keywords.js
   var STOP = new Set(`a about above after again against all almost also am an and any are aren as at be because been before
@@ -100,6 +100,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     const when = (name, at) => [name, since(at, now)].filter(Boolean).join(" ");
     return { fallback: true, holders, authority, line: `Fallback \xB7 ${when("Larpcheck", r.holdersAt)} \xB7 ${r.authorityKnown ? when("chain", r.readAt) : "mint/freeze unread"} \xB7 no LP or insider data` };
   }
+  var seriousWarning = (line) => /^(liquidity pulled|freeze authority is on|mint authority is on|rugcheck flags)|can't sell|money was taken|honeypot|\brug(ged|s)?\b/i.test(String(line || ""));
   function marketBlock(token) {
     if (token?.chain !== "solana") return "not on Solana";
     if (!alive(token)) return "not trading";
@@ -1584,7 +1585,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
   }
   function lcStoryHtml(lc, { open, symbol, chevron, ask = "" }) {
     const stamps = (lc.stamps || []).filter((s) => s.word);
-    return `<div class="story ${lcTone(lc.verdict)}">
+    return `<div class="story ${lcTone(lc.verdict)}${open ? " open" : ""}">
       <button class="story-top" data-story aria-expanded="${open}">
         <span class="story-k">Larp check</span>${lcStamp(lc)}${chevron}
       </button>
@@ -1596,7 +1597,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     </div>`;
   }
   function lcCheckItHtml(page, symbol) {
-    return page ? `<div class="lc-foot"><span>Radar's own read. Not on Larpcheck yet.</span>${ext(page, `Check ${symbol ? `$${esc(symbol)}` : "it"} on Larpcheck \u2197`, "lc-btn")}</div>` : "";
+    return page ? `<div class="lc-foot own"><span>Radar's own read. Not on Larpcheck yet.</span>${ext(page, `Check ${symbol ? `$${esc(symbol)}` : "it"} on Larpcheck \u2197`, "lc-btn")}</div>` : "";
   }
 
   // extension/src/ui/radar.js
@@ -1741,6 +1742,20 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     } catch {
     }
   };
+  var SORT_KEY = "nr:new-sort";
+  var prefSort = () => {
+    try {
+      return localStorage.getItem(SORT_KEY) === "big" ? "big" : "new";
+    } catch {
+      return "new";
+    }
+  };
+  var setPrefSort = (v) => {
+    try {
+      localStorage.setItem(SORT_KEY, v);
+    } catch {
+    }
+  };
   var quickBuyUrl = (t) => `https://tryradar.fun/trade?mint=${encodeURIComponent(t.address)}`;
   var INSTA_SOL = ["0.05", "0.1", "0.25", "0.5", "1"];
   var INSTA_KEY = "nr:insta-sol";
@@ -1850,6 +1865,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       this.larp = /* @__PURE__ */ new Map();
       this.expanded = /* @__PURE__ */ new Set();
       this.tab = "picks";
+      this.newSort = prefSort();
       this.openCards = /* @__PURE__ */ new Set();
       this.refreshSec = 10;
       this.timers = [];
@@ -1938,6 +1954,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       });
     }
     async scan({ post, source = null }) {
+      if (this.scrollEl) this.scrollEl.scrollTop = 0;
       send("launchState").then((s) => {
         this.launchOn = s?.state === "on";
       }).catch(() => {
@@ -2051,7 +2068,14 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     }
     // On the New tab the newest three get full cards and their checks; the rest wait until they're opened.
     newCards() {
-      return this.tab === "new" ? (this.state.newPairs || []).filter((t, i) => i < 3 || this.expanded.has(t.address)) : [];
+      return this.tab === "new" ? this.sortedNew().filter((t, i) => i < 3 || this.expanded.has(t.address)) : [];
+    }
+    // By the numbers from the scan, not the live ones, so cards don't swap places on every refresh. A cap with no real liquidity behind it counts for nothing.
+    sortedNew() {
+      const list = this.state.newPairs || [];
+      if (this.newSort !== "big") return list;
+      const cap = (t) => t.mcapBacked === false ? 0 : t.marketCap || 0;
+      return [...list].sort((a, b) => cap(b) - cap(a));
     }
     loadAudits() {
       for (const t of this.cardTokens()) {
@@ -2100,6 +2124,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       if (!el || !v.line) return;
       el.hidden = false;
       el.className = `hc ${v.ok ? "ok" : "no"}`;
+      card.classList.toggle("danger", !v.ok && seriousWarning(v.line));
       el.innerHTML = `<span class="hc-mark">${v.ok ? "\u2713" : "\u2715"}</span><span class="hc-text">${esc2(v.line)}<small>${esc2(["Larpcheck", since(v.at)].filter(Boolean).join(" \xB7 "))}</small></span><a class="hc-by" href="${esc2(v.page)}" target="_blank" rel="noopener noreferrer">Larpcheck \u2197</a>`;
     }
     async loadAudit(t, { force = false } = {}) {
@@ -2175,9 +2200,9 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
           this.state.roleCandidates = ranked.roleCandidates;
           this.state.roleCut = ranked.roleCut;
           if (rolesChanged) {
-            const scrollTop = this.bodyEl.scrollTop;
+            const scrollTop = this.scrollEl.scrollTop;
             this.renderBody();
-            this.bodyEl.scrollTop = scrollTop;
+            this.scrollEl.scrollTop = scrollTop;
             this.loadAudits();
           }
         }
@@ -2191,12 +2216,17 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       this.root.innerHTML = `
       <div class="shell">
         <div class="head"></div>
-        <div class="body"></div>
+        <div class="scroll">
+          <div class="lead"></div>
+          <div class="body"></div>
+        </div>
         <div class="foot"></div>
         <div class="toast"></div>
       </div>`;
       this.shell = this.root.querySelector(".shell");
       this.headEl = this.root.querySelector(".head");
+      this.scrollEl = this.root.querySelector(".scroll");
+      this.leadEl = this.root.querySelector(".lead");
       this.bodyEl = this.root.querySelector(".body");
       this.footEl = this.root.querySelector(".foot");
       this.toastEl = this.root.querySelector(".toast");
@@ -2216,10 +2246,11 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
         const w = e.target.closest("[data-fr-wallet]");
         if (w) this.frSelFor(w.dataset.frWallet).wallet = w.value;
       });
-      this.headEl.addEventListener("click", (e) => {
+      const onHeadClick = (e) => {
         const b = e.target.closest("button");
         if (!b) return;
-        if (b.dataset.act === "close") this.close();
+        if ("holderConnect" in b.dataset) this.holderConnect();
+        else if (b.dataset.act === "close") this.close();
         else if (b.dataset.act === "rescan") this.rescan();
         else if (b.dataset.act === "share") this.share();
         else if (b.dataset.act === "settings") {
@@ -2233,8 +2264,10 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
           this.expanded.has("story") ? this.expanded.delete("story") : this.expanded.add("story");
           this.renderHead();
         }
-      });
-      this.headEl.addEventListener("submit", (e) => {
+      };
+      this.headEl.addEventListener("click", onHeadClick);
+      this.leadEl.addEventListener("click", onHeadClick);
+      this.leadEl.addEventListener("submit", (e) => {
         const form = e.target.closest("[data-lc-ask]");
         if (!form) return;
         e.preventDefault();
@@ -2267,8 +2300,8 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
         <span class="kbd">\u21B5</span>
       </form>` : ""}
       ${source ? `<div class="source"><b>${esc2(source.kind)}</b><span>${esc2(source.label)}</span>${isPostLink(postUrl) && postTimeOf(postUrl) ? `<a href="${esc2(postUrl)}" target="_blank" rel="noopener noreferrer" title="Open the post">${age(postTimeOf(postUrl))} ago \u2197</a>` : ""}</div>` : ""}
-      ${this.watchHtml()}
-      ${this.narrativeHtml()}`;
+      ${this.holderLineHtml()}`;
+      this.leadEl.innerHTML = `${this.watchHtml()}${this.narrativeHtml()}`;
       this.input = this.headEl.querySelector("input");
       if (this.input && typed) this.input.value = typed;
       if (typing) this.input?.focus();
@@ -2302,15 +2335,16 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
         this.holder = { on: false };
       });
     }
+    // For anyone who hasn't checked a wallet: one line, on every tab.
+    holderLineHtml() {
+      if (!this.holder?.on || this.holder.holder || !this.lastPost) return "";
+      return '<div class="holder-line"><span>Alerts and account history for holders</span><button type="button" data-holder-connect>Check my wallet</button></div>';
+    }
     whoHtml() {
       const handle = this.lastPost?.author;
       if (!this.holder?.on || !handle) return "";
       const head = '<div class="story-top who-top"><span class="story-k">Who posted this</span></div>';
-      if (!this.holder.holder) {
-        return `<div class="story who">${head}
-        <div class="story-call">${esc2(this.holder.pitch || "")}</div>
-        <button type="button" class="who-connect" data-holder-connect>Check my wallet</button></div>`;
-      }
+      if (!this.holder.holder) return "";
       const w = this.who.get(handle);
       if (!w) {
         this.loadWho(handle);
@@ -2364,9 +2398,9 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       const open = this.expanded.has("story");
       if (s.larpcheck) return lcStoryHtml(s.larpcheck, { open, symbol: s.coin, chevron: I.chevron, ask: open ? this.lcAskHtml(s.larpcheck) : "" });
       const tone = ["LIKELY LARP", "LARP"].includes(s.word) ? "risk" : ["REAL", "LIKELY REAL"].includes(s.word) ? "ok" : "mid";
-      return `<div class="story ${tone}">
+      return `<div class="story ${tone}${open ? " open" : ""}">
       <button class="story-top" data-story aria-expanded="${open}">
-        <span class="story-k">Larp check</span><span class="verdict ${tone}">${esc2(s.word)} <b>${s.score}</b></span>${I.chevron}
+        <span class="story-k">Radar's larp check</span><span class="verdict ${tone}">${esc2(s.word)} <b>${s.score}</b></span>${I.chevron}
       </button>
       <div class="story-call">${esc2(s.call)}</div>
       ${open ? `<ul class="findings">${(s.findings || []).map((f) => `<li class="${esc2(f.kind)}"><span>${esc2(f.kind)}</span>${esc2(f.text)}</li>`).join("")}</ul>
@@ -2383,7 +2417,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       if (!s.lcPage || !s.lcAddress) return "";
       const run = this.lcRun?.address === s.lcAddress ? this.lcRun : null;
       if (run?.error) return `<div class="story-note">${esc2(run.error)}</div>`;
-      if (run) return `<div class="story-call"><span class="spinner"></span>Larpcheck is checking it${run.step ? `: ${esc2(run.step)}` : "\u2026"}</div>`;
+      if (run) return `<div class="story-call keep"><span class="spinner"></span>Larpcheck is checking it${run.step ? `: ${esc2(run.step)}` : "\u2026"}</div>`;
       return this.lcPerks ? `<button type="button" class="who-connect" data-lc-check="${esc2(s.lcAddress)}">Check ${s.coin ? `$${esc2(s.coin)}` : "it"} on Larpcheck now</button>` : "";
     }
     lcAskHtml(lc) {
@@ -2521,12 +2555,12 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       }
       let html = tabs;
       html += `<div class="reroute-bar"><span>Instant reroute</span><button type="button" data-reroute>Open best match</button></div>`;
-      if (mentioned.length) html += `<div class="section-label"><span>In the post</span></div>` + mentioned.map((t) => this.cardHtml(t, { role: "ca" })).join("");
-      if (bio.length) html += `<div class="section-label"><span>In the poster's bio</span></div>` + bio.map((t) => this.cardHtml(t, { role: "bio" })).join("");
+      if (mentioned.length) html += mentioned.map((t) => this.cardHtml(t, { role: "ca" })).join("");
+      if (bio.length) html += bio.map((t) => this.cardHtml(t, { role: "bio" })).join("");
       const techIsAlreadyShown = techMatch && (mentioned.some((t) => t.address === techMatch.address) || picks.some((p) => p.token.address === techMatch.address));
       if (techMatch && !techIsAlreadyShown) {
         const t = this.tokens.get(techMatch.address) || techMatch;
-        html += '<div class="section-label"><span>Tech match</span><span>' + esc2(techMatch.techAnchor || "") + "</span></div>" + this.cardHtml(t, { role: "tech" });
+        html += this.cardHtml(t, { role: "tech" });
       }
       if (picks.length) {
         const SHORT = { top: "TOP MC", og: "OG", mover: "MOVER" };
@@ -2574,13 +2608,14 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     }
     // The story's newest pairs. They're found by name, so the note says so, and new coins carry the most risk.
     newHtml() {
-      const list = this.state.newPairs || [];
+      const list = this.sortedNew();
       if (!list.length) return `<div class="empty"><div class="big">No new pairs on this story</div><p>Nothing named after it launched and traded in the last 24 hours.</p>${this.followHtml()}${this.launchHtml()}</div>`;
       const live = (t) => this.tokens.get(t.address) || t;
       const shown = this.newCards();
       const rest = list.filter((t) => !shown.includes(t)).map(live);
-      return `<div class="section-label"><span>New pairs</span><span>last 24h</span></div>
-      <p class="new-note">Newest first, matched by name to this story. New coins are the riskiest, so read the checks on each one.</p>
+      const sortBtn = (v, label) => `<button type="button" data-new-sort="${v}" aria-pressed="${this.newSort === v}">${label}</button>`;
+      return `<div class="section-label"><span>New pairs \xB7 last 24h</span><span class="new-sort">${sortBtn("new", "Newest")}${sortBtn("big", "Biggest")}</span></div>
+      <p class="new-note">${this.newSort === "big" ? "Biggest market cap first" : "First of their name, then newest"}, matched by name to this story. New coins are the riskiest, so read the checks on each one.</p>
       ${shown.map((t) => this.cardHtml(live(t), { role: "new", fresh: t })).join("")}
       ${rest.length ? `<div class="list">${rest.map((t) => `<button class="li" data-expand="${t.address}">${this.avatarHtml(t)}
         <div class="nm"><b>${esc2(t.name)}</b><span>$${esc2(t.symbol)} \xB7 ${age(t.createdAt)}${list.find((x) => x.address === t.address)?.copyOf ? " \xB7 copy" : ""}</span></div>
@@ -3027,6 +3062,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
         return `<div class="watch on${cta ? " cta" : ""}">${I.bell}<span>Watching this post \xB7 ${h}h left</span><button type="button" data-act="unwatch" data-id="${esc2(w.id)}">Stop</button></div>`;
       }
       if (this.holder && !this.holder.holder) {
+        if (!cta) return "";
         return `<div class="watch on${cta ? " cta" : ""}">${I.bell}<span>Launch alerts are for $RADAR and $LARPCHECK holders</span>${this.holder.on ? '<button type="button" data-holder-connect>Check my wallet</button>' : ""}</div>`;
       }
       return `<button type="button" class="watch${cta ? " cta" : ""}" data-act="watch"${this.watchBusy ? " disabled" : ""}>${I.bell}<span>${this.watchBusy ? "Setting up the alert\u2026" : "Alert me when a coin launches off this post"}</span></button>`;
@@ -3154,6 +3190,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       const market = marketBlock(t);
       const why = market || reportBlock(a.rug);
       el.className = `hc ${why ? "no" : "ok"}`;
+      card.classList.toggle("danger", !!why && seriousWarning(why));
       const by = a.rug?.source === "larpcheck" ? `<a class="hc-by" href="${esc2(a.rug.page)}" target="_blank" rel="noopener noreferrer">Larpcheck \u2197</a>` : "";
       const src = market ? ["DexScreener", since(t.updatedAt)].filter(Boolean).join(" \xB7 ") : a.rug ? reportSource(a.rug).line : "RugCheck and Larpcheck had no answer";
       const text = (s) => `<span class="hc-text">${esc2(s)}<small>${esc2(src)}</small></span>`;
@@ -3322,6 +3359,15 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       const scanTab = e.target.closest("[data-scan-tab]");
       if (scanTab) {
         this.tab = scanTab.dataset.scanTab === "new" ? "new" : "picks";
+        this.renderHead();
+        this.renderBody();
+        this.loadAudits();
+        return;
+      }
+      const newSort = e.target.closest("[data-new-sort]");
+      if (newSort) {
+        this.newSort = newSort.dataset.newSort === "big" ? "big" : "new";
+        setPrefSort(this.newSort);
         this.renderBody();
         this.loadAudits();
         return;
@@ -3801,7 +3847,11 @@ svg { display: block; }\r
 @keyframes pop { from { opacity: 0; transform: scale(0.9); } }\r
 \r
 /* ---------- body ---------- */\r
-.body { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 10px; scrollbar-width: thin; scrollbar-color: var(--line-2) transparent; }\r
+.scroll { flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--line-2) transparent; }\r
+.lead { padding: 12px 12px 0; }\r
+.lead:empty { display: none; }\r
+.lead > :first-child { margin-top: 0; }\r
+.body { padding: 12px; display: flex; flex-direction: column; gap: 10px; }\r
 .body > * { flex: none; }\r
 .section-label { font: 600 10.5px var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--faint); padding: 6px 4px 0; display: flex; justify-content: space-between; }\r
 .reroute-bar { display: flex; align-items: center; justify-content: space-between; padding: 9px 10px; border: 1px solid var(--line-2); border-radius: 8px; background: var(--card); }\r
@@ -4415,8 +4465,33 @@ svg { display: block; }\r
 .scan-tabs button { flex: 1; padding: 8px 10px; border: 0; border-radius: 7px; background: none; color: var(--muted); font: 600 12px var(--font); cursor: pointer; transition: background .15s, color .15s; }\r
 .scan-tabs button:hover { color: var(--text); }\r
 .scan-tabs button[aria-selected="true"] { background: var(--card-2); color: var(--text); }\r
+.new-sort { display: inline-flex; gap: 2px; padding: 2px; border: 1px solid var(--line); border-radius: 8px; }\r
+.new-sort button { padding: 3px 8px; border: 0; border-radius: 6px; background: none; color: var(--muted); font: 600 10.5px var(--font); letter-spacing: normal; text-transform: none; cursor: pointer; }\r
+.new-sort button:hover { color: var(--text); }\r
+.new-sort button[aria-pressed="true"] { background: var(--card-2); color: var(--text); }\r
 .new-note { margin: 0; padding: 0 4px; color: var(--muted); font: 400 11.5px/1.45 var(--font); }\r
 .card.new { --role: var(--violet); }\r
+
+/* ---------- the panel, simplified ---------- */
+.holder-line { display: flex; align-items: center; gap: 10px; margin-top: 8px; padding: 5px 5px 5px 11px; border: 1px solid var(--line); border-radius: 10px; font: 500 12px/1.3 var(--font); color: var(--muted); }
+.holder-line button { margin-left: auto; flex: none; padding: 6px 10px; border: 1px solid var(--line-2); border-radius: 8px; background: none; color: var(--text); font: 600 11.5px var(--font); cursor: pointer; }
+.holder-line button:hover { background: var(--card-2); }
+/* The verdict first, its reasons a tap away. A risky verdict keeps its reason in view. */
+.story:not(.open):not(.risk):not(.loading):not(.who) > .story-call:not(.keep) { display: none; }
+.story:not(.open) .lc-foot.own > span { display: none; }
+.story:not(.open) .lc-foot.own .lc-btn { flex: 1; }
+/* Serious warnings: the one colour in the monochrome theme, which maps --down to plain ink. */\r
+.card.danger { --danger: #ff5c61; border-color: var(--danger); }\r
+.nr-root[data-theme="light"] .card.danger { --danger: #d92d3a; }\r
+.card.danger .hc { background: color-mix(in srgb, var(--danger) 12%, transparent); border-color: color-mix(in srgb, var(--danger) 45%, transparent); color: var(--danger); }\r
+.card.danger .hc-mark { border-color: var(--danger); color: var(--danger); }\r
+.card.danger .radar-buy, .card.danger .insta-more { background: none; color: var(--muted); border: 1px solid var(--line-2); }\r
+/* Easier to read. */
+.section-label, .story-k, .compact span, .chain, .hc-text small, .lc-foot { font-size: 11px; }
+.tag, .badge { font-size: 11px; }
+.hc { font-size: 12.5px; }
+.story-call { font-size: 12.5px; }
+.narrative { font-size: 13.5px; }
 `;
 
   // webapp/main.js

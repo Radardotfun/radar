@@ -45,6 +45,9 @@ export function reportSource(r, now = Date.now()) {
   return { fallback: true, holders, authority, line: `Fallback · ${when('Larpcheck', r.holdersAt)} · ${r.authorityKnown ? when('chain', r.readAt) : "mint/freeze unread"} · no LP or insider data` };
 }
 
+// A failed check that could cost someone everything, as opposed to one that's only a caution, like a thin holder count.
+export const seriousWarning = (line) => /^(liquidity pulled|freeze authority is on|mint authority is on|rugcheck flags)|can't sell|money was taken|honeypot|\brug(ged|s)?\b/i.test(String(line || ''));
+
 // Market side: is the coin something Axiom can open and people are actually trading?
 export function marketBlock(token) {
   if (token?.chain !== 'solana') return 'not on Solana';

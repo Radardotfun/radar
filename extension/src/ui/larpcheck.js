@@ -26,7 +26,7 @@ export function lcButtonHtml(lc) {
 // The larp check box under the narrative, when the verdict is Larpcheck's.
 export function lcStoryHtml(lc, { open, symbol, chevron, ask = '' }) {
   const stamps = (lc.stamps || []).filter((s) => s.word);
-  return `<div class="story ${lcTone(lc.verdict)}">
+  return `<div class="story ${lcTone(lc.verdict)}${open ? ' open' : ''}">
       <button class="story-top" data-story aria-expanded="${open}">
         <span class="story-k">Larp check</span>${lcStamp(lc)}${chevron}
       </button>
@@ -40,5 +40,5 @@ export function lcStoryHtml(lc, { open, symbol, chevron, ask = '' }) {
 
 // Under Radar's own read, when Larpcheck hasn't checked the coin yet: send people to check it there.
 export function lcCheckItHtml(page, symbol) {
-  return page ? `<div class="lc-foot"><span>Radar's own read. Not on Larpcheck yet.</span>${ext(page, `Check ${symbol ? `$${esc(symbol)}` : 'it'} on Larpcheck ↗`, 'lc-btn')}</div>` : '';
+  return page ? `<div class="lc-foot own"><span>Radar's own read. Not on Larpcheck yet.</span>${ext(page, `Check ${symbol ? `$${esc(symbol)}` : 'it'} on Larpcheck ↗`, 'lc-btn')}</div>` : '';
 }
