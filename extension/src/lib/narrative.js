@@ -213,7 +213,7 @@ export async function findCoins({ narrative, coinable, terms, anchors = [], judg
   const refs = candidates.map((c) => c.t).filter((t) => scores.has(t.address));
   const fromPost = new Set(refs.filter((t) => t.fromPost).map((t) => t.address));
   let tokens = await Promise.race([
-    fullTokens(refs, new Set(refs.slice(0, 10).map((t) => t.address))),
+    fullTokens(refs, new Set(refs.slice(0, 6).map((t) => t.address))),
     new Promise((resolve) => setTimeout(() => resolve(refs), 5_000)), // keep search data if pool lookups stall
   ]).catch(() => refs);
   lap('pools');
@@ -226,7 +226,17 @@ export async function findCoins({ narrative, coinable, terms, anchors = [], judg
   // A coin the post gives the address of has its own card, so an older one takes the OG title away without replacing it.
   tokens = tokens.map((t) => ({ ...t, olderTwin: olderTwinOf(t, twins) || mentioned.some((m) => m.createdAt && t.createdAt && m.createdAt < t.createdAt) }));
   // Judge scores are absolute: made-for-this-story coins first, the subject's own coin next.
-  const { picks, others, roleCandidates, roleCut } = pickThree(tokens, { cuts: [0.85, 0.7, 0] });
+  // A smaller coin on the same ticker as the coin the post names is a copy of it, and can't be Highest MC beside a bigger one.
+  const namedSyms = new Set(mentioned.map((m) => norm(m.symbol || '')).filter(Boolean));
+  const namedCap = Math.max(0, ...mentioned.map((m) => m.marketCap || 0));
+  const isCopy = (t) => namedSyms.has(norm(t.symbol || '')) && (t.marketCap || 0) < namedCap;
+  const contenders = tokens.filter((t) => !isCopy(t));
+  // With nothing live, the page says so and lists the matches, rather than giving a dead coin a title.
+  const ranked = pickThree(contenders, { cuts: [0.85, 0.7, 0], allowFallback: false });
+  const { roleCandidates, roleCut } = ranked;
+  const picks = ranked.picks.filter((p) => !(p?.role === 'top' && (p.token.marketCap || 0) < namedCap));
+  const dropped = ranked.picks.filter((p) => p && !picks.includes(p)).map((p) => p.token);
+  const others = [...ranked.others, ...dropped, ...tokens.filter(isCopy)];
   const techMatch = findTechMatch(tokens, mentioned, anchors, scores, narrative, post);
   const remaining = techMatch ? others.filter((t) => t.address !== techMatch.address) : others;
   return { ...base, picks, others: remaining, roleCandidates, roleCut, techMatch, pool };

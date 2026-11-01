@@ -226,7 +226,7 @@ export async function botCoins(res, post, { search, lookupCa, lookupBio = lookup
     seen.add(t.address);
     if (onlyChain && chains.includes(onlyChain) && t.chain !== onlyChain && !isOwn(t) && !t.fromPost) return false;
     return (onStory(t) || isOwn(t) || t.address === runner?.address) && !isMajor(t) && !isRadarCopy(t) && (isOwn(t) || !namedAfterPoster(t, post, post?.text)) && !elsewhere.has(sym(t)) && !copyOfNamed(t);
-  }).map((t) => (t.address === runner?.address || isOwn(t) ? { ...t, relevance: Math.max(t.relevance || 0, 90) } : t));
+  }).map((t) => (t.address === runner?.address || isOwn(t) ? { ...t, relevance: Math.max(t.relevance || 0, 90), keepSmall: isOwn(t) } : t));
   // With the account's own coin found, dust that only the judge tied to the story is noise beside it.
   if (story.some(isOwn)) story = story.filter((t) => isOwn(t) || (t.marketCap || 0) >= 10_000);
   // With no coin named in the post, newer coins copying the biggest one's ticker or name are its copies, not the OG or

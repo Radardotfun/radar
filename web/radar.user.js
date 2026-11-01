@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Radar
 // @namespace    https://tryradar.fun
-// @version      1.7.47
+// @version      1.7.48
 // @description  See the coins behind any post on X and instantly reroute to the biggest match that passes available on-chain safety checks.
 // @homepageURL  https://tryradar.fun
 // @supportURL   https://tryradar.fun
@@ -31,7 +31,7 @@
 // @downloadURL  https://tryradar.fun/radar.user.js
 // ==/UserScript==
 
-// Radar 1.7.47: built from the extension source at https://tryradar.fun. Not financial advice.
+// Radar 1.7.48: built from the extension source at https://tryradar.fun. Not financial advice.
 (() => {
   var __defProp = Object.defineProperty;
   var __export = (target, all) => {
@@ -391,16 +391,22 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
   var ogExists = (t) => alive(t) || t.liquidity >= 3e3 && Date.now() - t.createdAt > 30 * 864e5;
   var sameName = (a, b) => String(a.symbol).toLowerCase() === String(b.symbol).toLowerCase() || String(a.name).length >= 3 && String(a.name).toLowerCase() === String(b.name).toLowerCase();
   var olderTwinOf = (t, pool = []) => t?.createdAt ? pool.filter((x) => x?.createdAt && x.chain === t.chain && x.address !== t.address && x.createdAt < t.createdAt && sameName(x, t) && ogExists(x)).sort((a, b) => a.createdAt - b.createdAt)[0] || null : null;
+  var DUST_CAP = 5e3;
+  function isDust(t, now = Date.now()) {
+    if (t.keepSmall || (t.marketCap || 0) >= DUST_CAP) return false;
+    const trades = (t.txns?.h1?.buys || 0) + (t.txns?.h1?.sells || 0);
+    return trades < 5 || !t.createdAt || now - t.createdAt > 36e5;
+  }
   function pickThree(tokens, { cuts = [0.3, 0.15, 0], allowFallback = true } = {}) {
     const maxRel = Math.max(0, ...tokens.map((t) => t.relevance || 0));
     let live = [];
     let cutUsed = 0;
     for (const cut of cuts) {
       cutUsed = cut;
-      live = tokens.filter((t) => (t.relevance || 0) >= maxRel * cut && alive(t));
+      live = tokens.filter((t) => (t.relevance || 0) >= maxRel * cut && alive(t) && !isDust(t));
       if (live.length >= 3) break;
     }
-    if (!live.length && allowFallback) live = tokens.filter((t) => t.volume.h24 > 0);
+    if (!live.length && allowFallback) live = tokens.filter((t) => t.volume.h24 > 0 && !isDust(t));
     const used = /* @__PURE__ */ new Set();
     const take = (t, role) => {
       if (t) used.add(t.address);
@@ -762,7 +768,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     const refs = candidates.map((c) => c.t).filter((t) => scores.has(t.address));
     const fromPost = new Set(refs.filter((t) => t.fromPost).map((t) => t.address));
     let tokens = await Promise.race([
-      fullTokens(refs, new Set(refs.slice(0, 10).map((t) => t.address))),
+      fullTokens(refs, new Set(refs.slice(0, 6).map((t) => t.address))),
       new Promise((resolve) => setTimeout(() => resolve(refs), 5e3))
       // keep search data if pool lookups stall
     ]).catch(() => refs);
@@ -778,7 +784,15 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     if (onlyChain && chains.includes(onlyChain)) tokens = tokens.filter((t) => t.chain === onlyChain || t.fromPost);
     const twins = onlyChain && chains.includes(onlyChain) ? pool.filter((t) => t.chain === onlyChain) : pool;
     tokens = tokens.map((t) => ({ ...t, olderTwin: olderTwinOf(t, twins) || mentioned.some((m) => m.createdAt && t.createdAt && m.createdAt < t.createdAt) }));
-    const { picks, others, roleCandidates, roleCut } = pickThree(tokens, { cuts: [0.85, 0.7, 0] });
+    const namedSyms = new Set(mentioned.map((m) => norm(m.symbol || "")).filter(Boolean));
+    const namedCap = Math.max(0, ...mentioned.map((m) => m.marketCap || 0));
+    const isCopy = (t) => namedSyms.has(norm(t.symbol || "")) && (t.marketCap || 0) < namedCap;
+    const contenders = tokens.filter((t) => !isCopy(t));
+    const ranked = pickThree(contenders, { cuts: [0.85, 0.7, 0], allowFallback: false });
+    const { roleCandidates, roleCut } = ranked;
+    const picks = ranked.picks.filter((p) => !(p?.role === "top" && (p.token.marketCap || 0) < namedCap));
+    const dropped = ranked.picks.filter((p) => p && !picks.includes(p)).map((p) => p.token);
+    const others = [...ranked.others, ...dropped, ...tokens.filter(isCopy)];
     const techMatch = findTechMatch(tokens, mentioned, anchors, scores, narrative, post);
     const remaining = techMatch ? others.filter((t) => t.address !== techMatch.address) : others;
     return { ...base, picks, others: remaining, roleCandidates, roleCut, techMatch, pool };
@@ -4444,8 +4458,8 @@ svg { display: block; }\r
 .launch-btn { display: block; width: 100%; min-height: 40px; margin-top: 14px; border: 1px solid var(--line-2); border-radius: 10px; font-weight: 700; color: var(--text); text-align: center; }\r
 .launch-btn:hover { background: var(--card-2); }\r
 .chart-btn { flex: 1 1 100%; height: 32px; border: 1px solid var(--line); border-radius: 10px; font: 700 12px var(--font); color: var(--text); background: var(--card-2); }\r
-/* Beside the Trade button, so a card is one row shorter. */
-.trade + .chart-btn { flex: 0 0 82px; }
+/* Beside the Trade button, so a card is one row shorter. */\r
+.trade + .chart-btn { flex: 0 0 82px; }\r
 .chart-btn:hover, .chart-btn.on { border-color: var(--line-2); }\r
 .chart-box:empty { display: none; }\r
 .chart-box { margin-top: 8px; }\r

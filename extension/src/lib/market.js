@@ -201,6 +201,15 @@ export const olderTwinOf = (t, pool = []) => (t?.createdAt ? pool.filter((x) => 
  *   og    — earliest launched that's still trading
  *   mover — strongest live momentum right now
  */
+// A coin too small and quiet to hold a title: near a launchpad's starting cap, and either past its first hour or barely trading.
+// A brand-new coin that's busy stays in, since catching those early is the point.
+const DUST_CAP = 5000;
+export function isDust(t, now = Date.now()) {
+  if (t.keepSmall || (t.marketCap || 0) >= DUST_CAP) return false;
+  const trades = (t.txns?.h1?.buys || 0) + (t.txns?.h1?.sells || 0);
+  return trades < 5 || !t.createdAt || now - t.createdAt > 3_600_000;
+}
+
 export function pickThree(tokens, { cuts = [0.3, 0.15, 0], allowFallback = true } = {}) {
   // Prefer the coins most tied to the story; widen only if too few are trading.
   const maxRel = Math.max(0, ...tokens.map((t) => t.relevance || 0));
@@ -208,10 +217,10 @@ export function pickThree(tokens, { cuts = [0.3, 0.15, 0], allowFallback = true 
   let cutUsed = 0;
   for (const cut of cuts) {
     cutUsed = cut;
-    live = tokens.filter((t) => (t.relevance || 0) >= maxRel * cut && alive(t));
+    live = tokens.filter((t) => (t.relevance || 0) >= maxRel * cut && alive(t) && !isDust(t));
     if (live.length >= 3) break;
   }
-  if (!live.length && allowFallback) live = tokens.filter((t) => t.volume.h24 > 0);
+  if (!live.length && allowFallback) live = tokens.filter((t) => t.volume.h24 > 0 && !isDust(t));
   const used = new Set();
   const take = (t, role) => { if (t) used.add(t.address); return t ? { role, token: t } : null; };
 
