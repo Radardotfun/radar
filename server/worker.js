@@ -5,7 +5,7 @@
 //   GET  /larpcheck?address=<CA>                     -> Larpcheck's verdict on the coin (see below)
 import { lcBoard, lcHolders, lcSettings, lcStart, lcPoll, lcAsk, lcHandle } from './lc.js';
 import { launchState, launchMeta, launchMetaFile, launchRecord, launchList, launchTaken } from './launch.js';
-import { engine, interpret, judge, storyCheck, transcribe, watchVideo, sameImage, sameStory, LOGO_HOST } from './narrative.js';
+import { engine, interpret, judge, storyCheck, transcribe, watchVideo, sameImage, sameStory, samePicture, LOGO_HOST } from './narrative.js';
 import { holderOn, holderConfig, holderVerify, holderWho } from './holder.js';
 import { recordPost, readStatus } from './ledger.js';
 
@@ -308,7 +308,7 @@ export default {
       const body = await request.json().catch(() => ({}));
       const origin = new URL(request.url).origin;
       const launchAi = () => engine({ apiKey: env.ANTHROPIC_API_KEY, binding: env.AI, env });
-      const r = pathname === '/launch/meta' ? await launchMeta(body, env, origin, { readPost: readStatus, sameStory: (story, others) => sameStory(launchAi(), story, others) }) : await launchRecord(body, env, relayUrl(env) || 'https://api.mainnet-beta.solana.com', origin);
+      const r = pathname === '/launch/meta' ? await launchMeta(body, env, origin, { readPost: readStatus, sameStory: (story, others) => sameStory(launchAi(), story, others), samePicture: (picture, others) => samePicture(launchAi(), picture, others) }) : await launchRecord(body, env, relayUrl(env) || 'https://api.mainnet-beta.solana.com', origin);
       return json(r.status, r.data);
     }
     // Scans opened from a bot reply: one number per day, nothing about who opened them.

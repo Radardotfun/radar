@@ -23,6 +23,12 @@ let wallet = '';
 let picture = null; // the picture as a JPEG, base64
 let busy = false;
 
+// The coin a story already has, so someone turned away can see it instead of launching a copy elsewhere.
+const showTaken = (mint) => {
+  const link = $('taken-link');
+  link.hidden = !mint;
+  if (mint) link.href = `https://pump.fun/coin/${encodeURIComponent(mint)}`;
+};
 let sayingTaken = false; // a post that already has its coin keeps saying so
 const say = (text, kind) => {
   if (sayingTaken) return;
@@ -232,6 +238,7 @@ async function runLaunch() {
       signal: AbortSignal.timeout(30000),
     });
     const meta = await metaRes.json();
+    showTaken(meta.mint);
     if (!metaRes.ok) throw new Error(meta.error || 'Could not save the details.');
     const mintKey = Keypair.generate();
     const mint = mintKey.publicKey.toBase58();
@@ -285,6 +292,7 @@ if (samePost(post)) fetch(`${API}/launch/taken?post=${encodeURIComponent(post)}`
   say(`This post already has a coin launched with Radar: $${d.taken.symbol}. One coin per story.`, 'error');
   sayingTaken = true;
   ui.launch.hidden = true;
+  showTaken(d.taken.mint);
 }).catch(() => {});
 findWallets();
 reconnect();

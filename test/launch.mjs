@@ -111,7 +111,7 @@ const db = (listed = [], pendingRows = []) => {
   const stmt = (sql) => ({
     bind: (...a) => ({
       first: async () => (/FROM counts/.test(sql) ? null : /FROM launch_meta/.test(sql) ? claims.find((r) => r.id === a[0]) || null : /post LIKE/.test(sql) ? listed.find((r) => postId(r.post) === String(a[0]).split('/status/')[1]) || null : null),
-      all: async () => ({ results: /FROM launches/.test(sql) ? listed : claims.filter((r) => r.at > a[0] && r.wallet !== a[1]) }),
+      all: async () => ({ results: /SELECT id, image/.test(sql) ? [...listed, ...claims].filter((r) => a.includes(r.id) && r.image) : /FROM launches/.test(sql) ? listed : claims.filter((r) => r.at > a[0] && r.wallet !== a[1]) }),
       run: async () => {
         if (/^DELETE/.test(sql)) { const i = claims.findIndex((r) => r.id === a[0]); if (i >= 0) claims.splice(i, 1); }
         if (/INSERT INTO launch_meta/.test(sql)) {
@@ -127,22 +127,40 @@ const db = (listed = [], pendingRows = []) => {
 const t0 = 1_800_000_000_000;
 const coin = { post: 'https://x.com/z/status/9', symbol: 'NEW', name: 'New Coin', pic: 'pz', wallet: 'w1', id: 'bbb', at: t0, story: 'New Coin ($NEW): a story' };
 const never = async () => { throw new Error('the AI should not run'); };
-assert.equal(await storyProblem(coin, { DB: db() }, never, t0), null, 'the first coin of a story needs no AI, so it is quick');
-assert.match((await storyProblem(coin, { DB: db([{ ...dog, post: coin.post, mint: 'm1', story: 's' }]) }, never, t0)).data.error, /already has a coin launched with Radar: \$DOG/);
+const only = (sameStory) => ({ sameStory, samePicture: never });
+assert.equal(await storyProblem(coin, { DB: db() }, only(never), t0), null, 'the first coin of a story needs no AI, so it is quick');
+assert.match((await storyProblem(coin, { DB: db([{ ...dog, post: coin.post, mint: 'm1', story: 's' }]) }, only(never), t0)).data.error, /already has a coin launched with Radar: \$DOG/);
 const told = { ...dog, mint: 'm2', story: 'A Dog ($DOG): the dog story' };
 let asked2 = null;
-const yes = await storyProblem(coin, { DB: db([told]) }, async (story, others) => { asked2 = [story, others]; return 0; }, t0);
+const yes = await storyProblem(coin, { DB: db([told]) }, only(async (story, others) => { asked2 = [story, others]; return 0; }), t0);
 assert.deepEqual(asked2, [coin.story, [told.story]]);
 assert.equal(yes.status, 409, 'the AI calls it the same story');
 assert.match(yes.data.error, /\$DOG/);
-assert.equal(await storyProblem(coin, { DB: db([told]) }, async () => -1, t0), null, 'a different story goes through');
-const down = await storyProblem(coin, { DB: db([told]) }, async () => { throw new Error('no ai'); }, t0);
+assert.equal(await storyProblem(coin, { DB: db([told]) }, only(async () => -1), t0), null, 'a different story goes through');
+const down = await storyProblem(coin, { DB: db([told]) }, only(async () => { throw new Error('no ai'); }), t0);
 assert.equal(down.status, 503, 'with no answer from the AI, nothing launches');
 const rival = { id: 'aaa', symbol: 'NEW', name: 'Z', post: 'https://x.com/q/status/5', story: 's', pic: 'q', wallet: 'w2', at: t0 - 1000 };
-assert.match((await storyProblem(coin, { DB: db([], [rival]) }, never, t0)).data.error, /launching this story right now/, 'a launch in progress holds its story');
-assert.equal(await storyProblem(coin, { DB: db([], [{ ...rival, at: t0 - 200_000 }]) }, never, t0), null, 'a claim runs out after 3 minutes');
-assert.equal(await storyProblem(coin, { DB: db([], [{ ...rival, wallet: 'w1' }]) }, never, t0), null, 'your own retry is not a rival');
-assert.equal(await storyProblem(coin, { DB: db([], [{ ...rival, id: 'zzz', at: t0 + 1 }]) }, never, t0), null, 'the earlier of two launches wins');
+assert.match((await storyProblem(coin, { DB: db([], [rival]) }, only(never), t0)).data.error, /launching this story right now/, 'a launch in progress holds its story');
+assert.equal(await storyProblem(coin, { DB: db([], [{ ...rival, at: t0 - 200_000 }]) }, only(never), t0), null, 'a claim runs out after 3 minutes');
+assert.equal(await storyProblem(coin, { DB: db([], [{ ...rival, wallet: 'w1' }]) }, only(never), t0), null, 'your own retry is not a rival');
+assert.equal(await storyProblem(coin, { DB: db([], [{ ...rival, id: 'zzz', at: t0 + 1 }]) }, only(never), t0), null, 'the earlier of two launches wins');
+
+// A copy with new words and a re-saved picture: the AI compares the pictures too.
+const shot = { image: new Uint8Array([1, 2, 3]), type: 'jpg' };
+const drawn = { ...coin, ...shot };
+const pictured = { ...told, id: 'pic1', image: new Uint8Array([9]), type: 'jpg' };
+let shown = null;
+const copy = await storyProblem(drawn, { DB: db([pictured]) }, { sameStory: async () => -1, samePicture: async (p, rows) => { shown = [p, rows]; return 0; } }, t0);
+assert.equal(copy.status, 409, 'the same picture is refused even when the words differ');
+assert.equal(copy.data.mint, 'm2', 'and the page gets the coin to link to');
+assert.deepEqual(shown[0], shot);
+assert.deepEqual(shown[1].map((r) => r.id), ['pic1']);
+assert.equal(await storyProblem(drawn, { DB: db([pictured]) }, { sameStory: async () => -1, samePicture: async () => -1 }, t0), null, 'a different picture and story go through');
+const noAnswer = await storyProblem(drawn, { DB: db([pictured]) }, { sameStory: async () => -1, samePicture: async () => { throw new Error('no ai'); } }, t0);
+assert.equal(noAnswer.status, 503, 'with no answer on the picture, nothing launches');
+const inProgress = { ...rival, symbol: 'OTHER', name: 'Other', post: 'https://x.com/q/status/6', pic: 'other', story: '', image: new Uint8Array([7]), type: 'jpg' };
+assert.match((await storyProblem(drawn, { DB: db([], [inProgress]) }, { sameStory: never, samePicture: async () => 0 }, t0)).data.error, /launching this story right now/, 'a picture in a launch in progress holds too');
+assert.equal(await storyProblem(drawn, { DB: db() }, { sameStory: never, samePicture: never }, t0), null, 'the first coin still needs no AI');
 
 // Through launchMeta: the story comes from the post, and a refused launch leaves no claim behind.
 const jpeg = btoa(String.fromCharCode(0xff, 0xd8, 0xff, 0xe0, 1, 2, 3));
@@ -152,7 +170,7 @@ const okMeta = await launchMeta(body, { DB: free }, 'https://api.test', { readPo
 assert.equal(okMeta.status, 200);
 assert.equal(free.claims[0].story, 'New Coin ($NEW): a story / more');
 const full = db([told]);
-const refused = await launchMeta(body, { DB: full }, 'https://api.test', { readPost: async () => ({ text: 'a story' }), sameStory: async () => 0 }, t0);
+const refused = await launchMeta(body, { DB: full }, 'https://api.test', { readPost: async () => ({ text: 'a story' }), sameStory: async () => 0, samePicture: async () => -1 }, t0);
 assert.equal(refused.status, 409);
 assert.equal(full.claims.length, 0, 'the refused claim is gone');
 // Sending a live coin's exact details again is refused, and must not delete that coin's picture and metadata.

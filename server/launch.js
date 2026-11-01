@@ -15,6 +15,7 @@ const SITE = 'https://tryradar.fun/launched';
 // Beside the launch itself, a transaction may set its compute budget and carry a guard some wallets add (webapp/launch-guard.js).
 const NOT_THE_LAUNCH = new Set(['ComputeBudget111111111111111111111111111111', 'L2TExMFKdjpN9kozasaurPirfHy9P8sbXoAN1qA3S95']);
 const MAX_STORIES_COMPARED = 80;
+const MAX_PICTURES_COMPARED = 16; // the newest coins: one AI call handles about this many pictures well
 // One coin per story: a story stays taken for 30 days, its exact post for good. A launch in progress holds its story for
 // 3 minutes, long enough to approve it in a wallet, so two people can't pay for the same one at once.
 const STORY_LOCK_MS = 30 * 86_400_000;
@@ -77,26 +78,45 @@ export function plainClash(coin, rows) {
   return rows.find((r) => postId(r.post) === id || coinKey(r.symbol) === symbol || coinKey(r.name) === name || (coin.pic && r.pic === coin.pic)) || null;
 }
 
-// Why this coin can't launch from Radar, or null. sameStory(story, others) is the AI's reading of the rest, and only runs
-// when there's something to compare it with. If it can't answer, the launch waits: a guess would break the promise.
-export async function storyProblem(coin, env, sameStory, now = Date.now()) {
+// Why this coin can't launch from Radar, or null. sameStory(story, others) and samePicture(picture, others) are the AI's
+// reading of the rest, and only run when there's something to compare with. The picture check catches a copy with new words
+// and a re-saved image. If the AI can't answer, the launch waits: a guess would break the promise.
+export async function storyProblem(coin, env, { sameStory, samePicture }, now = Date.now()) {
   const taken = (r) => ({ status: 409, data: { error: `This story already has a coin launched with Radar: $${r.symbol}. One coin per story.`, mint: r.mint } });
   const busy = { status: 409, data: { error: 'Someone is launching this story right now. Try again in 3 minutes.' } };
   const exact = await env.DB.prepare('SELECT mint, symbol FROM launches WHERE post LIKE ? LIMIT 1').bind(`%/status/${postId(coin.post)}`).first();
   if (exact) return taken(exact);
-  const { results: listed } = await env.DB.prepare('SELECT mint, symbol, name, post, story, pic FROM launches WHERE at > ? ORDER BY at DESC LIMIT 200').bind(now - STORY_LOCK_MS).all();
+  const { results: listed } = await env.DB.prepare('SELECT id, mint, symbol, name, post, story, pic FROM launches WHERE at > ? ORDER BY at DESC LIMIT 200').bind(now - STORY_LOCK_MS).all();
   const clash = plainClash(coin, listed || []);
   if (clash) return taken(clash);
   // Launches in progress by other wallets that started first.
   const { results: active } = await env.DB.prepare('SELECT id, symbol, name, post, story, pic, at FROM launch_meta WHERE at > ? AND wallet != ? ORDER BY at DESC LIMIT 50').bind(now - CLAIM_MS, coin.wallet).all();
   const pending = (active || []).filter((r) => r.at < coin.at || (r.at === coin.at && r.id < coin.id));
   if (plainClash(coin, pending)) return busy;
-  const others = [...pending.map((r) => ({ r, done: false })), ...(listed || []).map((r) => ({ r, done: true }))].filter((x) => x.r.story).slice(0, MAX_STORIES_COMPARED);
-  if (!others.length) return null;
-  let at;
-  try { at = await sameStory(coin.story, others.map((x) => x.r.story)); } catch { return { status: 503, data: { error: "Could not check whether this story already has a coin. Nothing was launched. Try again." } }; }
-  if (at < 0) return null;
-  return others[at].done ? taken(others[at].r) : busy;
+  const all = [...pending.map((r) => ({ r, done: false })), ...(listed || []).map((r) => ({ r, done: true }))];
+  const others = all.filter((x) => x.r.story).slice(0, MAX_STORIES_COMPARED);
+  const looks = coin.image ? all.filter((x) => x.r.id).slice(0, MAX_PICTURES_COMPARED) : [];
+  const answer = (x) => (x.done ? taken(x.r) : busy);
+  try {
+    const [story, picture] = await Promise.all([
+      others.length ? sameStory(coin.story, others.map((x) => x.r.story)) : -1,
+      looks.length ? pictureMatch(coin, looks, env, samePicture) : null,
+    ]);
+    if (story >= 0) return answer(others[story]);
+    return picture ? answer(picture) : null;
+  } catch {
+    return { status: 503, data: { error: 'Could not check whether this story already has a coin. Nothing was launched. Try again.' } };
+  }
+}
+
+// The coin among looks whose stored picture shows the same picture as this one, or null.
+async function pictureMatch(coin, looks, env, samePicture) {
+  const ids = looks.map((x) => x.r.id);
+  const { results } = await env.DB.prepare(`SELECT id, image, type FROM launch_meta WHERE id IN (${ids.map(() => '?').join(', ')})`).bind(...ids).all();
+  const stored = (results || []).map((row) => ({ row, x: looks.find((l) => l.r.id === row.id) })).filter((s) => s.x);
+  if (!stored.length) return null;
+  const at = await samePicture({ image: coin.image, type: coin.type }, stored.map((s) => s.row));
+  return at >= 0 ? stored[at].x : null;
 }
 
 // GET /launch/taken: the coin an exact post already has, so the page can say so before anyone fills anything in.
@@ -108,7 +128,7 @@ export async function launchTaken(post, env) {
 }
 
 // POST /launch/meta: stores the picture and metadata, and returns the address that goes on-chain.
-export async function launchMeta(body, env, origin, { readPost, sameStory }, now = Date.now()) {
+export async function launchMeta(body, env, origin, { readPost, sameStory, samePicture }, now = Date.now()) {
   if (launchState(env) === 'off') return { status: 503, data: { error: 'Launching is switched off right now.' } };
   const fields = launchFields(body);
   if (fields.error) return { status: 400, data: fields };
@@ -134,7 +154,7 @@ export async function launchMeta(body, env, origin, { readPost, sameStory }, now
   // The claim goes in before the check, so two launches at the same moment see each other and the earlier one wins.
   await env.DB.prepare('INSERT INTO launch_meta (id, name, symbol, description, post, wallet, image, type, at, story, pic) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (id) DO UPDATE SET at = excluded.at')
     .bind(id, fields.name, fields.symbol, fields.description, fields.post, fields.wallet, image, type, now, story, pic).run();
-  const problem = await storyProblem({ ...fields, id, at: now, story, pic }, env, sameStory, now);
+  const problem = await storyProblem({ ...fields, id, at: now, story, pic, image, type }, env, { sameStory, samePicture }, now);
   if (problem) {
     if (!existed) await env.DB.prepare('DELETE FROM launch_meta WHERE id = ?').bind(id).run();
     return problem;

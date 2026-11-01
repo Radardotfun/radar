@@ -365,6 +365,23 @@ async function logoBlock(url) {
 /** { images[] (the post's), logos[] (coin logo urls) } -> { same[] }: indexes of the logos showing the post's picture */
 export async function sameImage(ai, { images, logos }) {
   const [post, marks] = await Promise.all([imageBlocks(images), Promise.all(logos.map(logoBlock))]);
+  return matchBlocks(ai, post, marks);
+}
+
+const pictureBlock = ({ image, type }) => {
+  const bytes = new Uint8Array(image);
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return { type: 'image', source: { type: 'base64', media_type: type === 'jpg' ? 'image/jpeg' : `image/${type}`, data: btoa(bin) } };
+};
+
+/** Launching: picture and others[] are { image (bytes), type }. -> the index in others of a coin showing the same picture, or -1 */
+export async function samePicture(ai, picture, others) {
+  const { same } = await matchBlocks(ai, [pictureBlock(picture)], others.map(pictureBlock));
+  return same.length ? same[0] : -1;
+}
+
+async function matchBlocks(ai, post, marks) {
   if (!post.length || !marks.some(Boolean)) return { same: [] };
   const content = [{ type: 'text', text: 'The post\'s images:' }, ...post];
   marks.forEach((b, i) => { if (b) content.push({ type: 'text', text: `Logo ${i}:` }, b); });
