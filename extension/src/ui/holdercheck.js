@@ -76,7 +76,7 @@ export function reportBlock(report, rules = RULES) {
   if (report.freezeAuthority) return 'freeze authority is on';
   if (report.mintAuthority) return 'mint authority is on';
   const danger = (report.risks || []).find((r) => /danger|critical|high/i.test(r.level || ''));
-  if (danger) return `RugCheck flags ${String(danger.name || 'a danger').toLowerCase()}`;
+  if (danger) return `RugCheck flags ${String(danger.name || 'a danger').toLowerCase().replace(/\blp\b/g, 'LP')}`;
   if (report.score == null) return 'no RugCheck score';
   if (report.score > rules.maxScore) return `RugCheck score ${report.score}`;
   if (report.holders == null) return 'holder count unknown';

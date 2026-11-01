@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Radar
 // @namespace    https://tryradar.fun
-// @version      1.7.46
+// @version      1.7.47
 // @description  See the coins behind any post on X and instantly reroute to the biggest match that passes available on-chain safety checks.
 // @homepageURL  https://tryradar.fun
 // @supportURL   https://tryradar.fun
@@ -31,7 +31,7 @@
 // @downloadURL  https://tryradar.fun/radar.user.js
 // ==/UserScript==
 
-// Radar 1.7.46: built from the extension source at https://tryradar.fun. Not financial advice.
+// Radar 1.7.47: built from the extension source at https://tryradar.fun. Not financial advice.
 (() => {
   var __defProp = Object.defineProperty;
   var __export = (target, all) => {
@@ -212,7 +212,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     if (report.freezeAuthority) return "freeze authority is on";
     if (report.mintAuthority) return "mint authority is on";
     const danger = (report.risks || []).find((r) => /danger|critical|high/i.test(r.level || ""));
-    if (danger) return `RugCheck flags ${String(danger.name || "a danger").toLowerCase()}`;
+    if (danger) return `RugCheck flags ${String(danger.name || "a danger").toLowerCase().replace(/\blp\b/g, "LP")}`;
     if (report.score == null) return "no RugCheck score";
     if (report.score > rules.maxScore) return `RugCheck score ${report.score}`;
     if (report.holders == null) return "holder count unknown";
@@ -4444,6 +4444,8 @@ svg { display: block; }\r
 .launch-btn { display: block; width: 100%; min-height: 40px; margin-top: 14px; border: 1px solid var(--line-2); border-radius: 10px; font-weight: 700; color: var(--text); text-align: center; }\r
 .launch-btn:hover { background: var(--card-2); }\r
 .chart-btn { flex: 1 1 100%; height: 32px; border: 1px solid var(--line); border-radius: 10px; font: 700 12px var(--font); color: var(--text); background: var(--card-2); }\r
+/* Beside the Trade button, so a card is one row shorter. */
+.trade + .chart-btn { flex: 0 0 82px; }
 .chart-btn:hover, .chart-btn.on { border-color: var(--line-2); }\r
 .chart-box:empty { display: none; }\r
 .chart-box { margin-top: 8px; }\r
@@ -4605,27 +4607,27 @@ svg { display: block; }\r
 .new-sort button[aria-pressed="true"] { background: var(--card-2); color: var(--text); }\r
 .new-note { margin: 0; padding: 0 4px; color: var(--muted); font: 400 11.5px/1.45 var(--font); }\r
 .card.new { --role: var(--violet); }\r
-
-/* ---------- the panel, simplified ---------- */
-.holder-line { display: flex; align-items: center; gap: 10px; margin-top: 8px; padding: 5px 5px 5px 11px; border: 1px solid var(--line); border-radius: 10px; font: 500 12px/1.3 var(--font); color: var(--muted); }
-.holder-line button { margin-left: auto; flex: none; padding: 6px 10px; border: 1px solid var(--line-2); border-radius: 8px; background: none; color: var(--text); font: 600 11.5px var(--font); cursor: pointer; }
-.holder-line button:hover { background: var(--card-2); }
-/* The verdict first, its reasons a tap away. A risky verdict keeps its reason in view. */
-.story:not(.open):not(.risk):not(.loading):not(.who) > .story-call:not(.keep) { display: none; }
-.story:not(.open) .lc-foot.own > span { display: none; }
-.story:not(.open) .lc-foot.own .lc-btn { flex: 1; }
+\r
+/* ---------- the panel, simplified ---------- */\r
+.holder-line { display: flex; align-items: center; gap: 10px; margin-top: 8px; padding: 5px 5px 5px 11px; border: 1px solid var(--line); border-radius: 10px; font: 500 12px/1.3 var(--font); color: var(--muted); }\r
+.holder-line button { margin-left: auto; flex: none; padding: 6px 10px; border: 1px solid var(--line-2); border-radius: 8px; background: none; color: var(--text); font: 600 11.5px var(--font); cursor: pointer; }\r
+.holder-line button:hover { background: var(--card-2); }\r
+/* The verdict first, its reasons a tap away. A risky verdict keeps its reason in view. */\r
+.story:not(.open):not(.risk):not(.loading):not(.who) > .story-call:not(.keep) { display: none; }\r
+.story:not(.open) .lc-foot.own > span { display: none; }\r
+.story:not(.open) .lc-foot.own .lc-btn { flex: 1; }\r
 /* Serious warnings: the one colour in the monochrome theme, which maps --down to plain ink. */\r
 .card.danger { --danger: #ff5c61; border-color: var(--danger); }\r
 .nr-root[data-theme="light"] .card.danger { --danger: #d92d3a; }\r
 .card.danger .hc { background: color-mix(in srgb, var(--danger) 12%, transparent); border-color: color-mix(in srgb, var(--danger) 45%, transparent); color: var(--danger); }\r
 .card.danger .hc-mark { border-color: var(--danger); color: var(--danger); }\r
 .card.danger .radar-buy, .card.danger .insta-more { background: none; color: var(--muted); border: 1px solid var(--line-2); }\r
-/* Easier to read. */
-.section-label, .story-k, .compact span, .chain, .hc-text small, .lc-foot { font-size: 11px; }
-.tag, .badge { font-size: 11px; }
-.hc { font-size: 12.5px; }
-.story-call { font-size: 12.5px; }
-.narrative { font-size: 13.5px; }
+/* Easier to read. */\r
+.section-label, .story-k, .compact span, .chain, .hc-text small, .lc-foot { font-size: 11px; }\r
+.tag, .badge { font-size: 11px; }\r
+.hc { font-size: 12.5px; }\r
+.story-call { font-size: 12.5px; }\r
+.narrative { font-size: 13.5px; }\r
 `;
 
   // userscript/host.js
