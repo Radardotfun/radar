@@ -1,4 +1,4 @@
-// Radar 1.7.49 on the web: built from the extension source at https://tryradar.fun. Not financial advice.
+// Radar 1.7.50 on the web: built from the extension source at https://tryradar.fun. Not financial advice.
 (() => {
   // extension/src/lib/keywords.js
   var STOP = new Set(`a about above after again against all almost also am an and any are aren as at be because been before
@@ -3208,7 +3208,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       const by = a.rug?.source === "larpcheck" ? `<a class="hc-by" href="${esc2(a.rug.page)}" target="_blank" rel="noopener noreferrer">Larpcheck \u2197</a>` : "";
       const src = market ? ["DexScreener", since(t.updatedAt)].filter(Boolean).join(" \xB7 ") : a.rug ? reportSource(a.rug).line : "RugCheck and Larpcheck had no answer";
       const text = (s) => `<span class="hc-text">${esc2(s)}<small>${esc2(src)}</small></span>`;
-      el.innerHTML = why ? `<span class="hc-mark">\u2715</span>${text(why.charAt(0).toUpperCase() + why.slice(1))}${by || "<em>Reroute skips it</em>"}` : by ? `<span class="hc-mark">\u2713</span>${text(a.rug.line || `Real holders \xB7 ${num(a.rug.holders)}`)}${by}` : `<span class="hc-mark">\u2713</span>${text(`Real holders \xB7 ${num(a.rug.holders)}`)}<em>Passes the check</em>`;
+      el.innerHTML = why ? `<span class="hc-mark">\u2715</span>${text(why.charAt(0).toUpperCase() + why.slice(1))}${by || "<em>Fails the check</em>"}` : by ? `<span class="hc-mark">\u2713</span>${text(a.rug.line || `Real holders \xB7 ${num(a.rug.holders)}`)}${by}` : `<span class="hc-mark">\u2713</span>${text(`Real holders \xB7 ${num(a.rug.holders)}`)}<em>Passes the check</em>`;
     }
     // Coins on the post that share this one's ticker: copycats are the usual trap on a hot narrative.
     nameTwins(t) {
