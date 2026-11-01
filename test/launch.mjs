@@ -86,6 +86,11 @@ assert.equal(launchProblem(onChain, { ...claim, mint: Keypair.generate().publicK
 assert.equal(launchProblem(onChain, { ...claim, uri: `${URI}x` }), 'it did not use this metadata');
 const withBuy = { ...onChain, transaction: { message: { ...onChain.transaction.message, instructions: [...onChain.transaction.message.instructions, onChain.transaction.message.instructions.at(-1)] } } };
 assert.equal(launchProblem(withBuy, claim), 'it did more than launch the coin', 'a buy in the launch transaction is not listed');
+// A guard some wallets add (Lighthouse) is not a buy: the launch still lists, or its story would never be locked.
+const guard = { programId: new PublicKey('L2TExMFKdjpN9kozasaurPirfHy9P8sbXoAN1qA3S95'), keys: [], data: Buffer.from([1]) };
+const guarded = build([budget, create, guard]);
+const guardedKeys = guarded.message.staticAccountKeys.map((k) => k.toBase58());
+assert.equal(launchProblem({ meta: { err: null }, transaction: { message: { accountKeys: guardedKeys, header: guarded.message.header, instructions: guarded.message.compiledInstructions.map((ix) => ({ programIdIndex: ix.programIdIndex, data: encode(ix.data) })) } } }, claim), null);
 console.log('PASS launch: a listing needs the launch itself on-chain');
 
 // One coin per story.
@@ -96,19 +101,28 @@ assert.equal(plainClash({ post: 'https://x.com/b/status/2', symbol: '$dog', name
 assert.equal(plainClash({ post: 'https://x.com/b/status/2', symbol: 'X', name: 'a-dog', pic: 'p9' }, [dog]), dog, 'the same name, spelled differently');
 assert.equal(plainClash({ post: 'https://x.com/b/status/2', symbol: 'X', name: 'Y', pic: 'p1' }, [dog]), dog, 'the same picture');
 assert.equal(plainClash({ post: 'https://x.com/b/status/2', symbol: 'CAT', name: 'A Cat', pic: 'p2' }, [dog]), null, 'a different coin');
+const dogEmoji = { post: 'https://x.com/a/status/3', symbol: '🐕', name: '🐕🐕', pic: 'e1' };
+assert.equal(plainClash({ post: 'https://x.com/b/status/4', symbol: '🔥', name: '🔥🔥', pic: 'e2' }, [dogEmoji]), null, 'two different emoji names are different coins');
+assert.equal(plainClash({ post: 'https://x.com/b/status/4', symbol: '🐕', name: 'Other', pic: 'e2' }, [dogEmoji]), dogEmoji, 'the same emoji ticker is the same');
 
 // A stand-in database: what launchMeta and storyProblem ask of D1.
 const db = (listed = [], pendingRows = []) => {
   const claims = [...pendingRows];
   const stmt = (sql) => ({
     bind: (...a) => ({
-      first: async () => (/FROM counts/.test(sql) ? null : /post LIKE/.test(sql) ? listed.find((r) => postId(r.post) === String(a[0]).split('/status/')[1]) || null : null),
+      first: async () => (/FROM counts/.test(sql) ? null : /FROM launch_meta/.test(sql) ? claims.find((r) => r.id === a[0]) || null : /post LIKE/.test(sql) ? listed.find((r) => postId(r.post) === String(a[0]).split('/status/')[1]) || null : null),
       all: async () => ({ results: /FROM launches/.test(sql) ? listed : claims.filter((r) => r.at > a[0] && r.wallet !== a[1]) }),
-      run: async () => { if (/^DELETE/.test(sql)) { const i = claims.findIndex((r) => r.id === a[0]); if (i >= 0) claims.splice(i, 1); } return {}; },
-      insert: /INSERT INTO launch_meta/.test(sql) ? { id: a[0], name: a[1], symbol: a[2], post: a[4], wallet: a[5], at: a[8], story: a[9], pic: a[10] } : null,
+      run: async () => {
+        if (/^DELETE/.test(sql)) { const i = claims.findIndex((r) => r.id === a[0]); if (i >= 0) claims.splice(i, 1); }
+        if (/INSERT INTO launch_meta/.test(sql)) {
+          const had = claims.find((r) => r.id === a[0]);
+          if (had) had.at = a[8]; else claims.push({ id: a[0], name: a[1], symbol: a[2], post: a[4], wallet: a[5], at: a[8], story: a[9], pic: a[10] });
+        }
+        return {};
+      },
     }),
   });
-  return { claims, prepare: stmt, batch: async (list) => { for (const s of list) if (s.insert) claims.push(s.insert); } };
+  return { claims, prepare: stmt };
 };
 const t0 = 1_800_000_000_000;
 const coin = { post: 'https://x.com/z/status/9', symbol: 'NEW', name: 'New Coin', pic: 'pz', wallet: 'w1', id: 'bbb', at: t0, story: 'New Coin ($NEW): a story' };
@@ -141,6 +155,13 @@ const full = db([told]);
 const refused = await launchMeta(body, { DB: full }, 'https://api.test', { readPost: async () => ({ text: 'a story' }), sameStory: async () => 0 }, t0);
 assert.equal(refused.status, 409);
 assert.equal(full.claims.length, 0, 'the refused claim is gone');
+// Sending a live coin's exact details again is refused, and must not delete that coin's picture and metadata.
+const live = db([{ ...told, post: body.post }]);
+const first = await launchMeta(body, { DB: free }, 'https://api.test', { readPost: async () => ({ text: 'a story' }), sameStory: never }, t0);
+live.claims.push({ id: first.data.id, wallet: body.wallet, post: body.post, symbol: 'NEW', name: 'New Coin', story: 's', pic: 'x', at: t0 - 86_400_000 });
+const again = await launchMeta(body, { DB: live }, 'https://api.test', { readPost: async () => ({ text: 'a story' }), sameStory: never }, t0);
+assert.equal(again.status, 409);
+assert.equal(live.claims.length, 1, 'a live coin keeps its metadata');
 assert.equal((await launchMeta(body, { DB: db() }, 'https://api.test', { readPost: async () => 'gone', sameStory: never }, t0)).status, 400);
 assert.equal((await launchMeta(body, { DB: db() }, 'https://api.test', { readPost: async () => null, sameStory: never }, t0)).status, 503);
 console.log('PASS launch: one coin per story');

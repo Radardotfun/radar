@@ -23,7 +23,9 @@ let wallet = '';
 let picture = null; // the picture as a JPEG, base64
 let busy = false;
 
+let sayingTaken = false; // a post that already has its coin keeps saying so
 const say = (text, kind) => {
+  if (sayingTaken) return;
   ui.message.textContent = text;
   ui.message.classList.toggle('error', kind === 'error');
   ui.message.classList.toggle('success', kind === 'success');
@@ -223,10 +225,11 @@ async function runLaunch() {
   busy = true;
   refresh();
   try {
-    say('Saving the picture and details…');
+    say('Checking the story and saving the details…');
     const metaRes = await fetch(`${API}/launch/meta`, {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ name: ui.name.value, symbol: ui.symbol.value, description: ui.description.value, post, wallet, image: picture }),
+      signal: AbortSignal.timeout(30000),
     });
     const meta = await metaRes.json();
     if (!metaRes.ok) throw new Error(meta.error || 'Could not save the details.');
@@ -252,7 +255,10 @@ async function runLaunch() {
     // either way; this only decides when it shows on the list.
     for (let i = 0; i < 12; i++) {
       const r = await fetch(`${API}/launch/record`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: meta.id, mint, signature }) }).catch(() => null);
-      if (r?.status === 409) say('Your coin is live on pump.fun, but this story already has a coin on Radar\'s list, so yours won\'t be listed.', 'error');
+      if (r?.status === 400 || r?.status === 409) {
+        const why = (await r.json().catch(() => null))?.error || 'Not listed.';
+        say(`Your coin is live on pump.fun, but it isn't on Radar's list. ${why}`, 'error');
+      }
       if (r?.ok || r?.status === 400 || r?.status === 409) break;
       await new Promise((res) => setTimeout(res, 5000));
     }
@@ -277,8 +283,8 @@ fetch(`${API}/launch/settings`).then((r) => r.json()).then((s) => {
 if (samePost(post)) fetch(`${API}/launch/taken?post=${encodeURIComponent(post)}`).then((r) => r.json()).then((d) => {
   if (!d.taken) return;
   say(`This post already has a coin launched with Radar: $${d.taken.symbol}. One coin per story.`, 'error');
+  sayingTaken = true;
   ui.launch.hidden = true;
-  $('link-pump').href = `https://pump.fun/coin/${d.taken.mint}`;
 }).catch(() => {});
 findWallets();
 reconnect();

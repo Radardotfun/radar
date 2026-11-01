@@ -57,7 +57,8 @@ export function replyEntries(result, now = Date.now()) {
     const t = picks.find((p) => p.role === role)?.token;
     if (!t || t.address === named?.address) continue;
     const also = won(t.address).filter((r) => !label.endsWith(r));
-    entries.push({ label: [role === 'top' && noTop ? '🎯 On this story' : label, ...also].join(', '), t, stat: stat(t, role === 'top' ? usd(t.marketCap)
+    // A coin alone holds whichever role it landed on (OG or Mover too, when its market cap isn't backed) and beat nobody for it.
+    entries.push({ label: [result?.alone || (role === 'top' && noTop) ? '🎯 On this story' : label, ...also].join(', '), t, stat: stat(t, role === 'top' ? usd(t.marketCap)
       : role === 'og' ? (ago(t.createdAt, now) ? `launched ${ago(t.createdAt, now)} ago` : usd(t.marketCap))
         : usd(t.volume?.h24) ? `${usd(t.volume.h24)} vol 24h` : usd(t.marketCap)) });
   }
