@@ -79,7 +79,7 @@ async function cachedJson(ctx, key, ttl, fn, debug) {
   }
   const t = Date.now();
   const result = await fn();
-  const res = json(200, debug ? { ...result, ms: Date.now() - t } : result, { 'cache-control': `public, max-age=${ttl}` });
+  const res = json(200, debug ? { ...result, ms: Date.now() - t } : result, { 'cache-control': `public, max-age=${typeof ttl === 'function' ? ttl(result) : ttl}` });
   if (!debug) ctx.waitUntil(caches.default.put(cacheKey, res.clone()));
   return res;
 }
@@ -113,7 +113,8 @@ async function route(kind, request, env, ctx) {
     if (!post.text && !post.quoted && !post.card && !post.images.length) return json(400, { error: 'Empty post' });
     ctx.waitUntil(recordPost(env, post).catch((e) => console.error('ledger', e?.message)));
     const key = await sha256(JSON.stringify(['i', post]));
-    return cachedJson(ctx, `i/${key}`, 300, () => interpret(ai, post), debug);
+    // A post's words don't change, so neither should its read: a new read every few minutes meant new search words and different coins. One with no words gets another try soon.
+    return cachedJson(ctx, `i/${key}`, (r) => (r.terms.length ? 21600 : 300), () => interpret(ai, post), debug);
   }
   if (kind === 'story') {
     if (!post.text && !post.quoted && !post.images.length) return json(400, { error: 'Empty post' });
