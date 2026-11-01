@@ -133,6 +133,9 @@ h3 { font-size: 18px; letter-spacing: -0.02em; font-weight: 700; }
 .platform.muted { border-color: var(--line); }
 .platform.muted p:not(.eyebrow) { color: var(--muted); font-size: 15px; }
 .platform .soon { color: var(--ink) !important; font-size: 22px !important; font-weight: 700; letter-spacing: -0.02em; }
+/* Five cards in two columns: the last one takes the full row, with its buttons beside its steps. */
+#script { grid-column: 1 / -1; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: auto 1fr; column-gap: 44px; }
+#script ol { grid-column: 2; grid-row: 1 / span 2; }
 
 .features { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0; padding-top: 0 !important; padding-bottom: 0 !important; }
 .features article { padding: clamp(32px, 4vw, 48px) 24px clamp(32px, 4vw, 48px) 0; }
@@ -215,6 +218,8 @@ h3 { font-size: 18px; letter-spacing: -0.02em; font-weight: 700; }
   .hero-copy { text-align: left; }
   .shot { width: min(100%, 340px); }
   .platforms { grid-template-columns: minmax(0, 1fr); }
+  #script { grid-column: auto; grid-template-columns: minmax(0, 1fr); grid-template-rows: none; }
+  #script ol { grid-column: auto; grid-row: auto; }
   .features { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .features article:nth-child(odd) { padding-left: 0; border-left: 0; }
   .features article:nth-child(even) { padding-left: 24px; border-left: 1px solid var(--line); }
