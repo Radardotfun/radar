@@ -1,4 +1,4 @@
-// Radar 1.7.38 on the web: built from the extension source at https://tryradar.fun. Not financial advice.
+// Radar 1.7.39 on the web: built from the extension source at https://tryradar.fun. Not financial advice.
 (() => {
   // extension/src/lib/keywords.js
   var STOP = new Set(`a about above after again against all almost also am an and any are aren as at be because been before
@@ -340,7 +340,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       if (!p) continue;
       p.alsoTop = contest && p.role !== "top" && best.top === p.token.address;
       p.alsoOg = contest && p.role !== "og" && best.og === p.token.address;
-      p.alsoMover = contest && p.role !== "mover" && best.mover === p.token.address && momentum(p.token) > 0;
+      p.alsoMover = contest && p.role !== "mover" && !picks.some((x) => x?.role === "mover") && best.mover === p.token.address && momentum(p.token) > 0;
     }
     const others = tokens.filter((t) => !used.has(t.address)).sort((a, b) => b.mcapBacked - a.mcapBacked || b.marketCap - a.marketCap).slice(0, 12);
     return { picks: picks.filter(Boolean), others, roleCandidates: tokens, roleCut: cutUsed };

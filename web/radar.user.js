@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Radar
 // @namespace    https://tryradar.fun
-// @version      1.7.38
+// @version      1.7.39
 // @description  See the coins behind any post on X and instantly reroute to the biggest match that passes available on-chain safety checks.
 // @homepageURL  https://tryradar.fun
 // @supportURL   https://tryradar.fun
@@ -31,7 +31,7 @@
 // @downloadURL  https://tryradar.fun/radar.user.js
 // ==/UserScript==
 
-// Radar 1.7.38: built from the extension source at https://tryradar.fun. Not financial advice.
+// Radar 1.7.39: built from the extension source at https://tryradar.fun. Not financial advice.
 (() => {
   var __defProp = Object.defineProperty;
   var __export = (target, all) => {
@@ -429,7 +429,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       if (!p) continue;
       p.alsoTop = contest && p.role !== "top" && best.top === p.token.address;
       p.alsoOg = contest && p.role !== "og" && best.og === p.token.address;
-      p.alsoMover = contest && p.role !== "mover" && best.mover === p.token.address && momentum(p.token) > 0;
+      p.alsoMover = contest && p.role !== "mover" && !picks.some((x) => x?.role === "mover") && best.mover === p.token.address && momentum(p.token) > 0;
     }
     const others = tokens.filter((t) => !used.has(t.address)).sort((a, b) => b.mcapBacked - a.mcapBacked || b.marketCap - a.marketCap).slice(0, 12);
     return { picks: picks.filter(Boolean), others, roleCandidates: tokens, roleCut: cutUsed };
