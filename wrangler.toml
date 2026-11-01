@@ -17,7 +17,7 @@ directory = "./dist/web"
 [vars]
 # Launching a coin from a post (server/launch.js): "hidden" keeps the page working by direct link with no button in the
 # extension or on the scanner, "on" shows the button, "off" stops launches. All with no store update.
-LAUNCH_STATE = "hidden"
+LAUNCH_STATE = "on"
 RADAR_MINT ="HyDSdtgiSa5mHqkTVoz8cTFTeVLFKdZ8amPvtNYfpump"
 HOLDER_MIN_USD = "10"
 
