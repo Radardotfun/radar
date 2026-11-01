@@ -19,6 +19,7 @@ directory = "./dist/web"
 # extension or on the scanner, "on" shows the button, "off" stops launches. All with no store update.
 LAUNCH_STATE = "on"
 RADAR_MINT ="HyDSdtgiSa5mHqkTVoz8cTFTeVLFKdZ8amPvtNYfpump"
+LARPCHECK_MINT = "t9bnCGiZVUYsRKvx4d5dPcoDCSyuBM9C33ZNGNULARP"
 HOLDER_MIN_USD = "10"
 
 # Radar's own record of which X accounts posted which coins (server/ledger.js, server/ledger.sql).

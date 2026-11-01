@@ -130,7 +130,7 @@ export function makeHandlers(host) {
   const lcSettings = () => lcGet('/lc/settings', 600_000);
   async function lcHolderPost(path, body) {
     const h = await holderStored();
-    if (!h) throw new Error('This is for $RADAR holders. Check your wallet first.');
+    if (!h) throw new Error('This is for $RADAR and $LARPCHECK holders. Check your wallet first.');
     const res = await fetch(`${API_BASE}${path}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ token: h.token, ...body }), signal: AbortSignal.timeout(50_000) });
     const data = await res.json().catch(() => ({}));
     if (res.status === 401) await host.store.set(HOLDER_KEY, null);

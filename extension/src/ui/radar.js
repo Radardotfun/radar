@@ -696,7 +696,7 @@ class Radar {
 
   // Larp check under the narrative (is the post's story real?): one word + score, a trader's one-liner, findings on tap.
   // When Larpcheck has a verdict on the coin, the larp check is theirs, credited and linked to their report.
-  // ---------- Who posted this (holders of $RADAR, data from Frontrun; server/holder.js) ----------
+  // ---------- Who posted this (holders, data from Frontrun; server/holder.js) ----------
   loadHolder() {
     send('lcSettings').then((s) => { this.lcPlan = !!s?.plan; this.renderHead(); }).catch(() => {});
     return send('holderStatus').then((h) => { this.holder = h; this.renderHead(); }).catch(() => { this.holder = { on: false }; });
@@ -776,7 +776,7 @@ class Radar {
     </div>`;
   }
 
-  // Paid Larpcheck features, for $RADAR holders, only when the server's key has a plan (/lc/settings).
+  // Paid Larpcheck features, for holders, only when the server's key has a plan (/lc/settings).
   get lcPerks() { return !!(this.lcPlan && this.holder?.holder); }
   lcRunHtml(s) {
     if (!s.lcPage || !s.lcAddress) return '';
@@ -994,7 +994,7 @@ class Radar {
     const words = (this.state.words || []).filter((w) => String(w).replace(/[^\p{L}\p{N}]/gu, '').length >= 3).slice(0, 2);
     if (!words.length) return '';
     if (this.holder && !this.holder.holder && !this.alerts.watches.some((w) => w.word)) {
-      return `<div class="watch on">${I.bell}<span>Alerts on new pairs are for $RADAR holders</span>${this.holder.on ? '<button type="button" data-holder-connect>Check my wallet</button>' : ''}</div>`;
+      return `<div class="watch on">${I.bell}<span>Alerts on new pairs are for $RADAR and $LARPCHECK holders</span>${this.holder.on ? '<button type="button" data-holder-connect>Check my wallet</button>' : ''}</div>`;
     }
     return words.map((word) => {
       const w = this.alerts.watches.find((x) => x.word && x.word.toLowerCase() === String(word).replace(/^\$+/, '').toLowerCase());
@@ -1090,7 +1090,7 @@ class Radar {
     const what = "the post behind a starred coin is gone, Larpcheck's verdict turns bad, or liquidity falls 30%";
     return this.holder.holder
       ? `<div class="guard on">${I.bell}<div><b>Radar Guard is on</b><p>Radar checks every ${GUARD_MINUTES} minutes and alerts you if ${what}.</p></div></div>`
-      : `<div class="guard">${I.bell}<div><b>Radar Guard is for $RADAR holders</b><p>Hold $10 of $RADAR and Radar alerts you if ${what}.</p><button type="button" data-holder-connect>Check my wallet</button></div></div>`;
+      : `<div class="guard">${I.bell}<div><b>Radar Guard is for $RADAR and $LARPCHECK holders</b><p>Hold $10 of either and Radar alerts you if ${what}.</p><button type="button" data-holder-connect>Check my wallet</button></div></div>`;
   }
 
   starsHtml() {
@@ -1453,7 +1453,7 @@ class Radar {
     }
     // A holder perk (the background checks it too). A watch already running keeps running.
     if (this.holder && !this.holder.holder) {
-      return `<div class="watch on${cta ? ' cta' : ''}">${I.bell}<span>Launch alerts are for $RADAR holders</span>${this.holder.on ? '<button type="button" data-holder-connect>Check my wallet</button>' : ''}</div>`;
+      return `<div class="watch on${cta ? ' cta' : ''}">${I.bell}<span>Launch alerts are for $RADAR and $LARPCHECK holders</span>${this.holder.on ? '<button type="button" data-holder-connect>Check my wallet</button>' : ''}</div>`;
     }
     return `<button type="button" class="watch${cta ? ' cta' : ''}" data-act="watch"${this.watchBusy ? ' disabled' : ''}>${I.bell}<span>${this.watchBusy ? 'Setting up the alert…' : 'Alert me when a coin launches off this post'}</span></button>`;
   }

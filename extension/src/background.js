@@ -141,7 +141,7 @@ handlers['alerts:list'] = async () => alertList(await loadAlerts());
 handlers['alerts:watch'] = async ({ post }, sender) => {
   if (!fromPopup(sender) && !fromX(sender)) throw new Error('Watch posts from the Radar panel');
   // A holder perk. Alerts run on this device, so unlike the server's holder data this can only be a check here.
-  if (!(await handlers.holderActive())) throw new Error('Launch alerts are for $RADAR holders. Check your wallet first.');
+  if (!(await handlers.holderActive())) throw new Error('Launch alerts are for $RADAR and $LARPCHECK holders. Check your wallet first.');
   const read = await handlers.read({ post });
   if (read.engineError) throw new Error(`Radar couldn't read this post right now (${read.engineError})`);
   const w = newWatch(post, read);
@@ -160,7 +160,7 @@ handlers['alerts:watch'] = async ({ post }, sender) => {
 // Following a word: an alert when a new pair appears for it, on any post or none. The same holder perk as watching a post.
 handlers['alerts:follow'] = async ({ word }, sender) => {
   if (!fromPopup(sender) && !fromX(sender)) throw new Error('Follow words from the Radar panel');
-  if (!(await handlers.holderActive())) throw new Error('Launch alerts are for $RADAR holders. Check your wallet first.');
+  if (!(await handlers.holderActive())) throw new Error('Launch alerts are for $RADAR and $LARPCHECK holders. Check your wallet first.');
   const w = newFollow(word);
   const first = await checkWatch(w, { chains: (await settings()).chains }).catch(() => null);
   if (first) Object.assign(w, { seen: first.seen, primed: true });

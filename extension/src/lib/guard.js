@@ -1,4 +1,4 @@
-// Radar Guard, a $RADAR holder perk (extension only): alerts on the coins in the watchlist. It speaks up when the post behind a
+// Radar Guard, a holder perk (extension only): alerts on the coins in the watchlist. It speaks up when the post behind a
 // coin is gone, when Larpcheck's verdict turns bad, or when liquidity falls hard. It says what happened and tells nobody to sell.
 import { verdictTurned } from './alerts.js';
 

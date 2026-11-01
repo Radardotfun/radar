@@ -107,6 +107,49 @@ price = 0.00001;
 balance = 250000;
 console.log('PASS holder: the line is $1 of $RADAR at the current price');
 
+// $LARPCHECK holders: the same line in either coin. It's the same fake chain, so each mint gets its own balance here.
+{
+  const lcEnv = { ...env, LARPCHECK_MINT: 'LarpMint111111111111111111111111111111111111', FRONTRUN_DATA_KEY: '' };
+  const held = { [env.RADAR_MINT]: 0, [lcEnv.LARPCHECK_MINT]: 0 };
+  const priced = { [env.RADAR_MINT]: { usdPrice: 0.00001 }, [lcEnv.LARPCHECK_MINT]: { usdPrice: 0.001 } };
+  const failing = new Set();
+  const before = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    if (String(url).startsWith('https://lite-api.jup.ag')) return new Response(JSON.stringify(priced));
+    const mint = JSON.parse(init.body).params[1].mint;
+    if (failing.has(mint)) return new Response(JSON.stringify({ error: { message: 'busy' } }));
+    return new Response(JSON.stringify({ result: { value: [{ account: { data: { parsed: { info: { tokenAmount: { uiAmount: held[mint] } } } } } }] } }));
+  };
+  const check = () => holderVerify(good, lcEnv, 'https://rpc.test', now);
+  assert.match((await holderConfig(lcEnv)).pitch, /^Hold \$1 of \$RADAR or \$LARPCHECK for/);
+  let r = await check();
+  assert.equal(r.body.holder, false, 'neither coin');
+  assert.deepEqual(r.body.coins.map((c) => c.symbol), ['RADAR', 'LARPCHECK'], 'both are read');
+  held[lcEnv.LARPCHECK_MINT] = 999;
+  assert.equal((await check()).body.holder, false, '$0.999 of $LARPCHECK is under the line');
+  held[env.RADAR_MINT] = 50000;
+  assert.equal((await check()).body.holder, false, '$0.50 + $0.999: part holdings do not add up');
+  held[env.RADAR_MINT] = 0;
+  held[lcEnv.LARPCHECK_MINT] = 1000;
+  r = await check();
+  assert.equal(r.body.holder, true, '$1 of $LARPCHECK passes');
+  assert.equal(r.body.symbol, 'LARPCHECK');
+  assert.equal(await readToken(lcEnv, r.body.token, now), address);
+  // One coin over the line is enough whatever happens to the other. Under it, an unread coin means try again, not "no".
+  failing.add(env.RADAR_MINT);
+  assert.equal((await check()).body.holder, true, '$RADAR unreadable, $LARPCHECK enough');
+  held[lcEnv.LARPCHECK_MINT] = 1;
+  assert.equal((await check()).status, 502, '$RADAR unreadable, $LARPCHECK short: no answer yet');
+  failing.clear();
+  delete priced[lcEnv.LARPCHECK_MINT];
+  held[env.RADAR_MINT] = 250000;
+  assert.equal((await check()).body.holder, true, 'no $LARPCHECK price, $RADAR enough');
+  held[env.RADAR_MINT] = 0;
+  assert.equal((await check()).status, 502, 'no $LARPCHECK price, $RADAR short: no answer yet');
+  globalThis.fetch = before;
+}
+console.log('PASS holder: $1 of $LARPCHECK passes too, and a failed read is never a no');
+
 // Forgeries.
 const other = await webcrypto.subtle.generateKey({ name: 'Ed25519' }, true, ['sign', 'verify']);
 assert.equal((await holderVerify({ ...good, signature: await sign(holderMessage(address, issued), other.privateKey) }, env, 'https://rpc.test', now)).status, 400, 'someone else\'s key');

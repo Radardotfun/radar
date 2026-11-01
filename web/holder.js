@@ -1,5 +1,5 @@
 // Radar holder check: the wallet signs a message (never a transaction), the server checks the signature and the wallet's
-// $RADAR balance on-chain (server/holder.js), and a token good for a day goes back to the Radar panel that opened this.
+// $RADAR and $LARPCHECK balances on-chain (server/holder.js), and a token good for a day goes back to the Radar panel that opened this.
 (() => {
   const API = 'https://narrative-radar.millenia-portfolio.workers.dev';
   // Only these get the token. Radar's panel on X and on this site; the store builds of the extension's own pages.
@@ -51,9 +51,9 @@
       if (d.off) { say('Holder features are not on yet.', 'error'); return; }
       const fmt = (n) => Number(n).toLocaleString('en-US', { maximumFractionDigits: 0 });
       const usd = (n) => `$${Number(n).toFixed(2)}`;
-      if (!d.holder) { say(`This wallet holds ${fmt(d.balance)} $RADAR, worth ${usd(d.value)}. Holder features start at ${usd(d.minUsd)}.`, 'error'); return; }
+      if (!d.holder) { say(`This wallet holds ${(d.coins || []).map((c) => `${fmt(c.balance)} $${c.symbol}, worth ${usd(c.value)}`).join(', and ')}. Holder features start at ${usd(d.minUsd)} of either.`, 'error'); return; }
       if (window.opener) for (const origin of PANELS) { try { window.opener.postMessage({ type: 'radar:holder', token: d.token, exp: d.exp }, origin); } catch {} }
-      say(`You hold ${usd(d.value)} of $RADAR. You're in. This window closes in a moment.`, 'success');
+      say(`You hold ${usd(d.value)} of $${d.symbol}. You're in. This window closes in a moment.`, 'success');
       setTimeout(() => window.close(), 2500);
     } catch (e) {
       say(e?.code === 4001 || /reject|cancel|denied/i.test(e?.message || '') ? 'Cancelled in your wallet. Nothing was signed.' : e?.message || 'The check failed. Try again.', 'error');

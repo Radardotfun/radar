@@ -1,11 +1,12 @@
-// Holder-only data: people holding $RADAR see who is behind a post: Radar's own record of the coins an account has posted
+// Holder-only data: people holding $RADAR or $LARPCHECK see who is behind a post: Radar's own record of the coins an account has posted
 // (server/ledger.js) and, once a key is set, Frontrun's paid data (frontrun.pro).
 // A wallet proves itself by signing a message (a signature, not a transaction: it can't move funds). The server checks
 // the signature and the wallet's balance on-chain, and hands back a token good for a day, so someone who sells loses
 // access within a day. The code is public, so this check can only live here, and so does the Frontrun key: its docs
 // say never to put a key in a browser.
 //
-// On when HOLDER_SECRET (secret), RADAR_MINT and HOLDER_MIN_USD (vars) and the DB binding are set. FRONTRUN_DATA_KEY
+// On when HOLDER_SECRET (secret), RADAR_MINT and HOLDER_MIN_USD (vars) and the DB binding are set. LARPCHECK_MINT (var) lets
+// $LARPCHECK holders in too: the line is the same amount in either coin, and two part holdings don't add up. FRONTRUN_DATA_KEY
 // (secret) adds Frontrun. One fresh Frontrun lookup costs 40 credits (10 smart followers, 20 past coins, 10 profile), kept
 // 6 hours per account. With a $1 entry, one wallet could otherwise spend the whole plan, so a wallet gets 30 a day and
 // everyone together HOLDER_DAILY_LOOKUPS (default 250: API Basic's 300,000 credits over a month).
@@ -20,21 +21,26 @@ const SOL_ADDRESS = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 export const holderMinUsd = (env) => { const n = Number(env.HOLDER_MIN_USD); return Number.isFinite(n) && n > 0 ? n : 1; };
 export const holderOn = (env) => !!(env.HOLDER_SECRET && env.RADAR_MINT && env.DB);
 const money = (n) => `$${Number.isInteger(n) ? n : n.toFixed(2)}`;
+const coinsOf = (env) => [{ symbol: 'RADAR', mint: env.RADAR_MINT }, ...(env.LARPCHECK_MINT ? [{ symbol: 'LARPCHECK', mint: env.LARPCHECK_MINT }] : [])];
+const tickers = (env) => coinsOf(env).map((c) => `$${c.symbol}`).join(' or ');
 // What the panel tells someone who hasn't checked their wallet. From here, so it stays true when Frontrun is added.
-const pitch = (env) => `Hold ${money(holderMinUsd(env))} of $RADAR for launch alerts, and to see the coins this account has posted before and which of those posts are gone${env.FRONTRUN_DATA_KEY ? ', plus its smart followers' : ''}.`;
+const pitch = (env) => `Hold ${money(holderMinUsd(env))} of ${tickers(env)} for launch alerts, and to see the coins this account has posted before and which of those posts are gone${env.FRONTRUN_DATA_KEY ? ', plus its smart followers' : ''}.`;
 
-// $RADAR's price in USD, from Jupiter: DexScreener often has none for a coin on its launch curve. Throws if there is none.
-async function radarPrice(env) {
-  const r = await fetch(`https://lite-api.jup.ag/price/v3?ids=${env.RADAR_MINT}`, { signal: AbortSignal.timeout(8000) });
-  const p = r.ok ? Number((await r.json())[env.RADAR_MINT]?.usdPrice) : NaN;
-  if (!Number.isFinite(p) || p <= 0) throw new Error('no price');
-  return p;
+// The coins' prices in USD, from Jupiter: DexScreener often has none for a coin on its launch curve. A coin with no price is
+// left out, and it throws if none has one.
+async function coinPrices(env) {
+  const coins = coinsOf(env);
+  const r = await fetch(`https://lite-api.jup.ag/price/v3?ids=${coins.map((c) => c.mint).join(',')}`, { signal: AbortSignal.timeout(8000) });
+  const j = r.ok ? await r.json() : {};
+  const prices = new Map(coins.map((c) => [c.mint, Number(j[c.mint]?.usdPrice)]).filter(([, p]) => Number.isFinite(p) && p > 0));
+  if (!prices.size) throw new Error('no price');
+  return prices;
 }
 /** -> { on, minUsd, pitch }. Off if the price can't be read, since nobody could be checked. */
 export async function holderConfig(env) {
   const minUsd = holderMinUsd(env);
   if (!holderOn(env)) return { on: false, minUsd };
-  try { await radarPrice(env); return { on: true, minUsd, pitch: pitch(env) }; } catch { return { on: false, minUsd }; }
+  try { await coinPrices(env); return { on: true, minUsd, pitch: pitch(env) }; } catch { return { on: false, minUsd }; }
 }
 
 // What the wallet signs. web/holder.js writes the same words.
@@ -87,28 +93,36 @@ async function validSignature({ address, issued, signature }, now) {
   } catch { return false; }
 }
 
-// How much $RADAR the wallet holds, across its token accounts. Throws if the chain can't say.
-async function balanceOf(rpcUrl, env, address) {
+// How much of a coin the wallet holds, across its token accounts. Throws if the chain can't say.
+async function balanceOf(rpcUrl, mint, address) {
   const r = await fetch(rpcUrl, {
     method: 'POST', headers: { 'content-type': 'application/json' }, signal: AbortSignal.timeout(10_000),
-    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'getTokenAccountsByOwner', params: [address, { mint: env.RADAR_MINT }, { encoding: 'jsonParsed' }] }),
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'getTokenAccountsByOwner', params: [address, { mint }, { encoding: 'jsonParsed' }] }),
   });
   const d = await r.json().catch(() => null);
   if (!r.ok || !d || d.error || !Array.isArray(d.result?.value)) throw new Error('rpc');
   return d.result.value.reduce((sum, a) => sum + Number(a.account?.data?.parsed?.info?.tokenAmount?.uiAmount || 0), 0);
 }
 
-/** { address, issued, signature (hex) } -> { holder, balance, value, minUsd, token?, exp? } */
+/** { address, issued, signature (hex) } -> { holder, symbol, balance, value, coins, minUsd, token?, exp? }: symbol, balance and value are the wallet's best holding. */
 export async function holderVerify(body, env, rpcUrl, now = Date.now()) {
   const address = String(body?.address || '');
   if (!SOL_ADDRESS.test(address) || !await validSignature({ address, issued: String(body?.issued || ''), signature: String(body?.signature || '') }, now)) return { status: 400, body: { error: 'That signature did not check out. Try again.' } };
-  let balance;
-  let price;
-  try { [balance, price] = await Promise.all([balanceOf(rpcUrl, env, address), radarPrice(env)]); } catch { return { status: 502, body: { error: "Couldn't read your balance right now. Try again in a moment." } }; }
+  const busy = { status: 502, body: { error: "Couldn't read your balance right now. Try again in a moment." } };
+  const prices = await coinPrices(env).catch(() => null);
+  if (!prices) return busy;
+  const reads = await Promise.allSettled(coinsOf(env).map(async (c) => {
+    if (!prices.has(c.mint)) throw new Error('no price');
+    const balance = await balanceOf(rpcUrl, c.mint, address);
+    return { symbol: c.symbol, balance, value: balance * prices.get(c.mint) };
+  }));
+  const coins = reads.filter((r) => r.status === 'fulfilled').map((r) => r.value);
   const minUsd = holderMinUsd(env);
-  const value = balance * price;
-  if (value < minUsd) return { status: 200, body: { holder: false, balance, value, minUsd } };
-  return { status: 200, body: { holder: true, balance, value, minUsd, ...await makeToken(env, address, now) } };
+  const best = [...coins].sort((a, b) => b.value - a.value)[0];
+  // One coin over the line is enough. Under it, an unread coin could still be the one that passes, so that's no answer.
+  if (best?.value >= minUsd) return { status: 200, body: { holder: true, ...best, coins, minUsd, ...await makeToken(env, address, now) } };
+  if (coins.length < reads.length) return busy;
+  return { status: 200, body: { holder: false, ...best, coins, minUsd } };
 }
 
 const text = (s, n) => (typeof s === 'string' ? s.replace(/[\u0000-\u001f\u007f<>]/g, ' ').trim().slice(0, n) : '');

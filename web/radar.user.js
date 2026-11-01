@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Radar
 // @namespace    https://tryradar.fun
-// @version      1.7.44
+// @version      1.7.45
 // @description  See the coins behind any post on X and instantly reroute to the biggest match that passes available on-chain safety checks.
 // @homepageURL  https://tryradar.fun
 // @supportURL   https://tryradar.fun
@@ -31,7 +31,7 @@
 // @downloadURL  https://tryradar.fun/radar.user.js
 // ==/UserScript==
 
-// Radar 1.7.44: built from the extension source at https://tryradar.fun. Not financial advice.
+// Radar 1.7.45: built from the extension source at https://tryradar.fun. Not financial advice.
 (() => {
   var __defProp = Object.defineProperty;
   var __export = (target, all) => {
@@ -1318,7 +1318,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     const lcSettings = () => lcGet("/lc/settings", 6e5);
     async function lcHolderPost(path, body) {
       const h = await holderStored();
-      if (!h) throw new Error("This is for $RADAR holders. Check your wallet first.");
+      if (!h) throw new Error("This is for $RADAR and $LARPCHECK holders. Check your wallet first.");
       const res = await gmFetch(`${API_BASE}${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ token: h.token, ...body }), signal: AbortSignal.timeout(5e4) });
       const data = await res.json().catch(() => ({}));
       if (res.status === 401) await host.store.set(HOLDER_KEY, null);
@@ -2397,7 +2397,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     }
     // Larp check under the narrative (is the post's story real?): one word + score, a trader's one-liner, findings on tap.
     // When Larpcheck has a verdict on the coin, the larp check is theirs, credited and linked to their report.
-    // ---------- Who posted this (holders of $RADAR, data from Frontrun; server/holder.js) ----------
+    // ---------- Who posted this (holders, data from Frontrun; server/holder.js) ----------
     loadHolder() {
       send("lcSettings").then((s) => {
         this.lcPlan = !!s?.plan;
@@ -2484,7 +2484,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       ${lcCheckItHtml(s.lcPage, s.coin)}
     </div>`;
     }
-    // Paid Larpcheck features, for $RADAR holders, only when the server's key has a plan (/lc/settings).
+    // Paid Larpcheck features, for holders, only when the server's key has a plan (/lc/settings).
     get lcPerks() {
       return !!(this.lcPlan && this.holder?.holder);
     }
@@ -2702,7 +2702,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       const words = (this.state.words || []).filter((w) => String(w).replace(/[^\p{L}\p{N}]/gu, "").length >= 3).slice(0, 2);
       if (!words.length) return "";
       if (this.holder && !this.holder.holder && !this.alerts.watches.some((w) => w.word)) {
-        return `<div class="watch on">${I.bell}<span>Alerts on new pairs are for $RADAR holders</span>${this.holder.on ? '<button type="button" data-holder-connect>Check my wallet</button>' : ""}</div>`;
+        return `<div class="watch on">${I.bell}<span>Alerts on new pairs are for $RADAR and $LARPCHECK holders</span>${this.holder.on ? '<button type="button" data-holder-connect>Check my wallet</button>' : ""}</div>`;
       }
       return words.map((word) => {
         const w = this.alerts.watches.find((x) => x.word && x.word.toLowerCase() === String(word).replace(/^\$+/, "").toLowerCase());
@@ -2799,7 +2799,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     guardHtml() {
       if (!this.alerts || !this.holder?.on) return "";
       const what = "the post behind a starred coin is gone, Larpcheck's verdict turns bad, or liquidity falls 30%";
-      return this.holder.holder ? `<div class="guard on">${I.bell}<div><b>Radar Guard is on</b><p>Radar checks every ${GUARD_MINUTES} minutes and alerts you if ${what}.</p></div></div>` : `<div class="guard">${I.bell}<div><b>Radar Guard is for $RADAR holders</b><p>Hold $10 of $RADAR and Radar alerts you if ${what}.</p><button type="button" data-holder-connect>Check my wallet</button></div></div>`;
+      return this.holder.holder ? `<div class="guard on">${I.bell}<div><b>Radar Guard is on</b><p>Radar checks every ${GUARD_MINUTES} minutes and alerts you if ${what}.</p></div></div>` : `<div class="guard">${I.bell}<div><b>Radar Guard is for $RADAR and $LARPCHECK holders</b><p>Hold $10 of either and Radar alerts you if ${what}.</p><button type="button" data-holder-connect>Check my wallet</button></div></div>`;
     }
     starsHtml() {
       const top = `<div class="recent-top"><span>Watchlist${this.stars.length ? ` \xB7 ${this.stars.length}` : ""}</span><button data-act-back>Back</button></div>${this.guardHtml()}`;
@@ -3136,7 +3136,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
         return `<div class="watch on${cta ? " cta" : ""}">${I.bell}<span>Watching this post \xB7 ${h}h left</span><button type="button" data-act="unwatch" data-id="${esc2(w.id)}">Stop</button></div>`;
       }
       if (this.holder && !this.holder.holder) {
-        return `<div class="watch on${cta ? " cta" : ""}">${I.bell}<span>Launch alerts are for $RADAR holders</span>${this.holder.on ? '<button type="button" data-holder-connect>Check my wallet</button>' : ""}</div>`;
+        return `<div class="watch on${cta ? " cta" : ""}">${I.bell}<span>Launch alerts are for $RADAR and $LARPCHECK holders</span>${this.holder.on ? '<button type="button" data-holder-connect>Check my wallet</button>' : ""}</div>`;
       }
       return `<button type="button" class="watch${cta ? " cta" : ""}" data-act="watch"${this.watchBusy ? " disabled" : ""}>${I.bell}<span>${this.watchBusy ? "Setting up the alert\u2026" : "Alert me when a coin launches off this post"}</span></button>`;
     }

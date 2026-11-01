@@ -1,6 +1,6 @@
 // More of Larpcheck's API (larpcheck.app/api/v1) for Radar. The key stays here on the server. Their terms: name Larpcheck,
 // link every verdict to its check, never reword one. Reads are free at 30 calls a minute, so answers are cached. New checks
-// and questions need an API plan, and they cost money, so they're for $RADAR holders with daily limits. Without a plan
+// and questions need an API plan, and they cost money, so they're for holders (server/holder.js) with daily limits. Without a plan
 // /lc/settings says so and the panel doesn't offer them.
 import { readToken } from './holder.js';
 
@@ -133,7 +133,7 @@ const refused = (r) => (r.status === 402 || r.status === 403
   ? { status: 402, data: { error: "Checks in Radar aren't switched on right now. You can check it on Larpcheck." } }
   : { status: r.status === 429 ? 429 : 502, data: { error: 'Larpcheck is busy. Try again in a minute.' } });
 
-// POST /lc/check { token, input }: starts a check for a $RADAR holder, or finds a recent one (which costs nothing).
+// POST /lc/check { token, input }: starts a check for a holder, or finds a recent one (which costs nothing).
 export async function lcStart(body, env) {
   const wallet = await readToken(env, body?.token);
   if (!wallet) return { status: 401, data: { error: 'Your holder check ran out. Connect your wallet again.' } };
