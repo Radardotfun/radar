@@ -207,6 +207,10 @@ h3 { font-size: 18px; letter-spacing: -0.02em; font-weight: 700; }
   .scan-open .scan-panel { height: auto; min-height: 0; overflow: visible; }
   .scan-open .scan-panel .shell { height: auto; }
   .scan-open .scan-panel .scroll { overflow: visible; }
+  /* The page is long now, so sharing stays within reach, above the coins. */
+  .scan-open .scan-app { display: flex; flex-direction: column; }
+  .scan-open .scan-share { order: -1; margin: 0 0 12px; }
+  .scan-open .scan-share .btn { flex: 1 1 130px; min-width: 0; }
   .hero { grid-template-columns: minmax(0, 1fr); padding-top: 28px; gap: 24px; }
   .hero-copy { text-align: left; }
   .shot { width: min(100%, 340px); }
