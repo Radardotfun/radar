@@ -250,7 +250,8 @@ export function pickThree(tokens, { cuts = [0.3, 0.15, 0], allowFallback = true 
     if (!p) continue;
     p.alsoTop = contest && p.role !== 'top' && best.top === p.token.address;
     p.alsoOg = contest && p.role !== 'og' && best.og === p.token.address;
-    p.alsoMover = contest && p.role !== 'mover' && best.mover === p.token.address && momentum(p.token) > 0;
+    // With a Mover card on the page, another card isn't "also the mover".
+    p.alsoMover = contest && p.role !== 'mover' && !picks.some((x) => x?.role === 'mover') && best.mover === p.token.address && momentum(p.token) > 0;
   }
 
   const others = tokens

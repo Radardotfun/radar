@@ -56,6 +56,11 @@ assert.equal(wantsCoins(post('@radardotfunn when is the next update coming out g
 assert.equal(wantsCoins(post('@radardotfunn gm', [14, 16], [['radardotfunn', 0]]), me).ok, false);
 // Typed, but a conversation rather than a request.
 assert.equal(wantsCoins(post('@Bob honestly @radardotfunn has been my favourite tool this week, great work all', [5, 81], [['Bob', 0], ['radardotfunn', 14]]), me).ok, false);
+// A long post that says radar, scan or token is talking about Radar. It isn't asking for coins.
+const praise = '@radardotfunn is a great tool that a lot of people use. The dev is hardworking. I recommend trying it out if you wanted a browser extension. The radar token is paired with another coin';
+assert.equal(wantsCoins(post(praise, [0, [...praise].length], [['radardotfunn', 0]]), me).ok, false);
+const pitch = 'Then you should try scan em on https://tryradar.fun @radardotfunn tek helps you scan and save you stress of buying copycats and getting rugged. So what you say, ape in and lock in right now fam';
+assert.equal(wantsCoins(post(pitch, [0, [...pitch].length], [['radardotfunn', 52]]), me).ok, false);
 console.log('PASS bot: answers typed tags, ignores replies under our posts and conversation');
 
 // The coin the post names leads the reply; its copycats and major-ticker coins are left out of the picks.
@@ -129,6 +134,17 @@ const thinPic = await botCoins({ mentioned: [], picks: [], roleCandidates: [thin
 assert.doesNotMatch(botReply(thinPic, 'x', now), /14\.00M/);
 const namedSmall = await botCoins({ mentioned: [tinyGoat], picks: [], roleCandidates: [bigGoat], pool: [bigGoat] }, { text: '', images: [] }, { search: async () => [] });
 assert.doesNotMatch(botReply(namedSmall, 'x', now), /14\.00M/);
+// Highest MC is earned: a lone coin or one with a bigger namesake left out by the judge is just "on this story".
+const smallRival = tok('GOAT', 'Goat', 'KcBGfRckvvLpSnbnzd9TmKj9WwccYkzxrur5yHeHoAJ', 46_000, { relevance: 95, mcapBacked: true, createdAt: now - 86_400_000 * 900 });
+const leftOut = { ...bigGoat, relevance: 10 };
+const outrankedPic = await botCoins({ mentioned: [], picks: [], roleCandidates: [smallRival, leftOut], pool: [smallRival, leftOut, tinyGoat] }, { text: '', images: ['https://pbs.twimg.com/media/goat.jpg'] }, { search: async () => [], matchImages: async () => [2] });
+assert.equal(outrankedPic.outranked, true, 'the left-out $14M coin outranks the $46K pick');
+const outrankedText = botReply(outrankedPic, 'x', now);
+assert.doesNotMatch(outrankedText, /Highest MC/);
+assert.match(outrankedText, /🎯 On this story[^\n]*GOAT · \$46\.0K/);
+const loneCoin = botReply({ picks: [{ role: 'top', token: smallRival }], alone: true }, 'x', now);
+assert.doesNotMatch(loneCoin, /Highest MC/);
+assert.match(loneCoin, /🎯 On this story: \$GOAT · \$46\.0K/);
 console.log('PASS bot: a picture post leads with the coin whose logo is that picture');
 const si276 = tok('SI276', 'Super Inu 276', 'HMYd9tosnUXuNHmq7pXmoePRVBLBBjA3JBfydq6upump', 20_000, { createdAt: Date.parse('2026-01-01') });
 assert.deepEqual((await botCoins({ mentioned: [superInu], picks: [], roleCandidates: [si276] }, { text: '' }, { search: async () => [] })).picks.map((p) => p.token.symbol), ['SI'], 'SI276 is a copy of SI');
@@ -294,6 +310,11 @@ assert.ok(lumiRes.picks.find((p) => p.token.address === lumi.address).alsoOg, 'a
 const raypad = tok('RAYPAD', 'Raypad', 'Raypad0000000000000000000000000000000pump', 560_000, { createdAt: Date.now() - 5 * 864e5, liquidity: 5982, volume: { h1: 0, h24: 3 } });
 const fobo = tok('FOBO', 'Fobo', 'FoboLive000000000000000000000000000000pump', 360_000, { createdAt: Date.now() - 4 * 864e5 });
 assert.deepEqual(pickThree([raypad, fobo], { cuts: [0], allowFallback: false }).picks.filter((p) => p.role === 'og'), []);
+// The top coin moving hardest isn't "also the mover" beside a Mover card.
+const hot = (name, addr, cap, pc) => ({ ...tok(name, name, addr, cap, { relevance: 95, mcapBacked: true, createdAt: now - 86_400_000 * 40 }), volume: { h1: 50_000, h24: 300_000 }, priceChange: { h1: pc, h6: pc }, txns: { h1: { buys: 90, sells: 20 }, h24: { buys: 500, sells: 200 } } });
+const twoHot = pickThree([hot('HOTA', 'A111111111111111111111111111111111111111pump', 900_000, 60), hot('HOTB', 'B111111111111111111111111111111111111111pump', 100_000, 20)], { cuts: [0.85, 0.7], allowFallback: false });
+assert.ok(twoHot.picks.some((p) => p.role === 'mover'), 'a second coin takes Mover');
+assert.ok(!twoHot.picks.some((p) => p.alsoMover), 'nobody is also the mover beside it');
 console.log('PASS bot: the OG is never younger than Highest MC or a twin, and a mover has traded this hour');
 // A coin past its first day that barely trades says so. A new one doesn't, however few trades it has so far.
 const sleepy = { ...tok('ELON', 'Elon', 'ElonSleepy555555555555555555555555555pump', 285_000), createdAt: now - 650 * 864e5, volume: { h1: 0, h24: 141 }, txns: { h1: { buys: 0, sells: 0 }, h24: { buys: 7, sells: 10 } } };

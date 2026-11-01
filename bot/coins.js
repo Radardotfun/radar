@@ -240,5 +240,8 @@ export async function botCoins(res, post, { search, lookupCa, lookupBio = lookup
   const postsOwn = named || story.some(isOwn);
   story = story.map((t) => { const twin = olderTwinOf(t, twins); return { ...t, olderTwin: postsOwn ? !!twin : twin }; });
   const { picks } = story.length ? pickThree(story, { cuts: [0.85, 0.7], allowFallback: false }) : { picks: [] };
-  return { named, how, picks, alone: story.length < 2 };
+  // A same-named coin on the same chain the judge left out can be far bigger: the top pick doesn't claim the title over it.
+  const top = picks.find((p) => p.role === 'top')?.token;
+  const outranked = !!top && [...scanned, ...(res?.pool || [])].some((t) => t?.address !== top.address && sym(t) === sym(top) && t.chain === top.chain && t.mcapBacked && alive(t) && (t.marketCap || 0) > (top.marketCap || 0));
+  return { named, how, picks, alone: story.length < 2, outranked };
 }

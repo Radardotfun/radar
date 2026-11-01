@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Mobile Test Cases · Radar</title>
+  <meta name="description" content="Core function test cases for Radar on Microsoft Edge for Android and iOS." />
+  <meta name="robots" content="noindex" />
+  <meta name="theme-color" content="#000000" />
+  <link rel="icon" href="/icons/icon32.png" sizes="32x32" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&family=Geist+Mono:wght@500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/app.css" />
+</head>
+<body>
+  <header class="nav">
+    <a class="logo" href="/" aria-label="Radar home">
+      <img class="wordmark" src="/icons/radar-wordmark.png" width="795" height="227" alt="radar" />
+    </a>
+  </header>
+
+  <main class="doc">
+    <p class="eyebrow">Edge mobile · Core function test cases · v1.5.0</p>
+    <h1>Mobile test cases</h1>
+    <p class="lede">For the Microsoft Edge Android and iOS QA team. Extension ID <code>lchjfepnoaglhmnbbjffhbmfbchnojml</code>. No account or sign-in is needed for Radar itself.</p>
+
+    <h2>Setup</h2>
+    <ul>
+      <li>Microsoft Edge for Android or iOS, current stable or Canary, with Radar installed from its Edge Add-ons listing.</li>
+      <li>Open x.com in Edge, not the X app. Post pages can be viewed without signing in to X.</li>
+      <li>Sample narrative post: <code>https://x.com/cb_doge/status/2112923907644928395</code></li>
+      <li>Sample post with a contract address: any recent result of the X search <code>pump ca</code> (Latest tab).</li>
+    </ul>
+
+    <h2>TC1. Radar button appears under posts</h2>
+    <p><b>Steps:</b> open the sample narrative post. Scroll the timeline or the replies.</p>
+    <p><b>Expected:</b> each post's action bar (reply, repost, like, bookmark, share) has an extra radar icon. Opening x.com for the first time shows a one-time tip, "Tap to see the coins behind this post", with a Got it button.</p>
+
+    <h2>TC2. Scan a post</h2>
+    <p><b>Steps:</b> tap the radar icon under the sample narrative post.</p>
+    <p><b>Expected:</b> a panel opens over the page within a second. It shows the post's author and text, then a one-line narrative (for the sample: Lufthansa adopting Starlink). Within about 10 seconds, up to three coin cards appear, labelled Top market cap, The OG and The mover. Each shows a name, ticker, shortened contract address, market cap, age and 24h volume.</p>
+
+    <h2>TC3. Expand a coin card</h2>
+    <p><b>Steps:</b> tap the arrow on the first card.</p>
+    <p><b>Expected:</b> the card expands to show liquidity, holders, 24h transactions, Bundled supply (a percentage, or a short note that it could not be read), a Launch audit (top 10 holders, mint/freeze, LP, RugCheck), and buttons for Axiom, Padre, Fomo, GMGN, Dex, Solscan, RugCheck and Open Bubblemaps.</p>
+
+    <h2>TC4. Copy the contract address</h2>
+    <p><b>Steps:</b> tap the copy icon next to the shortened address on any card.</p>
+    <p><b>Expected:</b> a short "Copied" confirmation. Pasting elsewhere gives the full address.</p>
+
+    <h2>TC5. Open a trading or chart link</h2>
+    <p><b>Steps:</b> on an expanded card, tap Dex, then go back. Tap Open Bubblemaps.</p>
+    <p><b>Expected:</b> each opens the coin's page on that site in a new tab. x.com stays open with the panel.</p>
+
+    <h2>TC6. Contract address shown under a post</h2>
+    <p><b>Steps:</b> open the X search <code>pump ca</code>, Latest tab, and scroll to a post that contains a Solana contract address.</p>
+    <p><b>Expected:</b> within a few seconds a small line appears under that post with the coin's ticker, market cap and age (for example "$COIN $80.6K · 28m"). Tapping it opens the panel on that post.</p>
+
+    <h2>TC7. Live refresh</h2>
+    <p><b>Steps:</b> keep the panel open for 30 seconds.</p>
+    <p><b>Expected:</b> the footer reads "updated Ns ago" and resets about every 10 seconds; numbers on the cards update in place.</p>
+
+    <h2>TC8. Open and close the panel</h2>
+    <p><b>Steps:</b> close the panel with its X button. Tap the round radar button floating at the bottom right of the page.</p>
+    <p><b>Expected:</b> the panel closes, then reopens showing the last scan. The floating button does not cover X's own post (compose) button.</p>
+
+    <h2>Notes</h2>
+    <ul>
+      <li>Data comes from DexScreener, RugCheck and the Solana network, read live; results depend on what is trading at test time.</li>
+      <li>A post with no coin narrative (for example a personal update) shows "No coin narrative here". That is expected behaviour, not a failure.</li>
+      <li>Privacy policy: <code>https://getradar.pages.dev/privacy</code></li>
+    </ul>
+  </main>
+
+  <footer class="site-foot">
+    <span>Radar</span>
+    <a href="/privacy">Privacy</a>
+  </footer>
+</body>
+</html>

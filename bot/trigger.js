@@ -15,6 +15,7 @@ export function wantsCoins(m, username) {
   if (!typed) return { ok: false, why: 'not typed (a reply under one of our posts)' };
   const shown = [...text].slice(from, to).join('');
   const rest = shown.replace(/@\w{1,15}/g, ' ').replace(/https?:\/\/\S+/g, ' ').replace(/\s+/g, ' ').trim();
-  if (rest.length <= 25 || ASK.test(rest)) return { ok: true };
+  // A real ask is short. A long post that says "radar", "scan" or "token" is talking about Radar, not asking it anything.
+  if (rest.length <= 25 || (rest.length <= 100 && ASK.test(rest))) return { ok: true };
   return { ok: false, why: 'conversation, not a coin request' };
 }
