@@ -154,6 +154,7 @@ const ROLE = {
   ca: { label: 'MENTIONED CA', icon: I.pin },
   bio: { label: "POSTER'S BIO", icon: I.pin },
   more: { label: 'MATCH', icon: I.pin },
+  new: { label: 'NEW PAIR', icon: I.spark },
 };
 
 /* ---------------- links ---------------- */
@@ -265,6 +266,7 @@ class Radar {
     this.audits = new Map(); // address -> { rug, bundle, rugErr, bundleErr }
     this.larp = new Map(); // address -> { lc: Larpcheck verdict, at }
     this.expanded = new Set();
+    this.tab = 'picks'; // or 'new': the story's newest pairs
     this.openCards = new Set(); // cards the user maximised
     this.refreshSec = 10;
     this.timers = [];
@@ -291,10 +293,11 @@ class Radar {
   }
 
   /* ----- public ----- */
-  open({ post = null, text = '', source = null, trends = null } = {}) {
+  open({ post = null, text = '', source = null, trends = null, tab = 'picks' } = {}) {
     if (trends) this.trends = trends;
     this.shell.classList.add('open');
     const p = post || (text ? { text } : null);
+    if (p) this.tab = tab === 'new' ? 'new' : 'picks';
     if (p) this.scan({ post: p, source });
     else if (!this.state.ts) this.renderBody();
     if (!p) setTimeout(() => this.input?.focus(), 250);
@@ -401,7 +404,7 @@ class Radar {
   showCoins(res) {
     this.state = { ...this.state, ...res, loading: false };
     this.tokens.clear();
-    for (const t of [...res.mentioned, ...(res.bioCoins || []), ...(res.techMatch ? [res.techMatch] : []), ...(res.roleCandidates || []), ...res.picks.map((x) => x.token), ...res.others]) this.tokens.set(t.address, t);
+    for (const t of [...res.mentioned, ...(res.bioCoins || []), ...(res.techMatch ? [res.techMatch] : []), ...(res.roleCandidates || []), ...res.picks.map((x) => x.token), ...res.others, ...(res.newPairs || [])]) this.tokens.set(t.address, t);
     this.renderHead();
     this.renderBody();
     this.renderFoot();
@@ -448,9 +451,14 @@ class Radar {
   }
 
   cardTokens() {
-    const tokens = [...this.state.mentioned, ...this.bioCards(), ...(this.state.techMatch ? [this.state.techMatch] : []), ...this.state.picks.map((p) => p.token), ...this.state.others.filter((t) => this.expanded.has(t.address))];
+    const tokens = [...this.state.mentioned, ...this.bioCards(), ...(this.state.techMatch ? [this.state.techMatch] : []), ...this.state.picks.map((p) => p.token), ...this.state.others.filter((t) => this.expanded.has(t.address)), ...this.newCards()];
     return [...new Map(tokens.map((t) => [t.address, t])).values()]
       .map((t) => this.tokens.get(t.address) || t);
+  }
+
+  // On the New tab the newest three get full cards and their checks; the rest wait until they're opened.
+  newCards() {
+    return this.tab === 'new' ? (this.state.newPairs || []).filter((t, i) => i < 3 || this.expanded.has(t.address)) : [];
   }
 
   loadAudits() {
@@ -889,18 +897,28 @@ class Radar {
         ${this.inline && (this.alerts?.watches.length || this.alerts?.feed.length) ? this.alertsHtml() : ''}`;
       return;
     }
+    const tabs = this.tabsHtml();
+    if (this.tab === 'new') {
+      this.bodyEl.innerHTML = tabs + this.newHtml();
+      this.hydrateImages();
+      for (const t of this.newCards()) {
+        this.renderAudit(t.address);
+        this.renderLarp(t.address);
+      }
+      return;
+    }
     const bio = this.bioCards();
     if (!picks.length && !mentioned.length && !bio.length && !techMatch && this.state.mode === 'ai' && this.state.coinable === false) {
-      this.bodyEl.innerHTML = `<div class="empty"><div class="big">No coin narrative here</div>
+      this.bodyEl.innerHTML = `${this.state.newPairs?.length ? tabs : ''}<div class="empty"><div class="big">No coin narrative here</div>
         <p>This post doesn't carry anything people trade. Try a news post, a trend, or a meme.</p>${this.launchHtml()}</div>`;
       return;
     }
     if (!picks.length && !mentioned.length && !bio.length && !techMatch) {
-      this.bodyEl.innerHTML = `<div class="empty"><div class="big">No live coins for this narrative</div>
+      this.bodyEl.innerHTML = `${this.state.newPairs?.length ? tabs : ''}<div class="empty"><div class="big">No live coins for this narrative</div>
         <p>Nothing trading on-chain is about this yet.</p>${this.watchHtml({ cta: true })}${this.launchHtml()}</div>`;
       return;
     }
-    let html = '';
+    let html = tabs;
     html += `<div class="reroute-bar"><span>Instant reroute</span><button type="button" data-reroute>Open best match</button></div>`;
     if (mentioned.length) html += `<div class="section-label"><span>In the post</span></div>` + mentioned.map((t) => this.cardHtml(t, { role: 'ca' })).join('');
     if (bio.length) html += `<div class="section-label"><span>In the poster's bio</span></div>` + bio.map((t) => this.cardHtml(t, { role: 'bio' })).join('');
@@ -947,6 +965,56 @@ class Radar {
       this.renderAudit(t.address);
       this.renderLarp(t.address);
     }
+  }
+
+  tabsHtml() {
+    const n = this.state.newPairs?.length || 0;
+    return `<div class="scan-tabs" role="tablist"><button type="button" role="tab" aria-selected="${this.tab !== 'new'}" data-scan-tab="picks">Picks</button><button type="button" role="tab" aria-selected="${this.tab === 'new'}" data-scan-tab="new">New${n ? ` · ${n}` : ''}</button></div>`;
+  }
+
+  // The story's newest pairs. They're found by name, so the note says so, and new coins carry the most risk.
+  newHtml() {
+    const list = this.state.newPairs || [];
+    if (!list.length) return `<div class="empty"><div class="big">No new pairs on this story</div><p>Nothing named after it launched and traded in the last 24 hours.</p>${this.followHtml()}${this.launchHtml()}</div>`;
+    const live = (t) => this.tokens.get(t.address) || t;
+    const shown = this.newCards();
+    const rest = list.filter((t) => !shown.includes(t)).map(live);
+    return `<div class="section-label"><span>New pairs</span><span>last 24h</span></div>
+      <p class="new-note">Newest first, matched by name to this story. New coins are the riskiest, so read the checks on each one.</p>
+      ${shown.map((t) => this.cardHtml(live(t), { role: 'new', fresh: t })).join('')}
+      ${rest.length ? `<div class="list">${rest.map((t) => `<button class="li" data-expand="${t.address}">${this.avatarHtml(t)}
+        <div class="nm"><b>${esc(t.name)}</b><span>$${esc(t.symbol)} · ${age(t.createdAt)}${list.find((x) => x.address === t.address)?.copyOf ? ' · copy' : ''}</span></div>
+        <div class="r" data-k="li-mc">${t.mcapBacked ? usd(t.marketCap) : '<span title="Market cap not backed by real liquidity">thin</span>'}<span>${num(t.txns.h1.buys)} buys 1h</span></div></button>`).join('')}</div>` : ''}
+      ${this.followHtml()}${this.launchHtml()}`;
+  }
+
+  // An alert for a new pair on this story's words, on any post or none. Extension only, and the same holder perk as watching a post.
+  followHtml() {
+    if (!this.alerts) return '';
+    const words = (this.state.words || []).filter((w) => String(w).replace(/[^\p{L}\p{N}]/gu, '').length >= 3).slice(0, 2);
+    if (!words.length) return '';
+    if (this.holder && !this.holder.holder && !this.alerts.watches.some((w) => w.word)) {
+      return `<div class="watch on">${I.bell}<span>Alerts on new pairs are for $RADAR holders</span>${this.holder.on ? '<button type="button" data-holder-connect>Check my wallet</button>' : ''}</div>`;
+    }
+    return words.map((word) => {
+      const w = this.alerts.watches.find((x) => x.word && x.word.toLowerCase() === String(word).replace(/^\$+/, '').toLowerCase());
+      if (w) return `<div class="watch on">${I.bell}<span>Following “${esc(w.word)}” · ${Math.max(1, Math.round((w.until - Date.now()) / 3_600_000))}h left</span><button type="button" data-act="unwatch" data-id="${esc(w.id)}">Stop</button></div>`;
+      return `<button type="button" class="watch" data-act="follow" data-word="${esc(word)}"${this.watchBusy ? ' disabled' : ''}>${I.bell}<span>Alert me on new “${esc(word)}” pairs</span></button>`;
+    }).join('');
+  }
+
+  async follow(word) {
+    if (this.watchBusy || !word) return;
+    this.watchBusy = true;
+    this.renderBody();
+    try {
+      this.alerts = await send('alerts:follow', { word });
+      this.toast(`Following “${word}” for 3 days. Radar pings you when a new pair appears${this.alerts.notifications ? '' : '. Turn on desktop alerts in the toolbar popup'}`, 3600);
+    } catch (err) {
+      this.toast(err.message, 3600);
+    }
+    this.watchBusy = false;
+    this.renderBody();
   }
 
   // The poster's bio coin gets its own card, unless a scan's own pick already shows it. A search has no poster.
@@ -1118,6 +1186,10 @@ class Radar {
     const buyShare = buys + sells ? (buys / (buys + sells)) * 100 : 50;
     const tags = [pick.alsoOg && 'also the OG', pick.alsoTop && 'also top MC', pick.alsoMover && 'also the mover'].filter(Boolean);
     if (this.state.techMatch?.address === t.address && role !== 'tech') tags.push('TECH MATCH');
+    if (pick.fresh) {
+      tags.push(pick.fresh.copyOf ? `copy of older $${String(pick.fresh.copyOf.symbol || '').trim()}` : 'first of this name');
+      tags.push(`${num(buys)} buys 1h`);
+    }
     const vsPost = launchedVsPost(t.createdAt, this.lastPost?.url);
     if (t.fromPost) tags.unshift(vsPost?.includes('after') ? `launched ${vsPost}` : 'launched off this post');
     else if (vsPost) tags.push(vsPost);
@@ -1132,7 +1204,7 @@ class Radar {
       <article class="card ${role}${open ? ' open' : ''}${this.state.techMatch?.address === t.address ? ' tech-match' : ''}" data-addr="${t.address}">
         <header class="card-top">
           <span class="badge">${r.icon}${r.label}</span>
-          ${tags.map((x) => `<span class="tag${x.startsWith('launched') ? ' hot' : x.startsWith('looks') ? ' rug' : /^oldest of|named \$/.test(x) ? ' twins' : ''}">${esc(x)}</span>`).join('')}
+          ${tags.map((x) => `<span class="tag${x.startsWith('launched') ? ' hot' : x.startsWith('looks') ? ' rug' : /^oldest of|named \$|^copy of/.test(x) ? ' twins' : ''}">${esc(x)}</span>`).join('')}
           ${t.chain === 'solana' ? `<span class="cc" data-cc="${t.address}"></span>` : ''}
           <button class="star-btn${this.isStarred(t.address) ? ' on' : ''}" data-star="${t.address}" aria-pressed="${this.isStarred(t.address)}" title="Watchlist">${I.star}</button>
           <button class="toggle-card" data-toggle="${t.address}" aria-expanded="${open}" title="${open ? 'Show less' : 'Show everything'}">${I.chevron}</button>
@@ -1405,7 +1477,13 @@ class Radar {
   async unwatch(id) {
     try { this.alerts = await send('alerts:stop', { id }); } catch (err) { this.toast(err.message, 3000); }
     this.renderHead();
-    if (!this.state.picks?.length || this.view === 'settings') this.renderBody();
+    if (!this.state.picks?.length || this.view === 'settings' || this.tab === 'new') this.renderBody();
+  }
+
+  async toggleFresh() {
+    try { this.alerts = await send('alerts:fresh', { on: !this.alerts?.freshBadges }); } catch (err) { this.toast(err.message, 3000); }
+    this.toast(this.alerts?.freshBadges ? 'New-pair badges are on. Reload X to see them' : 'New-pair badges are off. Reload X to hide them', 3000);
+    this.renderBody();
   }
 
   // Desktop notifications need the optional permission, which only the toolbar popup can ask for (inside the click).
@@ -1421,7 +1499,7 @@ class Radar {
     const a = this.alerts;
     if (!a) return '';
     const left = (w) => `${Math.max(1, Math.round((w.until - Date.now()) / 3_600_000))}h left`;
-    const watches = a.watches.map((w) => `<div class="al-w"><div><b>${w.author ? `@${esc(w.author)}` : 'Post'}</b><span>${esc(w.label)}</span></div>
+    const watches = a.watches.map((w) => `<div class="al-w"><div><b>${w.word ? `“${esc(w.word)}”` : w.author ? `@${esc(w.author)}` : 'Post'}</b><span>${esc(w.label)}</span></div>
       <em>${left(w)}</em><button type="button" data-act="unwatch" data-id="${esc(w.id)}">Stop</button></div>`).join('');
     const hits = a.feed.slice(0, 5).map((f) => {
       const c = f.coin;
@@ -1432,10 +1510,11 @@ class Radar {
     }).join('');
     return `<section class="settings">
       <div class="set-head"><h3>Alerts</h3>${a.watches.length ? `<span class="verdict ok">${a.watches.length} WATCHING</span>` : ''}</div>
-      <p>Tap the bell under a post in the Radar panel. For the next 24 hours Radar checks every minute for a coin launched off it, runs the larp check, and pings you with a buy button.</p>
+      <p>Tap the bell under a post in the Radar panel. For the next 24 hours Radar checks every minute for a coin launched off it, runs the larp check, and pings you with a buy button. On a scan's New tab you can follow a word for 3 days instead.</p>
       ${watches ? `<div class="al-list">${watches}</div>` : ''}
       ${hits ? `<div class="section-label"><span>Latest alerts</span></div><div class="al-list">${hits}</div>` : ''}
       ${a.notifications ? '<p class="fine">Desktop alerts are on.</p>' : '<button class="fr-btn" data-alerts-notify>Turn on desktop alerts</button><p class="fine">Without them, alerts show on any open X tab and as a number on the Radar icon.</p>'}
+      <button class="fr-btn ghost" data-act="fresh-toggle">New-pair badges on X: ${a.freshBadges === false ? 'Off' : 'On'}</button>
     </section>`;
   }
 
@@ -1643,6 +1722,11 @@ class Radar {
     const starOpen = e.target.closest('[data-star-open]');
     if (starOpen) { this.scan({ post: { text: starOpen.dataset.starOpen }, source: { kind: 'Watchlist', label: `$${starOpen.dataset.starSym}` } }); return; }
     if (e.target.closest('[data-act="watch"]')) { await this.watch(); return; }
+    const scanTab = e.target.closest('[data-scan-tab]');
+    if (scanTab) { this.tab = scanTab.dataset.scanTab === 'new' ? 'new' : 'picks'; this.renderBody(); this.loadAudits(); return; }
+    const follow = e.target.closest('[data-act="follow"]');
+    if (follow) { await this.follow(follow.dataset.word); return; }
+    if (e.target.closest('[data-act="fresh-toggle"]')) { await this.toggleFresh(); return; }
     const stop = e.target.closest('[data-act="unwatch"]');
     if (stop) { await this.unwatch(stop.dataset.id); return; }
     if (e.target.closest('[data-alerts-notify]')) { await this.allowNotifications(); return; }

@@ -1,6 +1,6 @@
 import { makeHandlers, API_BASE, DEFAULTS } from './lib/handlers.js';
 import { listWallets, buy, KEY_RE, FRONTRUN_ORIGIN } from './lib/frontrun.js';
-import { newWatch, verdictTurned, checkWatch, buyUrl, chartUrl, MAX_WATCHES, coinOf, statusOf } from './lib/alerts.js';
+import { newWatch, newFollow, verdictTurned, checkWatch, buyUrl, chartUrl, MAX_WATCHES, coinOf, statusOf } from './lib/alerts.js';
 import { GUARD_KEY, GUARD_MINUTES, lookAtStar } from './lib/guard.js';
 import { reportBlock } from './ui/holdercheck.js';
 
@@ -128,13 +128,14 @@ const withAlerts = (fn) => {
   alertQueue = run;
   return run;
 };
-const publicWatch = (w) => ({ id: w.id, url: w.url, author: w.author, label: w.label, narrative: w.narrative, since: w.since, until: w.until });
+const publicWatch = (w) => ({ id: w.id, word: w.word || null, url: w.url, author: w.author, label: w.label, narrative: w.narrative, since: w.since, until: w.until });
 const canNotify = () => ext.permissions.contains({ permissions: ['notifications'] }).catch(() => false);
 const showBadge = (n) => {
   ext.action.setBadgeText({ text: n ? String(Math.min(n, 99)) : '' }).catch(() => {});
   if (n) ext.action.setBadgeBackgroundColor({ color: '#7c5cff' }).catch(() => {});
 };
-const alertList = async (a) => ({ watches: a.watches.filter((w) => w.until > Date.now()).map(publicWatch), feed: a.feed.slice(0, 20), unread: a.unread, notifications: await canNotify() });
+const FRESH_KEY = 'freshBadges'; // content.js reads it: new-pair badges under posts, on unless turned off
+const alertList = async (a) => ({ watches: a.watches.filter((w) => w.until > Date.now()).map(publicWatch), feed: a.feed.slice(0, 20), unread: a.unread, notifications: await canNotify(), freshBadges: (await ext.storage.local.get(FRESH_KEY))[FRESH_KEY] !== false });
 
 handlers['alerts:list'] = async () => alertList(await loadAlerts());
 handlers['alerts:watch'] = async ({ post }, sender) => {
@@ -149,12 +150,32 @@ handlers['alerts:watch'] = async ({ post }, sender) => {
   if (first) Object.assign(w, { seen: first.seen, primed: true });
   const list = await withAlerts(async (a) => {
     a.watches = a.watches.filter((x) => x.until > Date.now() && x.id !== w.id);
-    if (a.watches.length >= MAX_WATCHES) throw new Error(`Radar watches up to ${MAX_WATCHES} posts at once. Stop one in the toolbar popup first.`);
+    if (a.watches.length >= MAX_WATCHES) throw new Error(`Radar watches up to ${MAX_WATCHES} posts or words at once. Stop one in the toolbar popup first.`);
     a.watches.push(w);
     return alertList(a);
   });
   await ext.alarms.create(ALARM, { periodInMinutes: 1 });
   return list;
+};
+// Following a word: an alert when a new pair appears for it, on any post or none. The same holder perk as watching a post.
+handlers['alerts:follow'] = async ({ word }, sender) => {
+  if (!fromPopup(sender) && !fromX(sender)) throw new Error('Follow words from the Radar panel');
+  if (!(await handlers.holderActive())) throw new Error('Launch alerts are for $RADAR holders. Check your wallet first.');
+  const w = newFollow(word);
+  const first = await checkWatch(w, { chains: (await settings()).chains }).catch(() => null);
+  if (first) Object.assign(w, { seen: first.seen, primed: true });
+  const list = await withAlerts(async (a) => {
+    a.watches = a.watches.filter((x) => x.until > Date.now() && x.id !== w.id);
+    if (a.watches.length >= MAX_WATCHES) throw new Error(`Radar watches up to ${MAX_WATCHES} posts or words at once. Stop one in the toolbar popup first.`);
+    a.watches.push(w);
+    return alertList(a);
+  });
+  await ext.alarms.create(ALARM, { periodInMinutes: 1 });
+  return list;
+};
+handlers['alerts:fresh'] = async ({ on }) => {
+  await ext.storage.local.set({ [FRESH_KEY]: !!on });
+  return alertList(await loadAlerts());
 };
 handlers['alerts:stop'] = async ({ id }) => withAlerts(async (a) => {
   a.watches = a.watches.filter((w) => w.id !== String(id) && w.until > Date.now());
@@ -167,6 +188,7 @@ handlers['alerts:read'] = async () => withAlerts(async (a) => { a.unread = 0; sh
 async function alertLarp(w, coin, tie) {
   const lc = await handlers.larpcheck({ address: coin.address }).catch(() => null);
   if (lc?.checked) return { by: 'Larpcheck', word: lc.verdict, score: lc.score ?? null, url: lc.url || lc.page || null };
+  if (w.word) return null; // a followed word has no post, so there's no story to check the coin against
   const s = await handlers.story({
     post: w.post,
     narrative: w.narrative,
@@ -193,7 +215,7 @@ async function notify(item) {
   const opts = {
     type: 'basic',
     iconUrl: ext.runtime.getURL('icons/icon128.png'),
-    title: item.kind === 'guard' ? `Radar Guard: ${item.text}` : item.kind === 'verdict' ? `Larpcheck now says ${item.larp.word}: $${String(c.symbol || '').slice(0, 14)}` : `New coin off ${item.watch.author ? `@${item.watch.author}'s` : 'a watched'} post: $${String(c.symbol || '').slice(0, 14)}`,
+    title: item.kind === 'guard' ? `Radar Guard: ${item.text}` : item.kind === 'verdict' ? `Larpcheck now says ${item.larp.word}: $${String(c.symbol || '').slice(0, 14)}` : item.watch.word ? `New pair on "${item.watch.word}": $${String(c.symbol || '').slice(0, 14)}` : `New coin off ${item.watch.author ? `@${item.watch.author}'s` : 'a watched'} post: $${String(c.symbol || '').slice(0, 14)}`,
     message: [line, [larp, item.holders?.text].filter(Boolean).join(' · ')].filter(Boolean).join('\n'),
     priority: 2,
     buttons: [{ title: item.buy ? (c.chain === 'solana' ? 'Buy on Radar' : 'Trade on Uniswap') : 'Open the chart' }, { title: 'Open the post' }],

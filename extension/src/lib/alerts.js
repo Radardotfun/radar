@@ -49,6 +49,30 @@ export function newWatch(post, read, now = Date.now()) {
   };
 }
 
+/** Following a word: the same check as a post, for a story that hasn't got one post. Only coins launched from now on ping. */
+export const FOLLOW_MS = 3 * 24 * 3_600_000;
+export function newFollow(word, now = Date.now()) {
+  const clean = String(word || '').trim().replace(/^\$+/, '').replace(/\s+/g, ' ').trim().slice(0, 40);
+  const key = norm(clean);
+  if (key.length < 3) throw new Error('Follow a word of at least 3 letters');
+  return {
+    id: `w:${key}`,
+    word: clean,
+    url: `https://x.com/search?q=${encodeURIComponent(clean)}&f=live`,
+    author: '',
+    label: clean,
+    narrative: '',
+    terms: [clean],
+    anchors: [clean],
+    post: { text: clean, quoted: '', card: '', author: '', authorName: '', url: '', images: [] },
+    since: now,
+    until: now + FOLLOW_MS,
+    after: now,
+    seen: [],
+    primed: false,
+  };
+}
+
 // How a coin is tied to the watched post: it links the post, or its name or ticker carries one of the post's anchors.
 export function tieOf(t, watch) {
   if (watch.id && (t.links || []).some((l) => String(l).includes(`/status/${watch.id}`))) return 'post';
@@ -81,7 +105,7 @@ export async function checkWatch(watch, { chains, search = searchPairs, profiles
   const found = new Map();
   const results = await Promise.all((watch.terms || []).slice(0, 3).map((q) => search(q).catch(() => [])));
   for (const t of aggregate(results.flat())) found.set(t.address, t);
-  if (watch.id) {
+  if (watch.id && !watch.word) {
     const fromPost = (await profiles().catch(() => []))
       .filter((p) => chains.includes(p.chainId) && p.tokenAddress && !found.has(p.tokenAddress)
         && (p.links || []).some((l) => String(l?.url || '').includes(`/status/${watch.id}`)));

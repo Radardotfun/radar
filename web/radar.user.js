@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Radar
 // @namespace    https://tryradar.fun
-// @version      1.7.43
+// @version      1.7.44
 // @description  See the coins behind any post on X and instantly reroute to the biggest match that passes available on-chain safety checks.
 // @homepageURL  https://tryradar.fun
 // @supportURL   https://tryradar.fun
@@ -31,7 +31,7 @@
 // @downloadURL  https://tryradar.fun/radar.user.js
 // ==/UserScript==
 
-// Radar 1.7.43: built from the extension source at https://tryradar.fun. Not financial advice.
+// Radar 1.7.44: built from the extension source at https://tryradar.fun. Not financial advice.
 (() => {
   var __defProp = Object.defineProperty;
   var __export = (target, all) => {
@@ -783,6 +783,50 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     return { ...base, picks, others: remaining, roleCandidates, roleCut, techMatch, pool };
   }
 
+  // extension/src/lib/alerts.js
+  var WATCH_MS = 24 * 36e5;
+  var EARLY_MS = 10 * 6e4;
+  var FOLLOW_MS = 3 * 24 * 36e5;
+  function tieOf(t, watch) {
+    if (watch.id && (t.links || []).some((l) => String(l).includes(`/status/${watch.id}`))) return "post";
+    const name = norm(t.name || "");
+    const sym2 = norm(t.symbol || "");
+    const words = new Set(`${t.name} ${t.symbol}`.split(/[^\p{L}\p{N}]+/u).map(norm).filter(Boolean));
+    for (const a of watch.anchors || []) {
+      const k = norm(String(a));
+      if (k.length < 3) continue;
+      if (sym2 === k || name === k || words.has(k) || k.length >= 5 && (name.includes(k) || sym2.includes(k))) return "name";
+    }
+    return null;
+  }
+
+  // extension/src/lib/fresh.js
+  var BADGE_MS = 6 * 36e5;
+  var NEW_TAB_MS = 24 * 36e5;
+  var MIN_TRADES = 3;
+  var MIN_CAP = 1e3;
+  var COPY_WINDOW_MS = 7 * 864e5;
+  var BIG_CAP = 1e5;
+  var BIG_LIQUIDITY = 2e4;
+  var postWords = (text) => extractKeywords(String(text || ""), 3, { strongOnly: true }).filter((w) => norm(w).length >= 3);
+  var tradesIn = (t, w) => (t.txns?.[w]?.buys || 0) + (t.txns?.[w]?.sells || 0);
+  var trading = (t, hot) => {
+    if (t.marketCap > 0 && t.marketCap < MIN_CAP) return false;
+    if (!t.onCurve && (t.liquidity || 0) < 1e3) return false;
+    return tradesIn(t, "h1") >= MIN_TRADES || !hot && tradesIn(t, "h24") >= 20;
+  };
+  var sameName2 = (a, b) => {
+    const sym2 = norm(a.symbol || ""), name = norm(a.name || "");
+    return sym2 && sym2 === norm(b.symbol || "") || name && name === norm(b.name || "");
+  };
+  function freshPairs(tokens, words, { chains = null, now = Date.now(), maxAge = NEW_TAB_MS, hot = false } = {}) {
+    const list = [...new Map((tokens || []).filter((t) => t?.address).map((t) => [t.address, t])).values()];
+    return list.filter((t) => t.createdAt && now - t.createdAt <= maxAge && (!chains || chains.includes(t.chain)) && isMemecoin(t) && trading(t, hot) && tieOf(t, { anchors: words })).map((t) => {
+      const older = list.filter((o) => o.address !== t.address && o.chain === t.chain && o.createdAt && o.createdAt < t.createdAt && sameName2(o, t) && (now - o.createdAt <= COPY_WINDOW_MS || (o.marketCap || 0) >= BIG_CAP || (o.liquidity || 0) >= BIG_LIQUIDITY)).sort((a, b) => a.createdAt - b.createdAt)[0];
+      return { ...t, copyOf: older ? { symbol: older.symbol, createdAt: older.createdAt } : null };
+    }).sort((a, b) => Number(!!a.copyOf) - Number(!!b.copyOf) || b.createdAt - a.createdAt);
+  }
+
   // extension/src/lib/slot-calendar.js
   var SLOT_CALENDAR = [[15e7, 1662797255], [152e6, 1663944353], [154000004, 1665076966], [156e6, 1666093102], [158e6, 1667007032], [16e7, 1667926448], [162000008, 1668890635], [164e6, 1669778031], [166e6, 1670657155], [168e6, 1671546496], [17e7, 1672459520], [172e6, 1673474555], [174e6, 1674489177], [176e6, 1675518695], [178e6, 1676516267], [18e7, 1677596860], [182e6, 1678543697], [184e6, 1679473919], [186e6, 1680387936], [188e6, 1681302264], [190000004, 1682237445], [192e6, 1683171950], [194e6, 1684129925], [196e6, 1685075075], [198e6, 1686012205], [2e8, 1686964563], [202e6, 1687867231], [204e6, 1688759973], [206e6, 1689652171], [208e6, 1690541557], [21e7, 1691414422], [212e6, 1692289656], [214e6, 1693165847], [216e6, 1694034974], [218e6, 1694908030], [22e7, 1695776956], [222e6, 1696629027], [224e6, 1697447910], [226e6, 1698284119], [228e6, 1699125487], [23e7, 1699980689], [232e6, 1700847975], [234e6, 1701717557], [236e6, 1702627471], [238e6, 1703535576], [24e7, 1704448793], [242e6, 1705338139], [244e6, 1706177244], [246e6, 1707012984], [248e6, 1707865481], [25e7, 1708711006], [252e6, 1709542560], [254e6, 1710369140], [256e6, 1711218964], [258e6, 1712091604], [260000001, 1713060778], [262e6, 1713972615], [264e6, 1714906625], [266e6, 1715808913], [268e6, 1716699818], [270000004, 1717579083], [272e6, 1718458817], [274e6, 1719353353], [276e6, 1720265429], [278e6, 1721190245], [28e7, 1722098996], [282e6, 1722986003], [284e6, 1723832279], [286e6, 1724699660], [288e6, 1725561974], [29e7, 1726428607], [292000004, 1727302965], [294e6, 1728199583], [296e6, 1729107554], [298e6, 1730035922], [3e8, 1730981797], [302e6, 1731873734], [304e6, 1732740416], [306e6, 1733585764], [308000001, 1734418305], [31e7, 1735247256], [312e6, 1736067304], [314e6, 1736882790], [316e6, 1737696989], [318e6, 1738503815], [32e7, 1739299195], [322e6, 1740091911], [324e6, 1740883460], [326e6, 1741677027], [328e6, 1742473441], [33e7, 1743272074], [332e6, 1744073062], [334e6, 1744869448], [336e6, 1745661130], [338e6, 1746451136], [34e7, 1747241593], [342e6, 1748032283], [344e6, 1748819779], [346e6, 1749608331], [348e6, 1750409570], [35e7, 1751210681], [352e6, 1752003616], [354e6, 1752794914], [356e6, 1753587992], [358e6, 1754384135], [36e7, 1755175119], [362e6, 1755961857], [364e6, 1756750694], [366e6, 1757549394], [368e6, 1758340659], [37e7, 1759132548], [372e6, 1759923564], [374e6, 1760717592], [376e6, 1761513103], [378e6, 1762312930], [38e7, 1763114049], [382e6, 1763907970], [384e6, 1764687370], [386e6, 1765466673], [388e6, 1766247217], [39e7, 1767032013], [392e6, 1767823349], [394e6, 1768613592], [396e6, 1769410269], [398e6, 1770207278], [4e8, 1770991680], [402e6, 1771775802], [404e6, 1772565475], [406e6, 1773351789], [408e6, 1774140455], [41e7, 1774924856], [412e6, 1775710212], [414e6, 1776500451], [416e6, 1777292227], [418e6, 1778084423], [42e7, 1778886814], [422e6, 1779684999], [424e6, 1780479071], [426e6, 1781274748], [428e6, 1782068334], [43e7, 1782871687], [432e6, 1783681917], [434e6, 1784508165], [436e6, 1785350442], [438e6, 1786195117], [44e7, 1787032201], [442e6, 1787796056], [444e6, 1788447562], [446e6, 1789080019], [448e6, 1789712262], [45e7, 1790245257], [452e6, 1790780786], [454e6, 1791316189], [456e6, 1791797896], [458e6, 1792232162]];
 
@@ -1228,8 +1272,19 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       const key2 = `co:${judge ? "j:" : ""}${postKey(post, s.chains)}`;
       return forgetIfFailed(key2, cached(key2, 12e4, async () => {
         const r = await read({ post });
-        return findCoins(judge ? { ...r, judge: true } : r, s.chains, { apiBase: API_BASE, cached });
+        const found = await findCoins(judge ? { ...r, judge: true } : r, s.chains, { apiBase: API_BASE, cached });
+        const words = [.../* @__PURE__ */ new Set([...found.anchors || [], ...found.terms || [], ...postWords(post?.text)])];
+        const newPairs = freshPairs([...found.pool || [], ...found.roleCandidates || [], ...found.others || [], ...found.mentioned || []], words, { chains: s.chains }).slice(0, 12);
+        return { ...found, newPairs, words };
       }));
+    }
+    async function fresh({ text }) {
+      const words = postWords(text);
+      if (!words.length) return { coins: [] };
+      const s = await host.settings();
+      const pairs = (await Promise.all(words.slice(0, 2).map((w) => cached(`fr:${norm(w)}`, 18e4, () => searchPairs(w)).catch(() => [])))).flat();
+      const coins2 = freshPairs(aggregate(pairs), words, { chains: s.chains, maxAge: BADGE_MS, hot: true }).filter((t) => !t.copyOf).slice(0, 5);
+      return { coins: coins2.map((t) => ({ address: t.address, symbol: t.symbol, createdAt: t.createdAt })) };
     }
     async function story({ post, narrative, coin }) {
       return cached(`st:${post.url || post.text}:${coin?.address || ""}`, 6e5, async () => {
@@ -1287,8 +1342,8 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       return cached(`mn:${text}`, 6e4, async () => (await mentionedTokens(String(text || "").slice(0, 2e3), s.chains)).map((t) => ({ address: t.address, chain: t.chain, symbol: t.symbol, name: t.name, marketCap: t.marketCap, createdAt: t.createdAt })));
     }
     async function refresh({ tokens, deep = [], roleCandidates = [], roleCut = 0 }) {
-      const fresh = await fullTokens(tokens, new Set(deep));
-      const updated = Object.fromEntries(fresh.map((t) => [t.address, t]));
+      const fresh2 = await fullTokens(tokens, new Set(deep));
+      const updated = Object.fromEntries(fresh2.map((t) => [t.address, t]));
       let ranking = null;
       if (roleCandidates.length) {
         const candidates = roleCandidates.map((old) => {
@@ -1491,7 +1546,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       return list;
     };
     const launchState = () => cached("launch:state", 6e5, async () => (await gmFetch(`${API_BASE}/launch/settings`, { signal: AbortSignal.timeout(6e3) })).json());
-    const handlers2 = { starList, starToggle, videoInfo, tweet, read, coins, postCoins: postCoins2, mentioned, story, larpcheck, refresh, safety, bundle, image, openWindow, reroute, holderStatus, holderSave, holderWho, holderActive, recentList, recentAdd, recentClear, launchState, lcHolders, lcBoard, lcSettings, lcStart, lcAsk, lcPoll, settings: () => host.settings() };
+    const handlers2 = { starList, starToggle, videoInfo, tweet, read, coins, fresh, postCoins: postCoins2, mentioned, story, larpcheck, refresh, safety, bundle, image, openWindow, reroute, holderStatus, holderSave, holderWho, holderActive, recentList, recentAdd, recentClear, launchState, lcHolders, lcBoard, lcSettings, lcStart, lcAsk, lcPoll, settings: () => host.settings() };
     handlers2.resetBundles = () => memo.forEach((_, k) => k.startsWith("bd:") && memo.delete(k));
     return handlers2;
   }
@@ -1769,7 +1824,8 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     tech: { label: "TECH MATCH", icon: I.spark },
     ca: { label: "MENTIONED CA", icon: I.pin },
     bio: { label: "POSTER'S BIO", icon: I.pin },
-    more: { label: "MATCH", icon: I.pin }
+    more: { label: "MATCH", icon: I.pin },
+    new: { label: "NEW PAIR", icon: I.spark }
   };
   var CHAIN_LABEL = { solana: "SOL", robinhood: "Robinhood" };
   var BUBBLE_CHAIN = { solana: "solana", base: "base", bsc: "bsc", ethereum: "eth" };
@@ -1902,6 +1958,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       this.audits = /* @__PURE__ */ new Map();
       this.larp = /* @__PURE__ */ new Map();
       this.expanded = /* @__PURE__ */ new Set();
+      this.tab = "picks";
       this.openCards = /* @__PURE__ */ new Set();
       this.refreshSec = 10;
       this.timers = [];
@@ -1935,10 +1992,11 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       document.addEventListener("visibilitychange", () => this.updateLive());
     }
     /* ----- public ----- */
-    open({ post = null, text = "", source = null, trends = null } = {}) {
+    open({ post = null, text = "", source = null, trends = null, tab = "picks" } = {}) {
       if (trends) this.trends = trends;
       this.shell.classList.add("open");
       const p = post || (text ? { text } : null);
+      if (p) this.tab = tab === "new" ? "new" : "picks";
       if (p) this.scan({ post: p, source });
       else if (!this.state.ts) this.renderBody();
       if (!p) setTimeout(() => this.input?.focus(), 250);
@@ -2053,7 +2111,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     showCoins(res) {
       this.state = { ...this.state, ...res, loading: false };
       this.tokens.clear();
-      for (const t of [...res.mentioned, ...res.bioCoins || [], ...res.techMatch ? [res.techMatch] : [], ...res.roleCandidates || [], ...res.picks.map((x) => x.token), ...res.others]) this.tokens.set(t.address, t);
+      for (const t of [...res.mentioned, ...res.bioCoins || [], ...res.techMatch ? [res.techMatch] : [], ...res.roleCandidates || [], ...res.picks.map((x) => x.token), ...res.others, ...res.newPairs || []]) this.tokens.set(t.address, t);
       this.renderHead();
       this.renderBody();
       this.renderFoot();
@@ -2097,8 +2155,12 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       if (this.lastPost) this.scan({ post: this.lastPost });
     }
     cardTokens() {
-      const tokens = [...this.state.mentioned, ...this.bioCards(), ...this.state.techMatch ? [this.state.techMatch] : [], ...this.state.picks.map((p) => p.token), ...this.state.others.filter((t) => this.expanded.has(t.address))];
+      const tokens = [...this.state.mentioned, ...this.bioCards(), ...this.state.techMatch ? [this.state.techMatch] : [], ...this.state.picks.map((p) => p.token), ...this.state.others.filter((t) => this.expanded.has(t.address)), ...this.newCards()];
       return [...new Map(tokens.map((t) => [t.address, t])).values()].map((t) => this.tokens.get(t.address) || t);
+    }
+    // On the New tab the newest three get full cards and their checks; the rest wait until they're opened.
+    newCards() {
+      return this.tab === "new" ? (this.state.newPairs || []).filter((t, i) => i < 3 || this.expanded.has(t.address)) : [];
     }
     loadAudits() {
       for (const t of this.cardTokens()) {
@@ -2545,18 +2607,28 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
         ${this.inline && (this.alerts?.watches.length || this.alerts?.feed.length) ? this.alertsHtml() : ""}`;
         return;
       }
+      const tabs = this.tabsHtml();
+      if (this.tab === "new") {
+        this.bodyEl.innerHTML = tabs + this.newHtml();
+        this.hydrateImages();
+        for (const t of this.newCards()) {
+          this.renderAudit(t.address);
+          this.renderLarp(t.address);
+        }
+        return;
+      }
       const bio = this.bioCards();
       if (!picks.length && !mentioned.length && !bio.length && !techMatch && this.state.mode === "ai" && this.state.coinable === false) {
-        this.bodyEl.innerHTML = `<div class="empty"><div class="big">No coin narrative here</div>
+        this.bodyEl.innerHTML = `${this.state.newPairs?.length ? tabs : ""}<div class="empty"><div class="big">No coin narrative here</div>
         <p>This post doesn't carry anything people trade. Try a news post, a trend, or a meme.</p>${this.launchHtml()}</div>`;
         return;
       }
       if (!picks.length && !mentioned.length && !bio.length && !techMatch) {
-        this.bodyEl.innerHTML = `<div class="empty"><div class="big">No live coins for this narrative</div>
+        this.bodyEl.innerHTML = `${this.state.newPairs?.length ? tabs : ""}<div class="empty"><div class="big">No live coins for this narrative</div>
         <p>Nothing trading on-chain is about this yet.</p>${this.watchHtml({ cta: true })}${this.launchHtml()}</div>`;
         return;
       }
-      let html = "";
+      let html = tabs;
       html += `<div class="reroute-bar"><span>Instant reroute</span><button type="button" data-reroute>Open best match</button></div>`;
       if (mentioned.length) html += `<div class="section-label"><span>In the post</span></div>` + mentioned.map((t) => this.cardHtml(t, { role: "ca" })).join("");
       if (bio.length) html += `<div class="section-label"><span>In the poster's bio</span></div>` + bio.map((t) => this.cardHtml(t, { role: "bio" })).join("");
@@ -2604,6 +2676,52 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
         this.renderAudit(t.address);
         this.renderLarp(t.address);
       }
+    }
+    tabsHtml() {
+      const n2 = this.state.newPairs?.length || 0;
+      return `<div class="scan-tabs" role="tablist"><button type="button" role="tab" aria-selected="${this.tab !== "new"}" data-scan-tab="picks">Picks</button><button type="button" role="tab" aria-selected="${this.tab === "new"}" data-scan-tab="new">New${n2 ? ` \xB7 ${n2}` : ""}</button></div>`;
+    }
+    // The story's newest pairs. They're found by name, so the note says so, and new coins carry the most risk.
+    newHtml() {
+      const list = this.state.newPairs || [];
+      if (!list.length) return `<div class="empty"><div class="big">No new pairs on this story</div><p>Nothing named after it launched and traded in the last 24 hours.</p>${this.followHtml()}${this.launchHtml()}</div>`;
+      const live = (t) => this.tokens.get(t.address) || t;
+      const shown = this.newCards();
+      const rest = list.filter((t) => !shown.includes(t)).map(live);
+      return `<div class="section-label"><span>New pairs</span><span>last 24h</span></div>
+      <p class="new-note">Newest first, matched by name to this story. New coins are the riskiest, so read the checks on each one.</p>
+      ${shown.map((t) => this.cardHtml(live(t), { role: "new", fresh: t })).join("")}
+      ${rest.length ? `<div class="list">${rest.map((t) => `<button class="li" data-expand="${t.address}">${this.avatarHtml(t)}
+        <div class="nm"><b>${esc2(t.name)}</b><span>$${esc2(t.symbol)} \xB7 ${age(t.createdAt)}${list.find((x) => x.address === t.address)?.copyOf ? " \xB7 copy" : ""}</span></div>
+        <div class="r" data-k="li-mc">${t.mcapBacked ? usd(t.marketCap) : '<span title="Market cap not backed by real liquidity">thin</span>'}<span>${num(t.txns.h1.buys)} buys 1h</span></div></button>`).join("")}</div>` : ""}
+      ${this.followHtml()}${this.launchHtml()}`;
+    }
+    // An alert for a new pair on this story's words, on any post or none. Extension only, and the same holder perk as watching a post.
+    followHtml() {
+      if (!this.alerts) return "";
+      const words = (this.state.words || []).filter((w) => String(w).replace(/[^\p{L}\p{N}]/gu, "").length >= 3).slice(0, 2);
+      if (!words.length) return "";
+      if (this.holder && !this.holder.holder && !this.alerts.watches.some((w) => w.word)) {
+        return `<div class="watch on">${I.bell}<span>Alerts on new pairs are for $RADAR holders</span>${this.holder.on ? '<button type="button" data-holder-connect>Check my wallet</button>' : ""}</div>`;
+      }
+      return words.map((word) => {
+        const w = this.alerts.watches.find((x) => x.word && x.word.toLowerCase() === String(word).replace(/^\$+/, "").toLowerCase());
+        if (w) return `<div class="watch on">${I.bell}<span>Following \u201C${esc2(w.word)}\u201D \xB7 ${Math.max(1, Math.round((w.until - Date.now()) / 36e5))}h left</span><button type="button" data-act="unwatch" data-id="${esc2(w.id)}">Stop</button></div>`;
+        return `<button type="button" class="watch" data-act="follow" data-word="${esc2(word)}"${this.watchBusy ? " disabled" : ""}>${I.bell}<span>Alert me on new \u201C${esc2(word)}\u201D pairs</span></button>`;
+      }).join("");
+    }
+    async follow(word) {
+      if (this.watchBusy || !word) return;
+      this.watchBusy = true;
+      this.renderBody();
+      try {
+        this.alerts = await send("alerts:follow", { word });
+        this.toast(`Following \u201C${word}\u201D for 3 days. Radar pings you when a new pair appears${this.alerts.notifications ? "" : ". Turn on desktop alerts in the toolbar popup"}`, 3600);
+      } catch (err) {
+        this.toast(err.message, 3600);
+      }
+      this.watchBusy = false;
+      this.renderBody();
     }
     // The poster's bio coin gets its own card, unless a scan's own pick already shows it. A search has no poster.
     bioCards() {
@@ -2771,6 +2889,10 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       const buyShare = buys + sells ? buys / (buys + sells) * 100 : 50;
       const tags = [pick.alsoOg && "also the OG", pick.alsoTop && "also top MC", pick.alsoMover && "also the mover"].filter(Boolean);
       if (this.state.techMatch?.address === t.address && role !== "tech") tags.push("TECH MATCH");
+      if (pick.fresh) {
+        tags.push(pick.fresh.copyOf ? `copy of older $${String(pick.fresh.copyOf.symbol || "").trim()}` : "first of this name");
+        tags.push(`${num(buys)} buys 1h`);
+      }
       const vsPost = launchedVsPost(t.createdAt, this.lastPost?.url);
       if (t.fromPost) tags.unshift(vsPost?.includes("after") ? `launched ${vsPost}` : "launched off this post");
       else if (vsPost) tags.push(vsPost);
@@ -2785,7 +2907,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       <article class="card ${role}${open ? " open" : ""}${this.state.techMatch?.address === t.address ? " tech-match" : ""}" data-addr="${t.address}">
         <header class="card-top">
           <span class="badge">${r.icon}${r.label}</span>
-          ${tags.map((x) => `<span class="tag${x.startsWith("launched") ? " hot" : x.startsWith("looks") ? " rug" : /^oldest of|named \$/.test(x) ? " twins" : ""}">${esc2(x)}</span>`).join("")}
+          ${tags.map((x) => `<span class="tag${x.startsWith("launched") ? " hot" : x.startsWith("looks") ? " rug" : /^oldest of|named \$|^copy of/.test(x) ? " twins" : ""}">${esc2(x)}</span>`).join("")}
           ${t.chain === "solana" ? `<span class="cc" data-cc="${t.address}"></span>` : ""}
           <button class="star-btn${this.isStarred(t.address) ? " on" : ""}" data-star="${t.address}" aria-pressed="${this.isStarred(t.address)}" title="Watchlist">${I.star}</button>
           <button class="toggle-card" data-toggle="${t.address}" aria-expanded="${open}" title="${open ? "Show less" : "Show everything"}">${I.chevron}</button>
@@ -3040,7 +3162,16 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
         this.toast(err.message, 3e3);
       }
       this.renderHead();
-      if (!this.state.picks?.length || this.view === "settings") this.renderBody();
+      if (!this.state.picks?.length || this.view === "settings" || this.tab === "new") this.renderBody();
+    }
+    async toggleFresh() {
+      try {
+        this.alerts = await send("alerts:fresh", { on: !this.alerts?.freshBadges });
+      } catch (err) {
+        this.toast(err.message, 3e3);
+      }
+      this.toast(this.alerts?.freshBadges ? "New-pair badges are on. Reload X to see them" : "New-pair badges are off. Reload X to hide them", 3e3);
+      this.renderBody();
     }
     // Desktop notifications need the optional permission, which only the toolbar popup can ask for (inside the click).
     async allowNotifications() {
@@ -3057,7 +3188,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       const a = this.alerts;
       if (!a) return "";
       const left = (w) => `${Math.max(1, Math.round((w.until - Date.now()) / 36e5))}h left`;
-      const watches = a.watches.map((w) => `<div class="al-w"><div><b>${w.author ? `@${esc2(w.author)}` : "Post"}</b><span>${esc2(w.label)}</span></div>
+      const watches = a.watches.map((w) => `<div class="al-w"><div><b>${w.word ? `\u201C${esc2(w.word)}\u201D` : w.author ? `@${esc2(w.author)}` : "Post"}</b><span>${esc2(w.label)}</span></div>
       <em>${left(w)}</em><button type="button" data-act="unwatch" data-id="${esc2(w.id)}">Stop</button></div>`).join("");
       const hits = a.feed.slice(0, 5).map((f) => {
         const c = f.coin;
@@ -3068,10 +3199,11 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       }).join("");
       return `<section class="settings">
       <div class="set-head"><h3>Alerts</h3>${a.watches.length ? `<span class="verdict ok">${a.watches.length} WATCHING</span>` : ""}</div>
-      <p>Tap the bell under a post in the Radar panel. For the next 24 hours Radar checks every minute for a coin launched off it, runs the larp check, and pings you with a buy button.</p>
+      <p>Tap the bell under a post in the Radar panel. For the next 24 hours Radar checks every minute for a coin launched off it, runs the larp check, and pings you with a buy button. On a scan's New tab you can follow a word for 3 days instead.</p>
       ${watches ? `<div class="al-list">${watches}</div>` : ""}
       ${hits ? `<div class="section-label"><span>Latest alerts</span></div><div class="al-list">${hits}</div>` : ""}
       ${a.notifications ? '<p class="fine">Desktop alerts are on.</p>' : '<button class="fr-btn" data-alerts-notify>Turn on desktop alerts</button><p class="fine">Without them, alerts show on any open X tab and as a number on the Radar icon.</p>'}
+      <button class="fr-btn ghost" data-act="fresh-toggle">New-pair badges on X: ${a.freshBadges === false ? "Off" : "On"}</button>
     </section>`;
     }
     settingsHtml() {
@@ -3294,6 +3426,22 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       }
       if (e.target.closest('[data-act="watch"]')) {
         await this.watch();
+        return;
+      }
+      const scanTab = e.target.closest("[data-scan-tab]");
+      if (scanTab) {
+        this.tab = scanTab.dataset.scanTab === "new" ? "new" : "picks";
+        this.renderBody();
+        this.loadAudits();
+        return;
+      }
+      const follow = e.target.closest('[data-act="follow"]');
+      if (follow) {
+        await this.follow(follow.dataset.word);
+        return;
+      }
+      if (e.target.closest('[data-act="fresh-toggle"]')) {
+        await this.toggleFresh();
         return;
       }
       const stop = e.target.closest('[data-act="unwatch"]');
@@ -4395,6 +4543,14 @@ svg { display: block; }\r
 .guard button { margin-top: 8px; padding: 6px 10px; min-height: 30px; border: 1px solid var(--line-2); border-radius: 8px; color: var(--text); font-weight: 600; }\r
 .guard button:hover { background: var(--card-2); }\r
 .guard.on { border-color: color-mix(in srgb, var(--violet) 55%, transparent); background: color-mix(in srgb, var(--violet) 8%, transparent); }\r
+\r
+/* Picks and New, at the top of a scan */\r
+.scan-tabs { display: flex; gap: 4px; padding: 3px; border: 1px solid var(--line); border-radius: 10px; }\r
+.scan-tabs button { flex: 1; padding: 8px 10px; border: 0; border-radius: 7px; background: none; color: var(--muted); font: 600 12px var(--font); cursor: pointer; transition: background .15s, color .15s; }\r
+.scan-tabs button:hover { color: var(--text); }\r
+.scan-tabs button[aria-selected="true"] { background: var(--card-2); color: var(--text); }\r
+.new-note { margin: 0; padding: 0 4px; color: var(--muted); font: 400 11.5px/1.45 var(--font); }\r
+.card.new { --role: var(--violet); }\r
 `;
 
   // userscript/host.js
@@ -4496,6 +4652,9 @@ svg { display: block; }\r
     .nr-action-wrap{display:flex;align-items:center;justify-content:flex-start;position:relative;flex:none;gap:2px}
     .nr-reroute-btn{display:inline-flex;align-items:center;justify-content:center;height:30px;margin:0 2px;padding:0 8px;border:1px solid rgba(127,127,127,.35);border-radius:999px;background:transparent;color:rgb(113,118,123);cursor:pointer;white-space:nowrap;font:600 11px/1 TwitterChirp,-apple-system,"Segoe UI",system-ui,sans-serif;transition:background .2s,color .2s,border-color .2s}
     .nr-reroute-btn:hover{background:rgba(127,127,127,.15);border-color:rgba(127,127,127,.6);color:inherit}
+    .nr-new-btn{border-color:rgba(167,139,250,.55);animation:nr-in .3s cubic-bezier(.2,.8,.2,1)}
+    .nr-new-btn:hover{border-color:rgba(167,139,250,.9);background:rgba(167,139,250,.12)}
+    .nr-new-btn svg{color:#a78bfa;opacity:1}
     .nr-hint{position:absolute;bottom:calc(100% + 10px);right:-6px;z-index:30;display:flex;align-items:center;gap:12px;padding:10px 10px 10px 14px;border-radius:14px;background:#000;color:#fff;
       border:1px solid rgba(255,255,255,.16);box-shadow:0 12px 40px rgba(0,0,0,.4);font:600 13px/1.2 TwitterChirp,-apple-system,"Segoe UI",system-ui,sans-serif;white-space:nowrap;animation:nr-in .35s cubic-bezier(.2,.8,.2,1)}
     .nr-hint::after{content:"";position:absolute;top:100%;right:17px;border:6px solid transparent;border-top-color:#000}
@@ -4696,6 +4855,70 @@ svg { display: block; }\r
       }, true);
       group.parentElement.insertBefore(line, group);
     }
+    const FRESH_DWELL_MS = 800;
+    const FRESH_GAP_MS = 1500;
+    const FRESH_MAX = 30;
+    let freshOn = false;
+    const freshAt = [];
+    const freshQueue = [];
+    let freshBusy = false;
+    const freshTimers = /* @__PURE__ */ new WeakMap();
+    const freshWatch = new IntersectionObserver((entries) => {
+      for (const { target, isIntersecting } of entries) {
+        clearTimeout(freshTimers.get(target));
+        if (!isIntersecting) continue;
+        freshTimers.set(target, setTimeout(() => {
+          freshWatch.unobserve(target);
+          freshQueue.push(target);
+          if (freshQueue.length > 6) freshQueue.shift();
+          freshNext();
+        }, FRESH_DWELL_MS));
+      }
+    }, { threshold: 0.5 });
+    async function freshNext() {
+      if (freshBusy) return;
+      const article = freshQueue.pop();
+      if (!article) return;
+      const now = Date.now();
+      while (freshAt.length && now - freshAt[0] > 3e5) freshAt.shift();
+      if (freshAt.length >= FRESH_MAX) {
+        freshQueue.length = 0;
+        return;
+      }
+      freshBusy = true;
+      freshAt.push(now);
+      try {
+        if (article.isConnected) await freshLine(article);
+      } catch {
+      }
+      setTimeout(() => {
+        freshBusy = false;
+        freshNext();
+      }, FRESH_GAP_MS);
+    }
+    async function freshLine(article) {
+      const { coins } = await send2({ type: "fresh", text: postText2(article) });
+      const groups = article.querySelectorAll('[role="group"]');
+      const group = groups[groups.length - 1];
+      if (!coins?.length || !group || article.querySelector(".nr-new-btn")) return;
+      const line = document.createElement("div");
+      line.className = "nr-ca";
+      line.style.color = getComputedStyle(article.querySelector('[data-testid="tweetText"]') || article).color;
+      const n2 = coins.length;
+      line.innerHTML = `<button type="button" class="nr-ca-btn nr-new-btn" title="New coins named after words in this post. Radar hasn't checked them yet: tap for the checks.">${ICON}${n2} new pair${n2 === 1 ? "" : "s"}<span>${ageOf(coins[0].createdAt)}</span></button>`;
+      line.addEventListener("click", (e) => {
+        if (!e.target.closest(".nr-new-btn")) return;
+        e.preventDefault();
+        e.stopPropagation();
+        launch({ ...postPayload(article), tab: "new" });
+      }, true);
+      group.parentElement.insertBefore(line, group);
+    }
+    Promise.resolve(host.get("freshBadges")).then((v) => {
+      freshOn = v !== false;
+      decorateSoon();
+    }).catch(() => {
+    });
     const hint = { state: "unknown", el: null };
     host.get("hintSeen").then((seen) => {
       hint.state = seen ? "seen" : "show";
@@ -4750,6 +4973,13 @@ svg { display: block; }\r
         const share = group.lastElementChild;
         group.insertBefore(wrap, share);
         if (CA_RE.test(postText2(article))) caWatch.observe(article);
+      }
+      if (freshOn) {
+        for (const article of document.querySelectorAll('article[data-testid="tweet"][data-nr]:not([data-nr-fresh])')) {
+          article.dataset.nrFresh = "1";
+          const text = postText2(article);
+          if (text.length >= 15 && !CA_RE.test(text)) freshWatch.observe(article);
+        }
       }
       if (hint.state === "show" && !hint.el?.isConnected) {
         for (const b of document.querySelectorAll('article[data-testid="tweet"] .nr-btn')) {
@@ -4819,7 +5049,7 @@ svg { display: block; }\r
         const card = document.createElement("div");
         card.className = "nr-alert";
         card.setAttribute("role", "alert");
-        card.innerHTML = `<div class="nr-alert-top">${BELL}<span>${item.kind === "guard" ? `Radar Guard` : item.kind === "verdict" ? `Larpcheck now says ${esc3(item.larp.word)}` : `New coin off ${item.watch.author ? `@${esc3(item.watch.author)}'s` : "a watched"} post`}</span><button type="button" class="nr-alert-x" data-x aria-label="Close">\xD7</button></div>
+        card.innerHTML = `<div class="nr-alert-top">${BELL}<span>${item.kind === "guard" ? `Radar Guard` : item.kind === "verdict" ? `Larpcheck now says ${esc3(item.larp.word)}` : item.watch.word ? `New pair on \u201C${esc3(item.watch.word)}\u201D` : `New coin off ${item.watch.author ? `@${esc3(item.watch.author)}'s` : "a watched"} post`}</span><button type="button" class="nr-alert-x" data-x aria-label="Close">\xD7</button></div>
         <div class="nr-alert-coin"><b>$${esc3(String(c.symbol || "").trim())}</b><span>${esc3(c.name || "")}</span></div>
         <div class="nr-alert-meta">${esc3([CHAIN[c.chain] || c.chain, c.marketCap ? `${usd2(c.marketCap)} MC` : "", c.createdAt ? `launched ${ageOf(c.createdAt)} ago` : ""].filter(Boolean).join(" \xB7 "))}</div>
         <div class="nr-alert-checks">${item.kind === "guard" ? `<div><i class="risk"></i><b>${esc3(item.text)}</b></div>` : ""}${larp}${holders}</div>
@@ -4840,7 +5070,10 @@ svg { display: block; }\r
             if (quick) safeOpen(`${item.buy}&sol=${sol}&insta=1`, "radar-insta", "popup=yes,width=440,height=780");
             else safeOpen(item.buy, "_blank", "noopener");
           } else if ("chart" in b.dataset) safeOpen(item.chart, "_blank", "noopener");
-          else if ("open" in b.dataset) {
+          else if ("open" in b.dataset && item.watch.word) {
+            card.remove();
+            launch({ post: { text: item.watch.word }, source: { kind: "Alert", label: `$${String(c.symbol || "").trim()} is new on \u201C${item.watch.word}\u201D` }, tab: "new" });
+          } else if ("open" in b.dataset) {
             card.remove();
             launch({ post: { text: item.watch.url }, source: { kind: "Alert", label: `$${String(c.symbol || "").trim()} launched off this post` } });
           }

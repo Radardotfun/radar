@@ -39,6 +39,9 @@
     .nr-action-wrap{display:flex;align-items:center;justify-content:flex-start;position:relative;flex:none;gap:2px}
     .nr-reroute-btn{display:inline-flex;align-items:center;justify-content:center;height:30px;margin:0 2px;padding:0 8px;border:1px solid rgba(127,127,127,.35);border-radius:999px;background:transparent;color:rgb(113,118,123);cursor:pointer;white-space:nowrap;font:600 11px/1 TwitterChirp,-apple-system,"Segoe UI",system-ui,sans-serif;transition:background .2s,color .2s,border-color .2s}
     .nr-reroute-btn:hover{background:rgba(127,127,127,.15);border-color:rgba(127,127,127,.6);color:inherit}
+    .nr-new-btn{border-color:rgba(167,139,250,.55);animation:nr-in .3s cubic-bezier(.2,.8,.2,1)}
+    .nr-new-btn:hover{border-color:rgba(167,139,250,.9);background:rgba(167,139,250,.12)}
+    .nr-new-btn svg{color:#a78bfa;opacity:1}
     .nr-hint{position:absolute;bottom:calc(100% + 10px);right:-6px;z-index:30;display:flex;align-items:center;gap:12px;padding:10px 10px 10px 14px;border-radius:14px;background:#000;color:#fff;
       border:1px solid rgba(255,255,255,.16);box-shadow:0 12px 40px rgba(0,0,0,.4);font:600 13px/1.2 TwitterChirp,-apple-system,"Segoe UI",system-ui,sans-serif;white-space:nowrap;animation:nr-in .35s cubic-bezier(.2,.8,.2,1)}
     .nr-hint::after{content:"";position:absolute;top:100%;right:17px;border:6px solid transparent;border-top-color:#000}
@@ -236,6 +239,64 @@
     group.parentElement.insertBefore(line, group);
   }
 
+  // New pairs: a post on a story with brand new coins says so, on a line like the one above. It looks up the post's names only
+  // (no AI), for a post the user has stopped on, one at a time and only so many at a time, so scrolling stays free.
+  const FRESH_DWELL_MS = 800;
+  const FRESH_GAP_MS = 1500;
+  const FRESH_MAX = 30; // lookups per 5 minutes
+  let freshOn = false;
+  const freshAt = [];
+  const freshQueue = [];
+  let freshBusy = false;
+  const freshTimers = new WeakMap();
+  const freshWatch = new IntersectionObserver((entries) => {
+    for (const { target, isIntersecting } of entries) {
+      clearTimeout(freshTimers.get(target));
+      if (!isIntersecting) continue;
+      freshTimers.set(target, setTimeout(() => {
+        freshWatch.unobserve(target);
+        freshQueue.push(target);
+        if (freshQueue.length > 6) freshQueue.shift();
+        freshNext();
+      }, FRESH_DWELL_MS));
+    }
+  }, { threshold: 0.5 });
+
+  async function freshNext() {
+    if (freshBusy) return;
+    const article = freshQueue.pop();
+    if (!article) return;
+    const now = Date.now();
+    while (freshAt.length && now - freshAt[0] > 300_000) freshAt.shift();
+    if (freshAt.length >= FRESH_MAX) { freshQueue.length = 0; return; }
+    freshBusy = true;
+    freshAt.push(now);
+    try {
+      if (article.isConnected) await freshLine(article);
+    } catch { /* a badge is a bonus: nothing to show */ }
+    setTimeout(() => { freshBusy = false; freshNext(); }, FRESH_GAP_MS);
+  }
+
+  async function freshLine(article) {
+    const { coins } = await send({ type: 'fresh', text: postText(article) });
+    const groups = article.querySelectorAll('[role="group"]');
+    const group = groups[groups.length - 1];
+    if (!coins?.length || !group || article.querySelector('.nr-new-btn')) return;
+    const line = document.createElement('div');
+    line.className = 'nr-ca';
+    line.style.color = getComputedStyle(article.querySelector('[data-testid="tweetText"]') || article).color;
+    const n = coins.length;
+    line.innerHTML = `<button type="button" class="nr-ca-btn nr-new-btn" title="New coins named after words in this post. Radar hasn't checked them yet: tap for the checks.">${ICON}${n} new pair${n === 1 ? '' : 's'}<span>${ageOf(coins[0].createdAt)}</span></button>`;
+    line.addEventListener('click', (e) => {
+      if (!e.target.closest('.nr-new-btn')) return;
+      e.preventDefault();
+      e.stopPropagation();
+      launch({ ...postPayload(article), tab: 'new' });
+    }, true);
+    group.parentElement.insertBefore(line, group);
+  }
+  Promise.resolve(host.get('freshBadges')).then((v) => { freshOn = v !== false; decorateSoon(); }).catch(() => {});
+
   // First run: one tip pointing at the radar button, until it's dismissed or the radar is used.
   const hint = { state: 'unknown', el: null };
   host.get('hintSeen')
@@ -277,6 +338,14 @@
       const share = group.lastElementChild;
       group.insertBefore(wrap, share);
       if (CA_RE.test(postText(article))) caWatch.observe(article);
+    }
+    if (freshOn) {
+      for (const article of document.querySelectorAll('article[data-testid="tweet"][data-nr]:not([data-nr-fresh])')) {
+        article.dataset.nrFresh = '1';
+        // A post giving its coin's address has its own line, and a short one names nothing.
+        const text = postText(article);
+        if (text.length >= 15 && !CA_RE.test(text)) freshWatch.observe(article);
+      }
     }
     if (hint.state === 'show' && !hint.el?.isConnected) {
       for (const b of document.querySelectorAll('article[data-testid="tweet"] .nr-btn')) {
@@ -355,7 +424,7 @@
       const card = document.createElement('div');
       card.className = 'nr-alert';
       card.setAttribute('role', 'alert');
-      card.innerHTML = `<div class="nr-alert-top">${BELL}<span>${item.kind === 'guard' ? `Radar Guard` : item.kind === 'verdict' ? `Larpcheck now says ${esc(item.larp.word)}` : `New coin off ${item.watch.author ? `@${esc(item.watch.author)}'s` : 'a watched'} post`}</span><button type="button" class="nr-alert-x" data-x aria-label="Close">×</button></div>
+      card.innerHTML = `<div class="nr-alert-top">${BELL}<span>${item.kind === 'guard' ? `Radar Guard` : item.kind === 'verdict' ? `Larpcheck now says ${esc(item.larp.word)}` : item.watch.word ? `New pair on “${esc(item.watch.word)}”` : `New coin off ${item.watch.author ? `@${esc(item.watch.author)}'s` : 'a watched'} post`}</span><button type="button" class="nr-alert-x" data-x aria-label="Close">×</button></div>
         <div class="nr-alert-coin"><b>$${esc(String(c.symbol || '').trim())}</b><span>${esc(c.name || '')}</span></div>
         <div class="nr-alert-meta">${esc([CHAIN[c.chain] || c.chain, c.marketCap ? `${usd(c.marketCap)} MC` : '', c.createdAt ? `launched ${ageOf(c.createdAt)} ago` : ''].filter(Boolean).join(' · '))}</div>
         <div class="nr-alert-checks">${item.kind === 'guard' ? `<div><i class="risk"></i><b>${esc(item.text)}</b></div>` : ''}${larp}${holders}</div>
@@ -374,6 +443,7 @@
           if (quick) safeOpen(`${item.buy}&sol=${sol}&insta=1`, 'radar-insta', 'popup=yes,width=440,height=780');
           else safeOpen(item.buy, '_blank', 'noopener');
         } else if ('chart' in b.dataset) safeOpen(item.chart, '_blank', 'noopener');
+        else if ('open' in b.dataset && item.watch.word) { card.remove(); launch({ post: { text: item.watch.word }, source: { kind: 'Alert', label: `$${String(c.symbol || '').trim()} is new on “${item.watch.word}”` }, tab: 'new' }); }
         else if ('open' in b.dataset) { card.remove(); launch({ post: { text: item.watch.url }, source: { kind: 'Alert', label: `$${String(c.symbol || '').trim()} launched off this post` } }); }
       }, true);
       stack.appendChild(card);

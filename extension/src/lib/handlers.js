@@ -1,8 +1,10 @@
 // The radar's backend: everything the panel asks for. The extension runs it in its service worker;
 // the web app runs it in the page. Each host supplies its own storage, window opening and RPC.
-import { fullTokens, mentionedTokens, typedCashtags, linkedSymbol, LAUNCHPADS, pickThree } from './market.js';
+import { fullTokens, mentionedTokens, typedCashtags, linkedSymbol, LAUNCHPADS, pickThree, searchPairs, aggregate } from './market.js';
 import { rugReport, standInReport } from './rugcheck.js';
 import { readPost, findCoins, postCoins as coinsInPost } from './narrative.js';
+import { freshPairs, postWords, BADGE_MS } from './fresh.js';
+import { norm } from './keywords.js';
 import { makeRpc, analyzeLaunch, PUBLIC_RPC } from './solana.js';
 import { pickReroute, marketBlock, reportBlock, rejectionLine } from './reroute.js';
 import { RECENT_KEY, addRecent } from '../ui/recent.js';
@@ -68,8 +70,24 @@ export function makeHandlers(host) {
     const key = `co:${judge ? 'j:' : ''}${postKey(post, s.chains)}`;
     return forgetIfFailed(key, cached(key, 120_000, async () => {
       const r = await read({ post });
-      return findCoins(judge ? { ...r, judge: true } : r, s.chains, { apiBase: API_BASE, cached });
+      const found = await findCoins(judge ? { ...r, judge: true } : r, s.chains, { apiBase: API_BASE, cached });
+      // The panel's New tab: everything the scan searched, newest first.
+      const words = [...new Set([...(found.anchors || []), ...(found.terms || []), ...postWords(post?.text)])];
+      const newPairs = freshPairs([...(found.pool || []), ...(found.roleCandidates || []), ...(found.others || []), ...(found.mentioned || [])], words, { chains: s.chains }).slice(0, 12);
+      return { ...found, newPairs, words };
     }));
+  }
+
+  // The new-pair line under a post (content.js): a search for the post's names, no AI. A word already looked up in the last
+  // few minutes isn't looked up again, so a story all over the timeline costs one search.
+  async function fresh({ text }) {
+    const words = postWords(text);
+    if (!words.length) return { coins: [] };
+    const s = await host.settings();
+    const pairs = (await Promise.all(words.slice(0, 2).map((w) => cached(`fr:${norm(w)}`, 180_000, () => searchPairs(w)).catch(() => [])))).flat();
+    // A newer copy of an older coin isn't news about a story.
+    const coins = freshPairs(aggregate(pairs), words, { chains: s.chains, maxAge: BADGE_MS, hot: true }).filter((t) => !t.copyOf).slice(0, 5);
+    return { coins: coins.map((t) => ({ address: t.address, symbol: t.symbol, createdAt: t.createdAt })) };
   }
 
   // Story check: is the post's story real, and is the coin tied to it? Read on our server (it looks
@@ -365,7 +383,7 @@ export function makeHandlers(host) {
   };
   const launchState = () => cached('launch:state', 600_000, async () => (await fetch(`${API_BASE}/launch/settings`, { signal: AbortSignal.timeout(6000) })).json());
 
-  const handlers = { starList, starToggle, videoInfo, tweet, read, coins, postCoins, mentioned, story, larpcheck, refresh, safety, bundle, image, openWindow, reroute, holderStatus, holderSave, holderWho, holderActive, recentList, recentAdd, recentClear, launchState, lcHolders, lcBoard, lcSettings, lcStart, lcAsk, lcPoll, settings: () => host.settings() };
+  const handlers = { starList, starToggle, videoInfo, tweet, read, coins, fresh, postCoins, mentioned, story, larpcheck, refresh, safety, bundle, image, openWindow, reroute, holderStatus, holderSave, holderWho, holderActive, recentList, recentAdd, recentClear, launchState, lcHolders, lcBoard, lcSettings, lcStart, lcAsk, lcPoll, settings: () => host.settings() };
   // Changing the RPC drops cached bundle results so they're re-read through the new one.
   handlers.resetBundles = () => memo.forEach((_, k) => k.startsWith('bd:') && memo.delete(k));
   return handlers;
