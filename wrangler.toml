@@ -15,8 +15,9 @@ directory = "./dist/web"
 
 # Holder-only data (server/holder.js): the coin and how much of it counts. Off until the Frontrun key is set.
 [vars]
-# Launching a coin from a post (server/launch.js): on in beta since 1 Nov 2026. "off" stops it with no store update.
-LAUNCH_STATE = "on"
+# Launching a coin from a post (server/launch.js): "hidden" keeps the page working by direct link with no button in the
+# extension or on the scanner, "on" shows the button, "off" stops launches. All with no store update.
+LAUNCH_STATE = "hidden"
 RADAR_MINT ="HyDSdtgiSa5mHqkTVoz8cTFTeVLFKdZ8amPvtNYfpump"
 HOLDER_MIN_USD = "10"
 
