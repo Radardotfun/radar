@@ -650,7 +650,7 @@ svg { display: block; }
 .recent-top a:hover { color: var(--text); }
 .lc-board { margin-top: 18px; display: flex; flex-direction: column; text-align: left; }
 .lc-tabs { display: flex; gap: 6px; margin: 2px 0 6px; }
-.lc-tabs button { padding: 5px 9px; border: 1px solid var(--line); border-radius: 999px; font: 600 11px var(--font); color: var(--muted); }
+.lc-tabs button { padding: 8px 11px; border: 1px solid var(--line); border-radius: 999px; font: 600 11px var(--font); color: var(--muted); }
 .lc-tabs button[aria-selected="true"] { color: var(--text); border-color: var(--line-2); background: var(--card-2); }
 .lc-row { display: flex; align-items: center; gap: 8px; min-height: 38px; border-bottom: 1px solid var(--line); }
 .lc-row button { flex: 1; min-width: 0; padding: 8px 0; text-align: left; color: var(--text); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }

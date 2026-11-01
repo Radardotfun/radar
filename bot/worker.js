@@ -14,10 +14,10 @@
 // POST /poll (run one round now).
 import { makeHandlers, API_BASE, DEFAULTS } from '../extension/src/lib/handlers.js';
 import { searchPairs, allPairs, aggregate } from '../extension/src/lib/market.js';
-import { botReply, replyEntries, NO_COINS, xLength } from './reply.js';
+import { botReply, replyEntries, NO_COINS, xLength, varied } from './reply.js';
 import { botCoins, withMemory } from './coins.js';
 import { oauthHeader } from './oauth.js';
-import { wantsCoins } from './trigger.js';
+import { wantsCoins, worthRetry, mergeState } from './trigger.js';
 import { createChat } from './chat.js';
 
 const X = 'https://api.x.com/2';
@@ -210,11 +210,11 @@ async function replyFor(postUrl, known = null, fresh = false) {
     dexBudget -= reserve;
     const found = await h.coins({ post, judge: true }).finally(() => { dexBudget += reserve; });
     if (found.engineError) throw new Error('Radar could not read this post right now');
-    const { scan, scores } = withMemory(found, known);
+    const { scan, scores, guessed } = withMemory(found, known);
     const res = { ...scan, ...await botCoins(scan, post, { search: searchPairs, lookupCa, lookupBio, matchImages, capOf: curveCap, chains: SETTINGS.chains }) };
     const first = replyEntries(res)[0]?.t;
     const larp = first ? await h.larpcheck({ address: first.address }).catch(() => null) : null;
-    return { text: botReply(res, postUrl) || NO_COINS, short: botReply(res, postUrl, Date.now(), { full: false }) || NO_COINS, links: botReply(res, postUrl, Date.now(), { links: true, larp }) || NO_COINS, story: res.narrative || '', scores, entries: replyEntries(res) };
+    return { text: botReply(res, postUrl) || NO_COINS, short: botReply(res, postUrl, Date.now(), { full: false }) || NO_COINS, links: botReply(res, postUrl, Date.now(), { links: true, larp }) || NO_COINS, story: res.narrative || '', scores, guessed, entries: replyEntries(res) };
   })();
   scans.set(postUrl, { at: Date.now(), p });
   p.catch(() => scans.delete(postUrl));
@@ -312,12 +312,12 @@ async function poll(env) {
     delete e.scores;
   }
   s.judged = Object.fromEntries(Object.entries(s.judged).filter(([, v]) => Date.now() - v.at < 86_400_000).sort((a, b) => b[1].at - a[1].at).slice(0, 50));
-  // A busy DexScreener, AI or X (429, timeouts) is worth another try next minute; anything else is not.
-  s.pending = done.filter((e) => e.error && /rate-limit|429|timed out|timeout|could not read|Too Many/i.test(e.error) && !e.reply)
+  s.pending = done.filter((e) => e.error && worthRetry(e.error) && !e.reply)
     .map((e) => ({ mention: e.mention, by: e.by, target: e.target, tries: (e.tries || 0) + 1 }));
   s.mine = [...done.map((e) => e.reply).filter(Boolean), ...s.mine].slice(0, 200);
   s.log = [...done.reverse(), ...s.log].slice(0, 60);
-  await env.BOT_KV.put('state', JSON.stringify(s)).catch(() => {});
+  const saved = await env.BOT_KV.get('state', 'json').catch(() => null);
+  await env.BOT_KV.put('state', JSON.stringify(mergeState(s, saved))).catch(() => {});
   return { mentions: mentions.length, live, handled: done.map(({ text, ...rest }) => rest) };
 }
 
@@ -338,7 +338,12 @@ async function handle(env, { mention, target, live, scores: known = null, tries 
     const sent = await post(busy);
     return { busy: String(e.message || e).slice(0, 200), chars: xLength(busy), text: busy, reply: sent.data?.id };
   }
-  const { text, short, links, story, scores } = found;
+  const { text, short, links, story, scores, guessed } = found;
+  // The judge timed out, so some coins have no verdict. Try again next minute; the last try posts only coins that have one.
+  if (guessed && tries < 4) {
+    scans.delete(postUrl);
+    throw new Error('The AI judge timed out, trying again next minute');
+  }
   // DexScreener left lookups unanswered: the coins may be missing the big one. Try again next minute (a new run,
   // a fresh budget), with this scan dropped from the cache. The retry list allows five tries in all (one a minute);
   // the last one posts what there is.
@@ -357,10 +362,11 @@ async function handle(env, { mention, target, live, scores: known = null, tries 
     posted = await post(sent);
   } catch (e) {
     // X won't take crypto addresses in an app's first 7 days: send the short form instead. And it refuses a reply
-    // identical to an earlier one: the seconds make it different.
+    // identical to an earlier one, so the time makes it different.
     if (/crypto address/i.test(e.message)) sent = short;
     else if (!/duplicate/i.test(e.message)) throw e;
-    posted = await post(sent.replace(' UTC):', `:${String(new Date().getUTCSeconds()).padStart(2, '0')} UTC):`));
+    sent = varied(sent);
+    posted = await post(sent);
   }
   return { ...out, text: sent, chars: xLength(sent), form: sent === short ? 'short' : sent === links ? 'links' : 'full', reply: posted.data?.id };
 }

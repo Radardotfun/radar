@@ -20,7 +20,8 @@ export async function standInReport(mint, holders, rpc) {
 }
 
 export async function rugReport(mint, pairAddresses = []) {
-  const res = await fetch(`${RC}/tokens/${mint}/report`);
+  // A hung RugCheck must reach the fallback rather than leave the card waiting.
+  const res = await fetch(`${RC}/tokens/${mint}/report`, { signal: AbortSignal.timeout(8000) });
   if (res.status === 429) throw new Error('RugCheck rate limited');
   if (!res.ok) throw new Error(`RugCheck ${res.status}`);
   const r = await res.json();

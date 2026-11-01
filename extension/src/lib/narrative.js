@@ -200,9 +200,9 @@ export async function findCoins({ narrative, coinable, terms, anchors = [], judg
     // A half that's slow or fails falls back to name relevance for its coins, so the panel always answers.
     const verdicts = await Promise.all(halves.map((part) => engine(apiBase, 'judge', { narrative, post, candidates: part.map(brief) }, 9_000)
       .then((v) => v.matches.map((m) => ({ ...m, t: part[m.i]?.t })))
-      .catch(() => part.filter((c) => c.r >= 3).slice(0, 5).map((c) => ({ t: c.t, score: Math.min(85, 55 + c.r * 4) })))));
+      .catch(() => part.filter((c) => c.r >= 3).slice(0, 5).map((c) => ({ t: c.t, score: Math.min(85, 55 + c.r * 4), guessed: true })))));
     lap('judge');
-    scores = new Map(verdicts.flat().filter((m) => m.t).map((m) => [m.t.address, { score: m.score, reason: '' }]));
+    scores = new Map(verdicts.flat().filter((m) => m.t).map((m) => [m.t.address, { score: m.score, reason: '', guessed: !!m.guessed }]));
   }
   for (const { t } of candidates) if (t.fromPost) scores.set(t.address, { score: 99, reason: 'Launched with this post as its link' });
   // `pool`: every candidate searched, judged or not (the X bot compares their logos with the post's picture).
@@ -218,7 +218,7 @@ export async function findCoins({ narrative, coinable, terms, anchors = [], judg
   ]).catch(() => refs);
   lap('pools');
   tokens = tokens.filter((t) => scores.has(t.address)).map((t) => ({
-    ...t, relevance: scores.get(t.address).score, reason: scores.get(t.address).reason, fromPost: fromPost.has(t.address),
+    ...t, relevance: scores.get(t.address).score, reason: scores.get(t.address).reason, fromPost: fromPost.has(t.address), guessed: !!scores.get(t.address).guessed,
   }));
   const onlyChain = chainInPost(post?.text);
   if (onlyChain && chains.includes(onlyChain)) tokens = tokens.filter((t) => t.chain === onlyChain || t.fromPost);

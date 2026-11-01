@@ -1,4 +1,4 @@
-// Radar 1.7.42 on the web: built from the extension source at https://tryradar.fun. Not financial advice.
+// Radar 1.7.43 on the web: built from the extension source at https://tryradar.fun. Not financial advice.
 (() => {
   // extension/src/lib/keywords.js
   var STOP = new Set(`a about above after again against all almost also am an and any are aren as at be because been before
@@ -428,7 +428,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     };
   }
   async function rugReport(mint, pairAddresses = []) {
-    const res = await fetch(`${RC}/tokens/${mint}/report`);
+    const res = await fetch(`${RC}/tokens/${mint}/report`, { signal: AbortSignal.timeout(8e3) });
     if (res.status === 429) throw new Error("RugCheck rate limited");
     if (!res.ok) throw new Error(`RugCheck ${res.status}`);
     const r = await res.json();
@@ -662,9 +662,9 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
         links: t.links.slice(0, 2)
       });
       const halves = candidates.length > 12 ? [candidates.slice(0, Math.ceil(candidates.length / 2)), candidates.slice(Math.ceil(candidates.length / 2))] : [candidates];
-      const verdicts = await Promise.all(halves.map((part) => engine(apiBase, "judge", { narrative, post, candidates: part.map(brief) }, 9e3).then((v) => v.matches.map((m) => ({ ...m, t: part[m.i]?.t }))).catch(() => part.filter((c) => c.r >= 3).slice(0, 5).map((c) => ({ t: c.t, score: Math.min(85, 55 + c.r * 4) })))));
+      const verdicts = await Promise.all(halves.map((part) => engine(apiBase, "judge", { narrative, post, candidates: part.map(brief) }, 9e3).then((v) => v.matches.map((m) => ({ ...m, t: part[m.i]?.t }))).catch(() => part.filter((c) => c.r >= 3).slice(0, 5).map((c) => ({ t: c.t, score: Math.min(85, 55 + c.r * 4), guessed: true })))));
       lap("judge");
-      scores = new Map(verdicts.flat().filter((m) => m.t).map((m) => [m.t.address, { score: m.score, reason: "" }]));
+      scores = new Map(verdicts.flat().filter((m) => m.t).map((m) => [m.t.address, { score: m.score, reason: "", guessed: !!m.guessed }]));
     }
     for (const { t } of candidates) if (t.fromPost) scores.set(t.address, { score: 99, reason: "Launched with this post as its link" });
     const pool = candidates.map((c) => c.t);
@@ -681,7 +681,8 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       ...t,
       relevance: scores.get(t.address).score,
       reason: scores.get(t.address).reason,
-      fromPost: fromPost.has(t.address)
+      fromPost: fromPost.has(t.address),
+      guessed: !!scores.get(t.address).guessed
     }));
     const onlyChain = chainInPost(post?.text);
     if (onlyChain && chains.includes(onlyChain)) tokens = tokens.filter((t) => t.chain === onlyChain || t.fromPost);
@@ -1219,8 +1220,8 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
           const report2 = await rugReport(mint, pairs);
           rugFails = 0;
           return { ...report2, readAt: Date.now() };
-        } catch {
-          if (++rugFails >= 3) {
+        } catch (e) {
+          if (!/rate limited/i.test(String(e?.message)) && ++rugFails >= 3) {
             rugFails = 0;
             rugOffUntil = Date.now() + 3e5;
           }
@@ -4124,7 +4125,7 @@ svg { display: block; }\r
 .recent-top a:hover { color: var(--text); }\r
 .lc-board { margin-top: 18px; display: flex; flex-direction: column; text-align: left; }\r
 .lc-tabs { display: flex; gap: 6px; margin: 2px 0 6px; }\r
-.lc-tabs button { padding: 5px 9px; border: 1px solid var(--line); border-radius: 999px; font: 600 11px var(--font); color: var(--muted); }\r
+.lc-tabs button { padding: 8px 11px; border: 1px solid var(--line); border-radius: 999px; font: 600 11px var(--font); color: var(--muted); }\r
 .lc-tabs button[aria-selected="true"] { color: var(--text); border-color: var(--line-2); background: var(--card-2); }\r
 .lc-row { display: flex; align-items: center; gap: 8px; min-height: 38px; border-bottom: 1px solid var(--line); }\r
 .lc-row button { flex: 1; min-width: 0; padding: 8px 0; text-align: left; color: var(--text); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }\r

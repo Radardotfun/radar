@@ -48,7 +48,9 @@ CREATE TABLE IF NOT EXISTS launches (
   signature TEXT NOT NULL,
   at INTEGER NOT NULL,
   story TEXT NOT NULL DEFAULT '',
-  pic TEXT NOT NULL DEFAULT ''
+  pic TEXT NOT NULL DEFAULT '',
+  symbol_key TEXT NOT NULL DEFAULT '',
+  name_key TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS launches_at ON launches (at DESC);
 CREATE INDEX IF NOT EXISTS launches_post ON launches (post, wallet);

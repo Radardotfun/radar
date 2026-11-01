@@ -117,7 +117,9 @@ export function ownCoin(t, post) {
 // shift between scans, so two tags of the same post could get different coins. The bot keeps each post's verdicts:
 // a coin judged before keeps its first score, a coin judged before but missing from this scan's verdicts comes back
 // from the candidate pool, and only coins never seen get a fresh verdict.
-// -> { scan: the scan with remembered scores applied, scores: { address: score } to keep for next time }
+// A score guessed from the name because the judge timed out is no verdict: the bot posts in public, so that coin is left out and
+// nothing about it is remembered.
+// -> { scan: the scan with remembered scores applied, scores: { address: score } to keep for next time, guessed: how many coins had no verdict }
 export function withMemory(scan, known = null) {
   const memo = known && typeof known === 'object' ? known : {};
   const seen = new Map();
@@ -125,15 +127,17 @@ export function withMemory(scan, known = null) {
     if (t?.address && !seen.has(t.address)) seen.set(t.address, t);
   }
   const judged = new Set([...(scan?.roleCandidates || []), ...(scan?.picks || []).map((p) => p.token), ...(scan?.others || []), scan?.techMatch].filter((t) => t?.address).map((t) => t.address));
+  const noVerdict = (t) => t?.guessed && !Number.isFinite(memo[t.address]);
+  const guessed = [...seen.values()].filter((t) => judged.has(t.address) && noVerdict(t)).length;
   const scored = [...seen.values()]
-    .map((t) => (Number.isFinite(memo[t.address]) ? { ...t, relevance: memo[t.address] } : judged.has(t.address) ? t : null))
+    .map((t) => (Number.isFinite(memo[t.address]) ? { ...t, relevance: memo[t.address] } : judged.has(t.address) && !noVerdict(t) ? t : null))
     .filter((t) => t && (t.relevance || 0) >= 60);
   const scores = { ...memo };
   for (const t of scored) if (!Number.isFinite(scores[t.address])) scores[t.address] = t.relevance;
   // The 40 best are plenty for one post.
   const kept = Object.fromEntries(Object.entries(scores).sort((a, b) => b[1] - a[1]).slice(0, 40));
-  const techMatch = scan?.techMatch?.address && Number.isFinite(memo[scan.techMatch.address]) ? { ...scan.techMatch, relevance: memo[scan.techMatch.address] } : scan?.techMatch || null;
-  return { scan: { ...scan, roleCandidates: scored, picks: [], others: [], techMatch }, scores: kept };
+  const techMatch = noVerdict(scan?.techMatch) ? null : scan?.techMatch?.address && Number.isFinite(memo[scan.techMatch.address]) ? { ...scan.techMatch, relevance: memo[scan.techMatch.address] } : scan?.techMatch || null;
+  return { scan: { ...scan, roleCandidates: scored, picks: [], others: [], techMatch }, scores: kept, guessed };
 }
 
 // A post that is a picture with at most a short caption (links and @handles don't count).

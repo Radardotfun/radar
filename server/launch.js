@@ -20,6 +20,8 @@ const MAX_PICTURES_COMPARED = 16; // the newest coins: one AI call handles about
 // 3 minutes, long enough to approve it in a wallet, so two people can't pay for the same one at once.
 const STORY_LOCK_MS = 30 * 86_400_000;
 const CLAIM_MS = 180_000;
+const LAND_GRACE_MS = 120_000; // a transaction signed at the end of its claim can still land this long after
+const CREATE_V2 = [0xd6, 0x90, 0x4c, 0xec, 0x5f, 0x8b, 0x31, 0xb4]; // pump.fun's create_v2 instruction
 
 const bytesOf = (s) => new TextEncoder().encode(s).length;
 const clean = (s) => String(s ?? '').replace(/[\u0000-\u001f\u007f<>]/g, ' ').replace(/\s+/g, ' ').trim();
@@ -41,7 +43,7 @@ export function launchFields(body) {
   const name = clean(body?.name);
   const symbol = clean(body?.symbol).replace(/^\$+/, '').replace(/\s+/g, '');
   const description = clean(body?.description).slice(0, 280);
-  const post = String(body?.post ?? '').trim().replace(/\?.*$/, '').replace('//www.', '//').replace('//mobile.', '//');
+  const post = String(body?.post ?? '').trim().replace(/\?.*$/, '').replace('//www.', '//').replace('//mobile.', '//').replace(/\/status\/0+(?=\d)/, '/status/');
   const wallet = String(body?.wallet ?? '').trim();
   if (!name || bytesOf(name) > 32) return { error: 'The name needs 1 to 32 characters.' };
   if (!symbol || bytesOf(symbol) > 10) return { error: 'The ticker needs 1 to 10 characters.' };
@@ -67,43 +69,61 @@ export function metadataJson(row, origin) {
 
 const b64Bytes = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
 
-export const postId = (post) => String(post || '').match(/status\/(\d+)/)?.[1] || '';
+export const postId = (post) => String(post || '').match(/status\/0*(\d+)/)?.[1] || '';
 // Letters and digits decide, so "A-Dog" is "a dog". A name of only emoji keeps them: two different ones aren't the same coin.
-const coinKey = (s) => { const low = String(s || '').toLowerCase(); return low.replace(/[^\p{L}\p{N}]/gu, '') || low.replace(/\s/g, ''); };
+export const coinKey = (s) => { const low = String(s || '').toLowerCase(); return low.replace(/[^\p{L}\p{N}]/gu, '') || low.replace(/\s/g, ''); };
 const shortHash = async (bytes) => [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))].slice(0, 12).map((b) => b.toString(16).padStart(2, '0')).join('');
 
-// The first coin that is plainly the same as this one: its post, ticker, name or exact picture.
-export function plainClash(coin, rows) {
-  const id = postId(coin.post), symbol = coinKey(coin.symbol), name = coinKey(coin.name);
-  return rows.find((r) => postId(r.post) === id || coinKey(r.symbol) === symbol || coinKey(r.name) === name || (coin.pic && r.pic === coin.pic)) || null;
+// What plainly makes this coin the same as another: its post, ticker, name or exact picture.
+export function clashKind(coin, r) {
+  if (postId(r.post) === postId(coin.post)) return 'post';
+  if (coinKey(r.symbol) === coinKey(coin.symbol)) return 'ticker';
+  if (coinKey(r.name) === coinKey(coin.name)) return 'name';
+  return coin.pic && r.pic === coin.pic ? 'picture' : null;
+}
+export const plainClash = (coin, rows) => rows.find((r) => clashKind(coin, r)) || null;
+
+const takenBy = (kind, r) => {
+  const error = kind === 'ticker' ? `$${r.symbol} is already the ticker of a coin launched with Radar. Pick another one.`
+    : kind === 'name' ? `That name is already used by a coin launched with Radar: $${r.symbol}. Pick another one.`
+      : kind === 'picture' ? `That picture is already used by a coin launched with Radar: $${r.symbol}. One coin per story.`
+        : `This story already has a coin launched with Radar: $${r.symbol}. One coin per story.`;
+  return { status: 409, data: { error, mint: r.mint } };
+};
+const heldBy = (kind) => ({ status: 409, data: { error: `Someone is launching with this ${kind} right now. Try again in 3 minutes.` } });
+
+// The listed coin this one plainly clashes with: its exact post for good, its ticker, name or picture for 30 days.
+async function listedClash(coin, env, now, mint = '') {
+  const exact = await env.DB.prepare('SELECT mint, symbol, name, post, pic FROM launches WHERE post LIKE ? AND mint != ? LIMIT 1').bind(`%/status/${postId(coin.post)}`, mint).first();
+  if (exact) return exact;
+  return env.DB.prepare("SELECT mint, symbol, name, post, pic FROM launches WHERE at > ? AND mint != ? AND (symbol_key = ? OR name_key = ? OR (pic != '' AND pic = ?)) LIMIT 1")
+    .bind(now - STORY_LOCK_MS, mint, coinKey(coin.symbol), coinKey(coin.name), coin.pic || '').first();
 }
 
 // Why this coin can't launch from Radar, or null. sameStory(story, others) and samePicture(picture, others) are the AI's
 // reading of the rest, and only run when there's something to compare with. The picture check catches a copy with new words
 // and a re-saved image. If the AI can't answer, the launch waits: a guess would break the promise.
 export async function storyProblem(coin, env, { sameStory, samePicture }, now = Date.now()) {
-  const taken = (r) => ({ status: 409, data: { error: `This story already has a coin launched with Radar: $${r.symbol}. One coin per story.`, mint: r.mint } });
-  const busy = { status: 409, data: { error: 'Someone is launching this story right now. Try again in 3 minutes.' } };
-  const exact = await env.DB.prepare('SELECT mint, symbol FROM launches WHERE post LIKE ? LIMIT 1').bind(`%/status/${postId(coin.post)}`).first();
-  if (exact) return taken(exact);
-  const { results: listed } = await env.DB.prepare('SELECT id, mint, symbol, name, post, story, pic FROM launches WHERE at > ? ORDER BY at DESC LIMIT 200').bind(now - STORY_LOCK_MS).all();
-  const clash = plainClash(coin, listed || []);
-  if (clash) return taken(clash);
-  // Launches in progress by other wallets that started first.
-  const { results: active } = await env.DB.prepare('SELECT id, symbol, name, post, story, pic, at FROM launch_meta WHERE at > ? AND wallet != ? ORDER BY at DESC LIMIT 50').bind(now - CLAIM_MS, coin.wallet).all();
-  const pending = (active || []).filter((r) => r.at < coin.at || (r.at === coin.at && r.id < coin.id));
-  if (plainClash(coin, pending)) return busy;
+  const clash = await listedClash(coin, env, now);
+  if (clash) return takenBy(clashKind(coin, clash) || 'story', clash);
+  const { results: listed } = await env.DB.prepare('SELECT id, mint, symbol, post, story FROM launches WHERE at > ? ORDER BY at DESC LIMIT ?').bind(now - STORY_LOCK_MS, MAX_STORIES_COMPARED).all();
+  // Launches in progress by other wallets. rowid is the order claims really went in, so of two at once exactly one goes
+  // ahead. A retry of an old claim goes behind everyone active.
+  const { results: active } = await env.DB.prepare('SELECT rowid AS seq, id, symbol, name, post, story, pic, at FROM launch_meta WHERE at > ? AND wallet != ? ORDER BY at DESC LIMIT 50').bind(now - CLAIM_MS, coin.wallet).all();
+  const pending = (active || []).filter((r) => coin.existed || r.seq < coin.seq);
+  const near = plainClash(coin, pending);
+  if (near) return heldBy(clashKind(coin, near));
   const all = [...pending.map((r) => ({ r, done: false })), ...(listed || []).map((r) => ({ r, done: true }))];
   const others = all.filter((x) => x.r.story).slice(0, MAX_STORIES_COMPARED);
   const looks = coin.image ? all.filter((x) => x.r.id).slice(0, MAX_PICTURES_COMPARED) : [];
-  const answer = (x) => (x.done ? taken(x.r) : busy);
+  const answer = (x, kind) => (x.done ? takenBy(kind, x.r) : heldBy(kind));
   try {
     const [story, picture] = await Promise.all([
       others.length ? sameStory(coin.story, others.map((x) => x.r.story)) : -1,
       looks.length ? pictureMatch(coin, looks, env, samePicture) : null,
     ]);
-    if (story >= 0) return answer(others[story]);
-    return picture ? answer(picture) : null;
+    if (story >= 0) return answer(others[story], 'story');
+    return picture ? answer(picture, 'picture') : null;
   } catch {
     return { status: 503, data: { error: 'Could not check whether this story already has a coin. Nothing was launched. Try again.' } };
   }
@@ -149,17 +169,19 @@ export async function launchMeta(body, env, origin, { readPost, sameStory, sameP
   const id = await shortHash(new Uint8Array([...new TextEncoder().encode(stored), ...image]));
   const pic = await shortHash(image);
   // The same details give the same id, and a wallet address proves nothing here. A row that was already there may be the
-  // metadata of a live coin, so a refusal only ever removes the row this request added.
-  const existed = await env.DB.prepare('SELECT id FROM launch_meta WHERE id = ?').bind(id).first();
-  // The claim goes in before the check, so two launches at the same moment see each other and the earlier one wins.
-  await env.DB.prepare('INSERT INTO launch_meta (id, name, symbol, description, post, wallet, image, type, at, story, pic) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (id) DO UPDATE SET at = excluded.at')
-    .bind(id, fields.name, fields.symbol, fields.description, fields.post, fields.wallet, image, type, now, story, pic).run();
-  const problem = await storyProblem({ ...fields, id, at: now, story, pic, image, type }, env, { sameStory, samePicture }, now);
+  // metadata of a live coin, so a refusal only ever removes the row this request added, and only a retry that passes
+  // renews its claim.
+  const existed = !!await env.DB.prepare('SELECT id FROM launch_meta WHERE id = ?').bind(id).first();
+  // A new claim goes in before the check, so two launches at the same moment see each other and the earlier one wins.
+  const added = existed ? null : await env.DB.prepare('INSERT INTO launch_meta (id, name, symbol, description, post, wallet, image, type, at, story, pic) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING rowid AS seq')
+    .bind(id, fields.name, fields.symbol, fields.description, fields.post, fields.wallet, image, type, now, story, pic).first();
+  const problem = await storyProblem({ ...fields, id, at: now, story, pic, image, type, seq: added?.seq, existed }, env, { sameStory, samePicture }, now);
   if (problem) {
     if (!existed) await env.DB.prepare('DELETE FROM launch_meta WHERE id = ?').bind(id).run();
     return problem;
   }
-  await env.DB.prepare("INSERT INTO counts (day, name, n) VALUES (?, 'launch-meta', 1) ON CONFLICT (day, name) DO UPDATE SET n = n + 1").bind(day).run();
+  if (existed) await env.DB.prepare('UPDATE launch_meta SET at = ? WHERE id = ?').bind(now, id).run();
+  else await env.DB.prepare("INSERT INTO counts (day, name, n) VALUES (?, 'launch-meta', 1) ON CONFLICT (day, name) DO UPDATE SET n = n + 1").bind(day).run();
   return { status: 200, data: { id, uri: `${origin}/launch/meta/${id}.json`, name: fields.name, symbol: fields.symbol } };
 }
 
@@ -186,34 +208,49 @@ export function base58Bytes(s) {
   return new Uint8Array(out);
 }
 
-// Whether a transaction really launched this coin on pump.fun from this wallet, with this stored metadata.
-export function launchProblem(tx, { mint, wallet, uri }) {
+// The name, ticker and metadata address in a pump.fun create_v2 instruction, or null when it's something else.
+export function createV2Args(data) {
+  if (data.length < 8 || CREATE_V2.some((b, i) => data[i] !== b)) return null;
+  let at = 8;
+  const text = () => {
+    if (at + 4 > data.length) return null;
+    const n = data[at] + data[at + 1] * 2 ** 8 + data[at + 2] * 2 ** 16 + data[at + 3] * 2 ** 24;
+    at += 4;
+    if (at + n > data.length) return null;
+    const s = new TextDecoder().decode(data.subarray(at, at + n));
+    at += n;
+    return s;
+  };
+  const name = text(), symbol = text(), uri = text();
+  return name === null || symbol === null || uri === null ? null : { name, symbol, uri };
+}
+
+// Whether a transaction really launched this coin on pump.fun from this wallet, with exactly this stored name, ticker and
+// metadata. Anything looser could list a coin under details that aren't the real ones.
+export function launchProblem(tx, { mint, wallet, uri, name, symbol }) {
   if (!tx) return 'not found yet';
   if (tx.meta?.err) return 'it failed on-chain';
-  const keys = tx.transaction?.message?.accountKeys || [];
-  const signers = keys.slice(0, tx.transaction?.message?.header?.numRequiredSignatures || 0);
+  const message = tx.transaction?.message;
+  const keys = [...(message?.accountKeys || []), ...(tx.meta?.loadedAddresses?.writable || []), ...(tx.meta?.loadedAddresses?.readonly || [])];
+  const signers = keys.slice(0, message?.header?.numRequiredSignatures || 0);
   if (signers[0] !== wallet) return 'another wallet paid for it';
-  if (!signers.includes(mint)) return 'it did not create this coin';
+  if (mint === wallet || !signers.includes(mint)) return 'it did not create this coin';
   // Only the launch itself, so a listed coin's creator starts with none of it.
-  if ((tx.transaction.message.instructions || []).filter((ix) => !NOT_THE_LAUNCH.has(keys[ix.programIdIndex])).length !== 1) return 'it did more than launch the coin';
-  const wanted = new TextEncoder().encode(uri);
-  const hasUri = (tx.transaction.message.instructions || []).some((ix) => {
-    if (keys[ix.programIdIndex] !== PUMP_PROGRAM) return false;
-    const data = base58Bytes(ix.data);
-    outer: for (let i = 0; i + wanted.length <= data.length; i++) {
-      for (let j = 0; j < wanted.length; j++) if (data[i + j] !== wanted[j]) continue outer;
-      return true;
-    }
-    return false;
-  });
-  return hasUri ? null : 'it did not use this metadata';
+  const main = (message.instructions || []).filter((ix) => !NOT_THE_LAUNCH.has(keys[ix.programIdIndex]));
+  if (main.length !== 1) return 'it did more than launch the coin';
+  const args = keys[main[0].programIdIndex] === PUMP_PROGRAM ? createV2Args(base58Bytes(main[0].data)) : null;
+  if (!args) return 'it did not create this coin';
+  if (keys[main[0].accounts?.[0]] !== mint) return 'it did not create this coin';
+  if (args.uri !== uri) return 'it did not use this metadata';
+  if (args.name !== name || args.symbol !== symbol) return 'its name or ticker are not the ones it claimed';
+  return null;
 }
 
 // POST /launch/record: lists a coin once Solana shows the launch. Nothing the page says is taken on trust.
 export async function launchRecord(body, env, rpcUrl, origin) {
   const { id, mint, signature } = body || {};
   if (!/^[0-9a-f]{24}$/.test(String(id)) || !ADDRESS.test(String(mint)) || !SIGNATURE.test(String(signature))) return { status: 400, data: { error: 'Bad request' } };
-  const meta = await env.DB.prepare('SELECT id, name, symbol, post, wallet, story, pic FROM launch_meta WHERE id = ?').bind(id).first();
+  const meta = await env.DB.prepare('SELECT id, name, symbol, post, wallet, story, pic, at FROM launch_meta WHERE id = ?').bind(id).first();
   if (!meta) return { status: 404, data: { error: 'Unknown launch' } };
   const res = await fetch(rpcUrl, {
     method: 'POST',
@@ -222,14 +259,18 @@ export async function launchRecord(body, env, rpcUrl, origin) {
     signal: AbortSignal.timeout(15_000),
   });
   const tx = (await res.json().catch(() => null))?.result || null;
-  const problem = launchProblem(tx, { mint, wallet: meta.wallet, uri: `${origin}/launch/meta/${id}.json` });
+  const problem = launchProblem(tx, { mint, wallet: meta.wallet, uri: `${origin}/launch/meta/${id}.json`, name: meta.name, symbol: meta.symbol });
   if (problem) return { status: tx ? 400 : 404, data: { error: `Not listed: ${problem}.` } };
-  // A claim runs out after 3 minutes, so a late transaction can land after someone else's coin. The first one stays listed.
-  const { results: listed } = await env.DB.prepare('SELECT mint, symbol, name, post, pic FROM launches WHERE at > ? AND mint != ? ORDER BY at DESC LIMIT 200').bind(Date.now() - STORY_LOCK_MS, mint).all();
-  const first = plainClash(meta, listed || []);
+  const already = await env.DB.prepare('SELECT mint FROM launches WHERE mint = ?').bind(mint).first();
+  if (already) return { status: 200, data: { listed: true } };
+  // The story check held for this claim's 3 minutes. A transaction landing after that wasn't covered by it, so a claim can't
+  // sit unused and land once someone else has the story.
+  const landed = (tx.blockTime || Math.floor(Date.now() / 1000)) * 1000;
+  if (landed > meta.at + CLAIM_MS + LAND_GRACE_MS) return { status: 409, data: { error: 'Not listed: it landed after its 3 minute hold on this story ended.' } };
+  const first = await listedClash(meta, env, Date.now(), mint);
   if (first) return { status: 409, data: { error: `Not listed: this story already has a coin launched with Radar, $${first.symbol}.` } };
-  await env.DB.prepare('INSERT OR IGNORE INTO launches (mint, id, post, wallet, name, symbol, signature, at, story, pic) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-    .bind(mint, id, meta.post, meta.wallet, meta.name, meta.symbol, signature, (tx.blockTime || Math.floor(Date.now() / 1000)) * 1000, meta.story || '', meta.pic || '').run();
+  await env.DB.prepare('INSERT OR IGNORE INTO launches (mint, id, post, wallet, name, symbol, signature, at, story, pic, symbol_key, name_key) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+    .bind(mint, id, meta.post, meta.wallet, meta.name, meta.symbol, signature, landed, meta.story || '', meta.pic || '', coinKey(meta.symbol), coinKey(meta.name)).run();
   return { status: 200, data: { listed: true } };
 }
 

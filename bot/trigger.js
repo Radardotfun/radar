@@ -19,3 +19,28 @@ export function wantsCoins(m, username) {
   if (rest.length <= 25 || (rest.length <= 100 && ASK.test(rest))) return { ok: true };
   return { ok: false, why: 'conversation, not a coin request' };
 }
+
+// A busy DexScreener, AI, post reader or X is worth another try next minute; anything else is not.
+export const worthRetry = (message) => /rate.?limit|\b429\b|\b50\d\b|timed out|timeout|could not read|too many|busy|overload|engine failed|fetch failed|network/i.test(String(message || ''));
+
+const newerId = (a, b) => { try { return BigInt(a || 0) >= BigInt(b || 0) ? a : b; } catch { return a || b; } };
+
+// Runs a minute apart can overlap when a post is slow to read, and whichever saves last would undo the other. So a run merges
+// with what's saved now: a rewound "since" would answer a tag twice, and lost retries would never be answered.
+export function mergeState(s, saved) {
+  if (!saved) return s;
+  const pending = [...(s.pending || [])];
+  for (const p of saved.pending || []) if (!pending.some((q) => q.mention === p.mention)) pending.push(p);
+  const seen = new Set();
+  const log = [...(s.log || []), ...(saved.log || [])].filter((e) => { const k = `${e.mention}|${e.at}`; if (seen.has(k)) return false; seen.add(k); return true; })
+    .sort((a, b) => String(b.at).localeCompare(String(a.at))).slice(0, 60);
+  return {
+    ...s,
+    since: newerId(s.since, saved.since),
+    sent: s.day === saved.day ? Math.max(s.sent || 0, saved.sent || 0) : s.sent,
+    pending,
+    mine: [...new Set([...(s.mine || []), ...(saved.mine || [])])].slice(0, 200),
+    judged: { ...(saved.judged || {}), ...(s.judged || {}) },
+    log,
+  };
+}

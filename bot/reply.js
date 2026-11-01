@@ -101,5 +101,11 @@ export function botReply(result, postUrl, now = Date.now(), { full = true, links
 
 export const NO_COINS = 'No coins on this one yet.';
 
+// X refuses a reply identical to an earlier one. This makes one different: seconds in its time, or a time when it has none.
+export function varied(text, now = new Date()) {
+  const clock = now.toISOString().slice(11, 19);
+  return text.includes(' UTC):') ? text.replace(/\d\d:\d\d(:\d\d)? UTC\):/, `${clock} UTC):`) : `${text} (${clock} UTC)`;
+}
+
 // X's length: links count as 23 characters whatever their length.
 export const xLength = (text) => [...text.replace(/https?:\/\/\S+/g, 'x'.repeat(23))].length;

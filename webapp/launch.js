@@ -3,7 +3,7 @@
 // dropped. Radar never sees the wallet's key or holds funds. Built into web/launch.js by scripts/build-webapp.mjs.
 import { Keypair, PublicKey, TransactionMessage, VersionedTransaction, ComputeBudgetProgram } from '@solana/web3.js';
 import { PUMP_SDK } from '@pump-fun/pump-sdk';
-import { txBlock, spendBlock, simulationWhy, suggestTicker, suggestName, tickerFromName, samePost } from './launch-guard.js';
+import { txBlock, spendBlock, simulationWhy, suggestTicker, suggestName, tickerFromName, samePost, base58 } from './launch-guard.js';
 
 const API = 'https://narrative-radar.millenia-portfolio.workers.dev';
 const RELAY = `${API}/rpc`;
@@ -69,6 +69,8 @@ ui.file.addEventListener('change', async () => {
 async function loadPost() {
   if (!samePost(post)) {
     say('Open this page from a post in Radar, or add ?post= with a link to a post on X.', 'error');
+    $('post-author').textContent = 'No post yet';
+    $('post-link').hidden = true;
     return;
   }
   $('post-link').href = post;
@@ -207,30 +209,93 @@ async function simulate(tx) {
   return spendBlock(pre.value, Number(post));
 }
 
-const shown = (mint, signature) => {
+// A launch the wallet has signed is kept until Solana has answered and Radar has listed it. So a failed connection or a
+// closed tab can't lose the coin, and nobody is told to launch again while the first one may still land.
+const SENT_KEY = 'radar.launch.sent';
+const SENT_KEEP_MS = 7 * 86_400_000;
+const LAND_WINDOW_MS = 150_000; // a transaction's blockhash has run out well before this
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const keepSent = (p) => { try { localStorage.setItem(SENT_KEY, JSON.stringify(p)); } catch {} };
+const dropSent = () => { try { localStorage.removeItem(SENT_KEY); } catch {} };
+const readSent = () => {
+  try {
+    const p = JSON.parse(localStorage.getItem(SENT_KEY) || 'null');
+    if (p && Date.now() - p.at < SENT_KEEP_MS) return p;
+    if (p) dropSent();
+  } catch {}
+  return null;
+};
+
+const shown = ({ mint, signature, post: from }, live) => {
   ui.done.hidden = false;
+  $('after-head').textContent = live ? 'Your coin is live' : 'Sent. Waiting for Solana';
   $('launched-mint').textContent = mint;
   $('link-pump').href = `https://pump.fun/coin/${mint}`;
   $('link-tx').href = `https://solscan.io/tx/${signature}`;
   $('link-larpcheck').href = `https://larpcheck.app/${mint}`;
-  $('link-scan').href = `/scan?url=${encodeURIComponent(post)}`;
+  $('link-scan').href = `/scan?url=${encodeURIComponent(from)}`;
 };
 
-async function waitFor(signature) {
-  for (let i = 0; i < 80; i++) {
-    const { value } = await rpc('getSignatureStatuses', [[signature]]);
-    const st = value?.[0];
-    if (st?.err) throw new Error('The launch failed on-chain. Your wallet only paid the network fee.');
-    if (st && ['confirmed', 'finalized'].includes(st.confirmationStatus)) return;
-    await new Promise((r) => setTimeout(r, 750));
+// What Solana says about a sent launch. A read that fails is no answer, so it's tried again rather than reported as a failure.
+async function waitFor(p) {
+  for (;;) {
+    const late = Date.now() - p.at > LAND_WINDOW_MS;
+    let answered = false;
+    try {
+      const { value } = await rpc('getSignatureStatuses', late ? [[p.signature], { searchTransactionHistory: true }] : [[p.signature]]);
+      answered = true;
+      const st = value?.[0];
+      if (st?.err) return 'failed';
+      if (st && ['confirmed', 'finalized'].includes(st.confirmationStatus)) return 'landed';
+    } catch {}
+    if (late) return answered ? 'gone' : 'unknown';
+    await sleep(750);
   }
-  throw new Error('Solana has not confirmed it yet. Check your wallet before trying again.');
+}
+
+// A node can miss a new transaction for a while, so a "not found" is tried again for about a minute. If it still can't be
+// listed it's kept, and listing is tried again next time this page opens.
+async function listLaunch(p) {
+  for (let i = 0; i < 12; i++) {
+    const r = await fetch(`${API}/launch/record`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: p.id, mint: p.mint, signature: p.signature }) }).catch(() => null);
+    if (r?.ok) { dropSent(); return; }
+    if (r?.status === 400 || r?.status === 409) {
+      dropSent();
+      const why = (await r.json().catch(() => null))?.error || 'Not listed.';
+      say(`Your coin is live on pump.fun, but it isn't on Radar's list. ${why}`, 'error');
+      return;
+    }
+    await sleep(5000);
+  }
+  keepSent({ ...p, landed: true });
+  say("Your coin is live on pump.fun. Radar couldn't list it yet. Open this page again later and it will try again.", 'error');
+}
+
+// From here the coin is either on its way or live, whatever happens to the connection.
+async function followLaunch(p) {
+  shown(p, false);
+  if (!p.landed) {
+    say('Sent. Waiting for Solana to confirm it…');
+    const result = await waitFor(p);
+    if (result === 'unknown') throw new Error("Radar can't reach Solana to check this launch. Don't launch again yet: try again in a minute and it will check.");
+    if (result !== 'landed') {
+      dropSent();
+      ui.done.hidden = true;
+      throw new Error(result === 'failed' ? 'The launch failed on-chain. Your wallet only paid the network fee.' : "It didn't land on Solana, so nothing launched and nothing was paid. You can try again.");
+    }
+  }
+  shown(p, true);
+  say('Launched. It is live on pump.fun.', 'success');
+  await listLaunch(p);
 }
 
 async function runLaunch() {
   busy = true;
   refresh();
   try {
+    // A launch from before is still open: finish that one first, so nobody pays for a second coin.
+    const open = readSent();
+    if (open) { await followLaunch(open); return; }
     say('Checking the story and saving the details…');
     const metaRes = await fetch(`${API}/launch/meta`, {
       method: 'POST', headers: { 'content-type': 'application/json' },
@@ -253,22 +318,21 @@ async function runLaunch() {
     const again = txBlock(signed, wallet, mint);
     if (again) throw new Error(again);
     signed.sign([mintKey]);
+    const sent = { id: meta.id, mint, signature: base58(signed.signatures[0]), post, at: Date.now() };
+    keepSent(sent);
+    shown(sent, false);
     say('Sending to Solana…');
-    const signature = await rpc('sendTransaction', [b64(signed.serialize()), { encoding: 'base64', skipPreflight: false, maxRetries: 3 }]);
-    await waitFor(signature);
-    shown(mint, signature);
-    say('Launched. It is live on pump.fun.', 'success');
-    // A node can miss a new transaction for a while, so a "not found" is tried again for about a minute. The coin is live
-    // either way; this only decides when it shows on the list.
-    for (let i = 0; i < 12; i++) {
-      const r = await fetch(`${API}/launch/record`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: meta.id, mint, signature }) }).catch(() => null);
-      if (r?.status === 400 || r?.status === 409) {
-        const why = (await r.json().catch(() => null))?.error || 'Not listed.';
-        say(`Your coin is live on pump.fun, but it isn't on Radar's list. ${why}`, 'error');
+    try {
+      await rpc('sendTransaction', [b64(signed.serialize()), { encoding: 'base64', skipPreflight: false, maxRetries: 3 }]);
+    } catch (e) {
+      // Solana refusing it is final. Anything else (a 502, a timeout) says nothing about whether it went through.
+      if (/simulation failed|blockhash not found|insufficient/i.test(String(e?.message))) {
+        dropSent();
+        ui.done.hidden = true;
+        throw new Error("Solana refused this launch, so nothing launched and nothing was paid. Try again in a moment.");
       }
-      if (r?.ok || r?.status === 400 || r?.status === 409) break;
-      await new Promise((res) => setTimeout(res, 5000));
     }
+    await followLaunch(sent);
   } catch (e) {
     const m = String(e?.message || e);
     say(/reject|cancel|denied/i.test(m) ? 'You cancelled it in your wallet. Nothing was launched.' : m, 'error');
@@ -286,8 +350,15 @@ $('copy-launched')?.addEventListener('click', async () => {
 fetch(`${API}/launch/settings`).then((r) => r.json()).then((s) => {
   if (s.state === 'off') { say('Launching is switched off right now.', 'error'); ui.launch.hidden = true; }
 }).catch(() => {});
+// A launch left open by a failed connection or a closed tab is picked up here, with nothing more to sign.
+async function resumeLaunch(open) {
+  busy = true;
+  refresh();
+  try { await followLaunch(open); } catch (e) { say(String(e?.message || e), 'error'); } finally { busy = false; refresh(); }
+}
+const stillOpen = readSent();
 // One coin per story: a post that already has its coin says so before anyone fills anything in.
-if (samePost(post)) fetch(`${API}/launch/taken?post=${encodeURIComponent(post)}`).then((r) => r.json()).then((d) => {
+if (!stillOpen && samePost(post)) fetch(`${API}/launch/taken?post=${encodeURIComponent(post)}`).then((r) => r.json()).then((d) => {
   if (!d.taken) return;
   say(`This post already has a coin launched with Radar: $${d.taken.symbol}. One coin per story.`, 'error');
   sayingTaken = true;
@@ -296,5 +367,5 @@ if (samePost(post)) fetch(`${API}/launch/taken?post=${encodeURIComponent(post)}`
 }).catch(() => {});
 findWallets();
 reconnect();
-loadPost();
+loadPost().finally(() => { if (stillOpen) resumeLaunch(stillOpen); });
 refresh();

@@ -71,4 +71,15 @@ export function tickerFromName(name) {
   return (longest(words.filter((w) => /^[A-Z]/.test(w) && w.length >= 3)) || longest(words) || '').slice(0, 10).toUpperCase();
 }
 
+// Base58, for a transaction's signature: it's known the moment it's signed, before anything is sent.
+export function base58(bytes) {
+  const A = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+  let n = 0n;
+  for (const b of bytes) n = n * 256n + BigInt(b);
+  let s = '';
+  while (n > 0n) { s = A[Number(n % 58n)] + s; n /= 58n; }
+  for (const b of bytes) { if (b !== 0) break; s = `1${s}`; }
+  return s;
+}
+
 export const samePost = (url) => /^https:\/\/(?:www\.|mobile\.)?(?:x|twitter)\.com\/\w{1,15}\/status\/\d{1,25}(?:\?\S*)?$/.test(String(url || '').trim());

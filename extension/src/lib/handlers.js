@@ -169,8 +169,9 @@ export function makeHandlers(host) {
         const report = await rugReport(mint, pairs);
         rugFails = 0;
         return { ...report, readAt: Date.now() };
-      } catch {
-        if (++rugFails >= 3) { rugFails = 0; rugOffUntil = Date.now() + 300_000; }
+      } catch (e) {
+        // A rate limit only says this browser asked too fast, not that RugCheck is down.
+        if (!/rate limited/i.test(String(e?.message)) && ++rugFails >= 3) { rugFails = 0; rugOffUntil = Date.now() + 300_000; }
       }
     }
     const s = await host.settings();

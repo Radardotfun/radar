@@ -61,6 +61,28 @@ const praise = '@radardotfunn is a great tool that a lot of people use. The dev 
 assert.equal(wantsCoins(post(praise, [0, [...praise].length], [['radardotfunn', 0]]), me).ok, false);
 const pitch = 'Then you should try scan em on https://tryradar.fun @radardotfunn tek helps you scan and save you stress of buying copycats and getting rugged. So what you say, ape in and lock in right now fam';
 assert.equal(wantsCoins(post(pitch, [0, [...pitch].length], [['radardotfunn', 52]]), me).ok, false);
+// A busy service is tried again; anything else isn't.
+import { worthRetry, mergeState } from '../bot/trigger.js';
+import { varied } from '../bot/reply.js';
+for (const m of ['DexScreener rate limited', 'DexScreener rate-limited 3 lookups', 'DexScreener 503', 'The AI is busy', 'Radar is busy reading posts right now', 'Narrative engine failed', 'The AI judge timed out', 'X 429', 'Radar could not read this post right now']) assert.equal(worthRetry(m), true, m);
+for (const m of ['That is not a link to a post on X', "Couldn't open that post. It may be deleted", 'X 403 forbidden', '', undefined]) assert.equal(worthRetry(m), false, m);
+// Runs that overlap can't undo each other: since never goes back, and retries and replies from both are kept.
+const late = { since: '100', day: 'd', sent: 2, pending: [{ mention: 'a', tries: 1 }], mine: ['r1'], judged: { p1: 1 }, log: [{ mention: 'a', at: '2026-11-01T00:00:01Z' }] };
+const saved = { since: '105', day: 'd', sent: 3, pending: [{ mention: 'b', tries: 1 }, { mention: 'a', tries: 2 }], mine: ['r2'], judged: { p2: 2 }, log: [{ mention: 'b', at: '2026-11-01T00:00:02Z' }, { mention: 'a', at: '2026-11-01T00:00:01Z' }] };
+const merged = mergeState(late, saved);
+assert.equal(merged.since, '105');
+assert.deepEqual(merged.pending.map((p) => p.mention), ['a', 'b']);
+assert.deepEqual(merged.mine, ['r1', 'r2']);
+assert.deepEqual(merged.judged, { p2: 2, p1: 1 });
+assert.deepEqual(merged.log.map((e) => e.mention), ['b', 'a']);
+assert.equal(merged.sent, 3);
+assert.equal(mergeState({ ...late, since: '110' }, saved).since, '110');
+assert.equal(mergeState(late, null), late, 'nothing saved, nothing to merge');
+// A repeat reply X would refuse always comes out different, with or without a time in it.
+const at = new Date('2026-11-01T04:05:06Z');
+assert.equal(varied('Coins on this post (04:05 UTC):\nx', at), 'Coins on this post (04:05:06 UTC):\nx');
+assert.equal(varied('No coins on this one yet.', at), 'No coins on this one yet. (04:05:06 UTC)');
+assert.notEqual(varied('Tag me (04:05 UTC).', at), 'Tag me (04:05 UTC).');
 console.log('PASS bot: answers typed tags, ignores replies under our posts and conversation');
 
 // The coin the post names leads the reply; its copycats and major-ticker coins are left out of the picks.
@@ -198,6 +220,17 @@ const second = withMemory({ roleCandidates: [{ ...memA, relevance: 70 }, memC], 
 const rel = Object.fromEntries(second.scan.roleCandidates.map((t) => [t.symbol, t.relevance]));
 assert.deepEqual(rel, { CATS: 85, KITTY: 62, GEMCAT: 90 });
 assert.equal(second.scores[memC.address], 90);
+// A score guessed because the judge timed out is no verdict: that coin isn't named, nor remembered.
+const guessedCoin = tok('GUESS', 'Guess', 'GuessCoin11111111111111111111111111111pump', 90_000, { relevance: 85, guessed: true });
+const judgedCoin = tok('REAL', 'Real', 'RealCoin111111111111111111111111111111pump', 90_000, { relevance: 95 });
+const timedOut = withMemory({ roleCandidates: [guessedCoin, judgedCoin], picks: [], others: [], pool: [] });
+assert.equal(timedOut.guessed, 1);
+assert.deepEqual(timedOut.scan.roleCandidates.map((t) => t.symbol), ['REAL']);
+assert.equal(timedOut.scores[guessedCoin.address], undefined);
+const rememberedCoin = withMemory({ roleCandidates: [guessedCoin], picks: [], others: [], pool: [] }, { [guessedCoin.address]: 91 });
+assert.equal(rememberedCoin.guessed, 0, 'an earlier real verdict still counts');
+assert.equal(rememberedCoin.scan.roleCandidates[0].relevance, 91);
+assert.equal(withMemory({ roleCandidates: [], picks: [], others: [], pool: [], techMatch: guessedCoin }).scan.techMatch, null);
 console.log('PASS bot: a post keeps its first verdicts across tags; only new coins get a fresh one');
 
 // A judge score of 80-89 also needs a name from the post's story; 90+ stands on its own.

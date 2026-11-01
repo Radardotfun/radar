@@ -162,6 +162,8 @@ function relayUrl(env) {
 // X's own embed endpoint refuses servers, so posts are read through the public FxTwitter API.
 async function fxStatus(id) {
   const res = await fetch(`https://api.fxtwitter.com/status/${id}`, { headers: { 'user-agent': 'NarrativeRadar/1.0' } });
+  // A busy FxTwitter says nothing about the post, so it isn't reported as a missing one.
+  if (res.status >= 500 || res.status === 429) throw new Error(`FxTwitter ${res.status}`);
   const d = res.ok ? await res.json().catch(() => null) : null;
   return d?.tweet || null;
 }
@@ -178,7 +180,8 @@ async function readTweet(url, ctx) {
   const key = new Request(`https://cache.narrative-radar/tw4/${id}`);
   const hit = await caches.default.match(key);
   if (hit) return new Response(hit.body, { headers: { 'content-type': 'application/json', ...CORS } });
-  const t = await fxStatus(id);
+  let t;
+  try { t = await fxStatus(id); } catch { return json(503, { error: 'Radar is busy reading posts right now. Try again in a moment.' }); }
   if (!t) return json(404, { error: "Couldn't open that post. It may be deleted, private or age-restricted." });
   const parent = t.replying_to_status ? await fxStatus(t.replying_to_status).catch(() => null) : null;
   // The pictures the AI looks at (it takes 3): the post's own (a video's thumbnail first), then the quoted post's,
@@ -303,7 +306,9 @@ export default {
     const launchFile = request.method === 'GET' && pathname.match(/^\/launch\/meta\/([0-9a-f]{24})\.(json|jpg|png|webp)$/);
     if (launchFile) return launchMetaFile(launchFile[1], launchFile[2], env, new URL(request.url).origin, CORS);
     if ((pathname === '/launch/meta' || pathname === '/launch/record') && request.method === 'POST') {
-      if (limited(`launch:${request.headers.get('cf-connecting-ip') || 'anon'}`, pathname === '/launch/meta' ? 10 : 40)) return json(429, { error: 'Too many tries. Wait a few minutes.' });
+      const launcher = request.headers.get('cf-connecting-ip') || 'anon';
+      // Separate limits: retrying a listing must never block the next launch. The day's limit keeps one address from using up the shared cap.
+      if (pathname === '/launch/meta' ? limited(`launch-meta:${launcher}`, 10) || limited(`launch-day:${launcher}`, 30, 86_400_000) : limited(`launch-record:${launcher}`, 40)) return json(429, { error: 'Too many tries. Wait a few minutes.' });
       if (Number(request.headers.get('content-length') || 0) > 500_000) return json(413, { error: 'That picture is too big.' });
       const body = await request.json().catch(() => ({}));
       const origin = new URL(request.url).origin;
