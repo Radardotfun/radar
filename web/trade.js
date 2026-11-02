@@ -172,12 +172,18 @@
     if (!walletProviders.length) {
       // Wallets can add themselves a moment after the page loads, so this looks again before offering the phone.
       window.RadarWalletOpen?.watch({ el: document.getElementById('wallet-open'), hasWallet: () => !!(window.phantom?.solana || window.solflare || window.backpack?.solana || window.solana), phoneTitle: 'No wallet in this browser', phoneText: 'Open this page in your wallet app to buy with your own wallet.', qrTitle: 'No wallet in this browser? Use your phone', qrText: 'Scan this to open the same buy on your phone, then open it in your wallet app. The wallet still asks you to approve the buy.' });
-      walletStatus.classList.add('wallet-get');
-      walletStatus.innerHTML = 'No wallet found. Install <a href="https://phantom.com" target="_blank" rel="noopener">Phantom</a>, <a href="https://solflare.com" target="_blank" rel="noopener">Solflare</a> or <a href="https://backpack.app" target="_blank" rel="noopener">Backpack</a>, then reload.';
       connectButton.hidden = true;
-      setMessage('Install a wallet to buy.', 'error');
       buyButton.disabled = true;
-      buyButton.textContent = 'Connect a wallet to buy';
+      // A phone browser can't add a wallet, and the links just above already open this page in one, so one message is enough.
+      if (window.RadarWalletOpen?.isPhone()) {
+        setMessage('');
+        buyButton.textContent = 'Open in a wallet app to buy';
+      } else {
+        walletStatus.classList.add('wallet-get');
+        walletStatus.innerHTML = 'No wallet found. Install <a href="https://phantom.com" target="_blank" rel="noopener">Phantom</a>, <a href="https://solflare.com" target="_blank" rel="noopener">Solflare</a> or <a href="https://backpack.app" target="_blank" rel="noopener">Backpack</a>, then reload.';
+        setMessage('Install a wallet to buy.', 'error');
+        buyButton.textContent = 'Connect a wallet to buy';
+      }
     } else {
       setMessage('This buy is sent to Solana mainnet. Make sure the wallet has enough SOL for the buy and fees.');
     }

@@ -156,7 +156,7 @@ ui.connect.addEventListener('click', async () => {
   }
   findWallets();
   if (!providers.length) {
-    say('No wallet in this browser. Use the options above, or install a Solana wallet and reload this page.', 'error');
+    say(window.RadarWalletOpen?.available() ? 'No wallet in this browser. Use the options above.' : 'No wallet in this browser. Add Phantom or Solflare to it and reload this page.', 'error');
     return;
   }
   const [label, p] = providers[Math.min(Number(ui.choice.value || 0), providers.length - 1)];

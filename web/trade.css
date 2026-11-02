@@ -143,3 +143,7 @@ footer a { text-decoration:none; }
   .launched-row { grid-template-columns:44px minmax(0,1fr); }
   .launched-actions { grid-column:1/-1; }
 }
+@media (max-width:560px) {
+  .back { padding:10px 0; }
+  .mint button { min-height:38px; padding:8px 12px; }
+}
