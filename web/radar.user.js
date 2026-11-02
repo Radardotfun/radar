@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Radar
 // @namespace    https://tryradar.fun
-// @version      1.7.64
+// @version      1.7.65
 // @description  See the coins behind any post on X and instantly reroute to the biggest match that passes available on-chain safety checks.
 // @homepageURL  https://tryradar.fun
 // @supportURL   https://tryradar.fun
@@ -31,7 +31,7 @@
 // @downloadURL  https://tryradar.fun/radar.user.js
 // ==/UserScript==
 
-// Radar 1.7.64: built from the extension source at https://tryradar.fun. Not financial advice.
+// Radar 1.7.65: built from the extension source at https://tryradar.fun. Not financial advice.
 (() => {
   var __defProp = Object.defineProperty;
   var __export = (target, all) => {
@@ -1645,8 +1645,11 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     dev: [1, 5],
     top10: [30, 50],
     launchHeld: [1, 5],
+    launchBought: [5, 50],
     drop: [20, 50]
   };
+  var LAUNCH_NOT_OK = 20;
+  var NEUTRAL_MAX = 59;
   var level = (v, [watch, risk]) => v == null ? null : v >= risk ? "risk" : v >= watch ? "watch" : "ok";
   function dropIfSold(soldPct2, poolTokens, supplyTokens) {
     if (!soldPct2 || !poolTokens || !supplyTokens) return null;
@@ -1684,6 +1687,9 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       const lvLaunch = level(b.bundleHeldPct, T.launchHeld);
       note(lvLaunch, 5, 12);
       facts.push({ k: "Launch buyers still hold", v: b.bundleHeldPct, lvl: lvLaunch });
+      const lvBought = level(b.bundledPct, T.launchBought);
+      note(lvBought, 5, 12);
+      if (lvBought !== "ok") facts.push({ k: "Launch block bought", v: b.bundledPct, lvl: lvBought });
     }
     const top10 = rug?.top10Pct ?? null;
     const lvTop = level(top10, T.top10);
@@ -1723,6 +1729,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       facts.unshift({ k: "Status", text: "Liquidity pulled", lvl: "risk" });
     }
     if (worst === "risk") score = Math.min(score, 64);
+    if (b && b.bundledPct >= LAUNCH_NOT_OK) score = Math.min(score, NEUTRAL_MAX);
     score = Math.max(0, Math.min(100, Math.round(score)));
     const word = score < 35 ? "CONTROLLED" : worst === "risk" ? "SKETCHY" : score >= 60 ? "OK" : "NEUTRAL";
     return { score, word, call: callLine(word, facts), facts };

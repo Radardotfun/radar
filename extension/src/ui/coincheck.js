@@ -4,15 +4,19 @@
 //
 // Thresholds (watch / risk, % of supply) follow what traders already use on X:
 // insiders 2 / 10, dev holds 1 / 5, top 10 holders 30 / 50, launch buyers still holding 1 / 5,
-// price drop if insiders sold everything 20 / 50.
+// price drop if insiders sold everything 20 / 50, launch block's share of supply 5 / 50.
+// A big launch block counts even once it has sold: at 20% the launch wasn't clean, so it can't read OK.
 
 const T = {
   insiders: [2, 10],
   dev: [1, 5],
   top10: [30, 50],
   launchHeld: [1, 5],
+  launchBought: [5, 50],
   drop: [20, 50],
 };
+const LAUNCH_NOT_OK = 20;
+const NEUTRAL_MAX = 59;
 const level = (v, [watch, risk]) => (v == null ? null : v >= risk ? 'risk' : v >= watch ? 'watch' : 'ok');
 
 // How far the price falls if `soldPct` of supply is sold into a constant-product pool holding
@@ -58,6 +62,9 @@ export function coinCheck(token, rug, bundle) {
     const lvLaunch = level(b.bundleHeldPct, T.launchHeld);
     note(lvLaunch, 5, 12);
     facts.push({ k: 'Launch buyers still hold', v: b.bundleHeldPct, lvl: lvLaunch });
+    const lvBought = level(b.bundledPct, T.launchBought);
+    note(lvBought, 5, 12);
+    if (lvBought !== 'ok') facts.push({ k: 'Launch block bought', v: b.bundledPct, lvl: lvBought });
   }
 
   const top10 = rug?.top10Pct ?? null;
@@ -79,6 +86,7 @@ export function coinCheck(token, rug, bundle) {
   if (rug?.rugged) { score = Math.min(score, 5); worst = 'risk'; facts.unshift({ k: 'Status', text: 'Liquidity pulled', lvl: 'risk' }); }
 
   if (worst === 'risk') score = Math.min(score, 64); // a serious flag outweighs a clean rest
+  if (b && b.bundledPct >= LAUNCH_NOT_OK) score = Math.min(score, NEUTRAL_MAX);
   score = Math.max(0, Math.min(100, Math.round(score)));
   const word = score < 35 ? 'CONTROLLED' : worst === 'risk' ? 'SKETCHY' : score >= 60 ? 'OK' : 'NEUTRAL';
   return { score, word, call: callLine(word, facts), facts };

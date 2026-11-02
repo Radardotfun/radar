@@ -1,4 +1,4 @@
-// Radar 1.7.64 on the web: built from the extension source at https://tryradar.fun. Not financial advice.
+// Radar 1.7.65 on the web: built from the extension source at https://tryradar.fun. Not financial advice.
 (() => {
   // extension/src/lib/keywords.js
   var STOP = new Set(`a about above after again against all almost also am an and any are aren as at be because been before
@@ -1536,8 +1536,11 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     dev: [1, 5],
     top10: [30, 50],
     launchHeld: [1, 5],
+    launchBought: [5, 50],
     drop: [20, 50]
   };
+  var LAUNCH_NOT_OK = 20;
+  var NEUTRAL_MAX = 59;
   var level = (v, [watch, risk]) => v == null ? null : v >= risk ? "risk" : v >= watch ? "watch" : "ok";
   function dropIfSold(soldPct2, poolTokens, supplyTokens) {
     if (!soldPct2 || !poolTokens || !supplyTokens) return null;
@@ -1575,6 +1578,9 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       const lvLaunch = level(b.bundleHeldPct, T.launchHeld);
       note(lvLaunch, 5, 12);
       facts.push({ k: "Launch buyers still hold", v: b.bundleHeldPct, lvl: lvLaunch });
+      const lvBought = level(b.bundledPct, T.launchBought);
+      note(lvBought, 5, 12);
+      if (lvBought !== "ok") facts.push({ k: "Launch block bought", v: b.bundledPct, lvl: lvBought });
     }
     const top10 = rug?.top10Pct ?? null;
     const lvTop = level(top10, T.top10);
@@ -1614,6 +1620,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       facts.unshift({ k: "Status", text: "Liquidity pulled", lvl: "risk" });
     }
     if (worst === "risk") score = Math.min(score, 64);
+    if (b && b.bundledPct >= LAUNCH_NOT_OK) score = Math.min(score, NEUTRAL_MAX);
     score = Math.max(0, Math.min(100, Math.round(score)));
     const word = score < 35 ? "CONTROLLED" : worst === "risk" ? "SKETCHY" : score >= 60 ? "OK" : "NEUTRAL";
     return { score, word, call: callLine(word, facts), facts };
