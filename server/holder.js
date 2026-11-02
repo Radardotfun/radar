@@ -40,7 +40,7 @@ async function coinPrices(env) {
 export async function holderConfig(env) {
   const minUsd = holderMinUsd(env);
   if (!holderOn(env)) return { on: false, minUsd };
-  const google = env.GOOGLE_CLIENT_ID ? { googleClientId: env.GOOGLE_CLIENT_ID } : {};
+  const google = env.GOOGLE_CLIENT_ID ? { googleClientId: env.GOOGLE_CLIENT_ID, googleLive: env.GOOGLE_LIVE === '1' } : {};
   try { await coinPrices(env); return { on: true, minUsd, pitch: pitch(env), ...google }; } catch { return { on: false, minUsd }; }
 }
 

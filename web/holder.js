@@ -57,7 +57,7 @@
   async function offerGoogle() {
     if (pair || (window.RadarWalletOpen?.isPhone() && find().length)) return;
     const cfg = await fetch(`${API}/holder/settings`, { signal: AbortSignal.timeout(6000) }).then((r) => r.json()).catch(() => null);
-    if (!cfg?.googleClientId) return;
+    if (!cfg?.googleClientId || (!cfg.googleLive && params.get('google') !== '1')) return;
     const s = document.createElement('script');
     s.src = 'https://accounts.google.com/gsi/client';
     s.async = true;
