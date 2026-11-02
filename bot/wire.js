@@ -12,7 +12,7 @@ const MIN_DEVS = 4;
 const MIN_TOP_CAP = 15_000;
 
 // Words on coins all day long, which say nothing about a story.
-const GENERIC = new Set(('the and for with this that you your our are was his her its not but all one two big top new old '
+const GENERIC = new Set(('the and for with this that you your our are was his her its not but all one two big top new old super '
   + 'coin coins token tokens meme memes sol solana pump fun bonk inu moon official real based community '
   + 'cat cats dog dogs frog pepe doge shib baby king queen lord god man men boy girl guy dad mom kid wife '
   + 'ape monkey bull bear pig rat fish bird duck wolf lion tiger bear '
@@ -60,6 +60,39 @@ export function findBursts(coins, now = Date.now()) {
   return found
     .filter((b) => !found.some((o) => o !== b && o.word.length > b.word.length && b.list.every((c) => has(o, c))))
     .sort((a, b) => b.list.length - a.list.length || b.top.m - a.top.m);
+}
+
+// The feed's stories: bursts that are mostly the same coins become one story with both words ("chinese" and "china"), busiest
+// right now first. Launch-time caps go stale fast, so each story carries a few coins for the reader to look up live.
+const RECENT_MS = 10 * 60_000;
+const MAX_STORIES = 12;
+const MAX_LOOKUPS = 6;
+export function findStories(coins, now = Date.now()) {
+  const stories = [];
+  for (const b of findBursts(coins, now)) {
+    const same = stories.find((s) => {
+      const shared = b.list.filter((c) => s.list.has(c.a)).length;
+      return shared * 2 >= Math.min(b.list.length, s.list.size);
+    });
+    if (same) {
+      same.words.push(b.word);
+      for (const c of b.list) same.list.set(c.a, c);
+    } else stories.push({ words: [b.word], list: new Map(b.list.map((c) => [c.a, c])) });
+  }
+  return stories.map((s) => {
+    const list = [...s.list.values()];
+    const first = list.reduce((a, c) => (c.t < a.t ? c : a), list[0]);
+    const big = [...list].sort((a, c) => c.m - a.m).filter((c) => c.a !== first.a).slice(0, MAX_LOOKUPS - 1);
+    return {
+      words: s.words.slice(0, 2),
+      coins: list.length,
+      wallets: new Set(list.map((c) => c.d).filter(Boolean)).size,
+      recent: list.filter((c) => now - c.t <= RECENT_MS).length,
+      startedAt: first.t,
+      first: { a: first.a, s: first.s, n: first.n, m: first.m, t: first.t },
+      big: big.map((c) => ({ a: c.a, s: c.s, n: c.n, m: c.m })),
+    };
+  }).sort((a, b) => b.recent - a.recent || b.coins - a.coins).slice(0, MAX_STORIES);
 }
 
 const money = (n) => (n >= 1e6 ? `$${(n / 1e6).toFixed(2)}M` : n >= 1e3 ? `$${(n / 1e3).toFixed(1)}K` : `$${Math.round(n)}`);

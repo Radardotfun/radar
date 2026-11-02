@@ -11,6 +11,7 @@ import { launchState, launchMeta, launchMetaFile, launchRecord, launchList, laun
 import { engine, interpret, memeScore, judge, storyCheck, transcribe, watchVideo, sameImage, sameStory, samePicture, LOGO_HOST } from './narrative.js';
 import { holderOn, holderConfig, holderVerify, holderWho } from './holder.js';
 import { recordPost, readStatus } from './ledger.js';
+import { feed } from './feed.js';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -360,6 +361,10 @@ export default {
     }
     // Holder-only data (server/holder.js). 1.7.17 reads /holder/config and its panel promises Frontrun's data, so that
     // route stays off for it; 1.7.18 on reads /holder/settings, whose wording comes from here.
+    if (pathname === '/narratives' && request.method === 'POST') {
+      if (limited(`feed:${request.headers.get('cf-connecting-ip') || 'anon'}`, 120)) return json(429, { error: 'Too many requests. Try again in a few minutes.' });
+      return json(200, await feed(await request.json().catch(() => ({})), env));
+    }
     if (pathname === '/holder/config' && request.method === 'GET') return json(200, { on: false });
     if (pathname === '/holder/settings' && request.method === 'GET') return json(200, await holderConfig(env));
     if (pathname === '/holder/google' && request.method === 'POST') {

@@ -354,7 +354,7 @@ class Radar {
     const id = ++this.scanId;
     const stale = () => id !== this.scanId;
     const asked = post?.url || post?.text;
-    if (this.view === 'stars') this.view = 'scan';
+    if (this.view === 'stars' || this.view === 'feed') this.view = 'scan';
     this.stopTimers();
     this.lastPost = post;
     this.state = { ...this.state, loading: true, early: [], error: null, narrative: null, engineError: null, source: source ?? this.state.source };
@@ -651,6 +651,7 @@ class Radar {
       else if (b.dataset.act === 'share') this.share();
       else if (b.dataset.act === 'settings') { this.view = this.view === 'settings' ? 'scan' : 'settings'; this.renderBody(); }
       else if (b.dataset.act === 'stars') this.toggleStarsView();
+      else if (b.dataset.act === 'feed') this.toggleFeedView();
       else if (b.dataset.act === 'watch') this.watch();
       else if (b.dataset.lcCheck) this.runLcCheck(b.dataset.lcCheck);
       else if (b.dataset.act === 'unwatch') this.unwatch(b.dataset.id);
@@ -682,6 +683,7 @@ class Radar {
         ${MARK}
         <div class="title">Radar</div>
         <div class="live paused"><i></i><span>READY</span></div>
+        <button class="icon-btn feed-head${this.view === 'feed' ? ' on' : ''}" data-act="feed" title="Breaking now">${I.bolt}</button>
         <button class="icon-btn star-head${this.stars?.length ? ' has' : ''}${this.view === 'stars' ? ' on' : ''}" data-act="stars" title="Watchlist">${I.star}</button>
         ${this.inline && canSettings() ? `<button class="icon-btn" data-act="settings" title="Settings">${I.gear}</button>` : ''}
         ${this.state.ts && this.state.picks?.length ? `<button class="icon-btn" data-act="share" title="Copy a summary to share">${I.share}</button>` : ''}
@@ -695,7 +697,7 @@ class Radar {
       </form>` : ''}
       ${source ? `<div class="source"><b>${esc(source.kind)}</b><span>${esc(source.label)}</span>${isPostLink(postUrl) && postTimeOf(postUrl) ? `<a href="${esc(postUrl)}" target="_blank" rel="noopener noreferrer" title="Open the post">${age(postTimeOf(postUrl))} ago ↗</a>` : ''}</div>` : ''}
       ${this.holderLineHtml()}`;
-    this.leadEl.innerHTML = `${this.watchHtml()}${this.narrativeHtml()}`;
+    this.leadEl.innerHTML = this.view === 'feed' || this.view === 'stars' ? '' : `${this.watchHtml()}${this.narrativeHtml()}`;
     // Search lives in the toolbar popup; on X the panel only shows what was scanned.
     this.input = this.headEl.querySelector('input');
     if (this.input && typed) this.input.value = typed;
@@ -727,7 +729,7 @@ class Radar {
 
   // For anyone who hasn't checked a wallet: one line, on every tab.
   holderLineHtml() {
-    if (!this.holder?.on || this.holder.holder || !this.lastPost) return '';
+    if (!this.holder?.on || this.holder.holder || !this.lastPost || this.view !== 'scan') return '';
     return '<div class="holder-line"><span>Alerts and account history for holders</span><button type="button" data-holder-connect>Check my wallet</button></div>';
   }
 
@@ -899,6 +901,7 @@ class Radar {
   renderBody() {
     if (this.view === 'settings') { this.bodyEl.innerHTML = this.settingsHtml(); return; }
     if (this.view === 'stars') { this.bodyEl.innerHTML = this.starsHtml(); this.hydrateImages(); return; }
+    if (this.view === 'feed') { this.bodyEl.innerHTML = this.feedHtml(); return; }
     const { loading, error, picks, others, mentioned, techMatch, ts } = this.state;
     if (loading) {
       const early = this.state.early || [];
@@ -916,6 +919,7 @@ class Radar {
       const recent = this.inline ? this.recent || [] : [];
       this.bodyEl.innerHTML = `<div class="empty"><div class="big">Scan any post on X</div>
         <p>${esc(this.hint || (this.inline ? 'Search a narrative, a ticker or a CA above.' : 'Tap the radar under any post or trend.'))}</p>
+        <button type="button" class="feed-entry" data-act="feed">${I.bolt}<span>See what's breaking now</span></button>
         ${recent.length ? `<div class="recent-list"><div class="recent-top"><span>Recent</span><button data-recent-clear>Clear</button></div>${recent.map((r, i) => `<button class="recent-row" data-recent="${i}"><b>$${esc(r.c)}</b><span>${esc(r.l)}</span><em>${age(r.t)}</em></button>`).join('')}</div>` : ''}
         ${this.inline ? this.boardHtml() : ''}
         ${trends.length ? `<div class="trend-list"><span>Trending</span>${trends.map((t) => `<button data-trend="${esc(t)}">${esc(t)}</button>`).join('')}</div>` : ''}</div>
@@ -1080,6 +1084,50 @@ class Radar {
     this.renderHead();
     this.renderBody();
     send('starToggle', { star }).then((list) => { this.stars = list || []; }).catch(() => {});
+  }
+
+  // ---------- Breaking now (server/feed.js) ----------
+  toggleFeedView() {
+    this.view = this.view === 'feed' ? 'scan' : 'feed';
+    this.renderHead();
+    this.renderBody();
+    if (this.view === 'feed') this.loadFeed();
+  }
+
+  async loadFeed() {
+    clearTimeout(this.feedTimer);
+    try {
+      this.feed = await send('breaking');
+    } catch (e) {
+      if (!this.feed?.stories) this.feed = { error: e.message || 'Could not load this' };
+    }
+    if (this.view !== 'feed') return;
+    const scrollTop = this.scrollEl.scrollTop;
+    this.renderBody();
+    this.scrollEl.scrollTop = scrollTop;
+    this.feedTimer = setTimeout(() => { if (this.view === 'feed') this.loadFeed(); }, 60_000);
+  }
+
+  feedHtml() {
+    const top = '<div class="recent-top"><span>Breaking now</span><button data-act-back>Back</button></div>';
+    const fine = '<p class="new-note">Names only: words many new coins are launching under right now. It says what launched, not why, and it isn\'t a recommendation. Most of these go to zero, so read the checks.</p>';
+    const f = this.feed;
+    if (!f) return `<div class="star-list">${top}<div class="empty"><span class="spinner"></span></div></div>`;
+    if (f.error) return `<div class="star-list">${top}<div class="empty"><div class="big">Couldn't load this</div><p class="error">${esc(f.error)}</p></div></div>`;
+    const late = f.live ? '' : `<div class="holder-line feed-late"><span>Holders see this live. This list is 10 minutes behind.</span>${this.holder?.on ? '<button type="button" data-holder-connect>Check my wallet</button>' : ''}</div>`;
+    if (!f.stories.length) return `<div class="star-list">${top}${late}<div class="empty"><div class="big">Nothing breaking right now</div><p>A story shows up here when many new coins launch under the same word, from different wallets.</p></div></div>`;
+    const title = (w) => w.charAt(0).toUpperCase() + w.slice(1);
+    const chip = (label, c, value) => `<button type="button" class="feed-coin" data-feed-coin="${esc(c.address)}" data-feed-sym="${esc(c.symbol)}" title="Scan ${esc(c.name || c.symbol)}"><i>${label}</i><b>$${esc(c.symbol)}</b>${value ? `<span>${esc(value)}</span>` : ''}</button>`;
+    return `<div class="star-list">${top}${late}${f.stories.map((s) => `<div class="feed-row">
+        <button type="button" class="feed-open" data-feed-open="${esc(s.words[0])}" title="Scan this story">
+          <span class="feed-title"><b>${esc(s.words.map(title).join(' · '))}</b><em>${s.coins} coins</em></span>
+          <span class="feed-sub">${s.wallets} wallets · ${s.recent} in the last 10 min · began ${esc(age(s.startedAt))} ago</span>
+        </button>
+        <div class="feed-coins">
+          ${s.biggest && s.biggest.address !== s.first.address ? chip('Biggest', s.biggest, s.biggest.cap ? usd(s.biggest.cap) : '') : ''}
+          ${chip('First', s.first, s.first.cap ? usd(s.first.cap) : '')}
+        </div>
+      </div>`).join('')}${fine}</div>`;
   }
 
   toggleStarsView() {
@@ -1668,14 +1716,17 @@ class Radar {
       return;
     }
     // A fallback can't see LP locks or insiders, so it never says a plain OK. A bad result stands: what it did see was bad.
-    const partial = c.word === 'OK' && reportSource(a.rug)?.fallback;
-    const word = partial ? 'PARTIAL' : c.word;
-    const tone = partial ? 'mid' : c.word === 'OK' ? 'ok' : c.word === 'NEUTRAL' ? 'mid' : 'risk';
-    if (chip) chip.innerHTML = `<span class="verdict ${tone}" title="Coin check: ${esc(c.call)}${partial ? '. Fallback read: no LP lock or insider data' : ''}">${word} <b>${c.score}</b></span>`;
+    // The score only weighs who holds the coin, so it can be fine while RugCheck flags a danger. A good score doesn't sit beside that.
+    const flagged = c.word === 'OK' && !!a.rug && seriousWarning(reportBlock(a.rug));
+    const partial = !flagged && c.word === 'OK' && reportSource(a.rug)?.fallback;
+    const word = flagged ? 'FLAGGED' : partial ? 'PARTIAL' : c.word;
+    const tone = flagged ? 'risk' : partial ? 'mid' : c.word === 'OK' ? 'ok' : c.word === 'NEUTRAL' ? 'mid' : 'risk';
+    const score = flagged ? '' : ` <b>${c.score}</b>`;
+    if (chip) chip.innerHTML = `<span class="verdict ${tone}" title="Coin check: ${esc(flagged ? reportBlock(a.rug) : c.call)}${partial ? '. Fallback read: no LP lock or insider data' : ''}">${word}${score}</span>`;
     if (!box) return;
     const lvl = { ok: 'good', watch: 'warn', risk: 'bad' };
     const val = (f) => (f.text ? esc(f.text) : f.unit === 'price' ? pctPlain(f.v, 0) : pctPlain(f.v));
-    box.innerHTML = `<h4>Coin check <span class="verdict ${tone}">${word} <b>${c.score}</b></span></h4>
+    box.innerHTML = `<h4>Coin check <span class="verdict ${tone}">${word}${score}</span></h4>
       ${c.call && !c.facts.some((f) => f.text && c.call.toLowerCase().includes(String(f.text).toLowerCase())) ? `<p class="cc-call">${esc(c.call)}</p>` : ''}
       <div class="rows">${c.facts.map((f) => `<div class="row ${lvl[f.lvl] || ''}"><span class="dot"></span><span class="k">${esc(f.k)}</span><span class="v">${val(f)}${f.sub ? `<small>${esc(f.sub)}</small>` : ''}</span></div>`).join('')}</div>
       <div class="src-line">${esc([a.rug && reportSource(a.rug).line, a.bundle?.ok && ['Launch block', since(a.bundleAt)].filter(Boolean).join(' · ')].filter(Boolean).join(' · '))}</div>`;
@@ -1751,6 +1802,11 @@ class Radar {
   }
 
   async onBodyClick(e) {
+    if (e.target.closest('[data-act="feed"]')) { this.toggleFeedView(); return; }
+    const feedOpen = e.target.closest('[data-feed-open]');
+    if (feedOpen) { this.scan({ post: { text: feedOpen.dataset.feedOpen }, source: { kind: 'Breaking now', label: feedOpen.dataset.feedOpen } }); return; }
+    const feedCoin = e.target.closest('[data-feed-coin]');
+    if (feedCoin) { this.scan({ post: { text: feedCoin.dataset.feedCoin }, source: { kind: 'Breaking now', label: `$${feedCoin.dataset.feedSym}` } }); return; }
     if (e.target.closest('[data-act-back]')) { this.view = 'scan'; this.renderHead(); this.renderBody(); return; }
     const starBtn = e.target.closest('[data-star]');
     if (starBtn) { this.toggleStar(starBtn.dataset.star); return; }

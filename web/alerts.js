@@ -1,4 +1,4 @@
-// Radar 1.7.63 alerts page, built from webapp/alerts.js: https://github.com/Radardotfun/radar
+// Radar 1.7.64 alerts page, built from webapp/alerts.js: https://github.com/Radardotfun/radar
 (() => {
   // extension/src/lib/keywords.js
   var STOP = new Set(`a about above after again against all almost also am an and any are aren as at be because been before
@@ -1456,8 +1456,34 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       await host.store.set(WATCHLIST_KEY, list);
       return list;
     };
+    const FEED_DUST = 5e3;
+    async function breaking() {
+      const h = await holderStored().catch(() => null);
+      return cached(`fd:${h?.token ? "h" : "p"}`, 5e4, async () => {
+        const res = await fetch(`${API_BASE}/narratives`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ token: h?.token }), signal: AbortSignal.timeout(12e3) });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || `Feed ${res.status}`);
+        const stories = data.stories || [];
+        const refs = [...new Set(stories.flatMap((s) => [s.first, ...s.big]).map((c) => c.a))].map((address) => ({ chain: "solana", address }));
+        const tokens = refs.length ? await fullTokens(refs).catch(() => []) : [];
+        const live2 = new Map(tokens.map((t) => [t.address, t]));
+        const coin = (c) => {
+          const t = live2.get(c.a);
+          return { address: c.a, symbol: t?.symbol || c.s, name: t?.name || c.n, cap: t ? t.mcapBacked === false && !t.onCurve ? 0 : t.marketCap || 0 : null };
+        };
+        return {
+          live: !!data.live,
+          asOf: data.asOf,
+          stories: stories.map((s) => {
+            const list = [s.first, ...s.big].map(coin);
+            const known = list.filter((c) => c.cap != null);
+            return { words: s.words, coins: s.coins, wallets: s.wallets, recent: s.recent, startedAt: s.startedAt, first: list[0], biggest: [...known].sort((a, b) => b.cap - a.cap)[0] || null, faded: known.length === list.length && known.every((c) => c.cap < FEED_DUST) };
+          }).filter((s) => !s.faded)
+        };
+      });
+    }
     const launchState = () => cached("launch:state", 6e5, async () => (await fetch(`${API_BASE}/launch/settings`, { signal: AbortSignal.timeout(6e3) })).json());
-    const handlers2 = { starList, starToggle, videoInfo, tweet, read, coins: coins2, fresh, postCoins: postCoins2, mentioned, story, larpcheck, refresh, safety, bundle, image, openWindow, reroute, holderStatus, holderSave, holderWho, holderActive, recentList, recentAdd, recentClear, launchState, lcHolders, lcBoard, lcSettings, lcStart, lcAsk, lcPoll, settings: () => host.settings() };
+    const handlers2 = { breaking, starList, starToggle, videoInfo, tweet, read, coins: coins2, fresh, postCoins: postCoins2, mentioned, story, larpcheck, refresh, safety, bundle, image, openWindow, reroute, holderStatus, holderSave, holderWho, holderActive, recentList, recentAdd, recentClear, launchState, lcHolders, lcBoard, lcSettings, lcStart, lcAsk, lcPoll, settings: () => host.settings() };
     handlers2.resetBundles = () => memo.forEach((_, k) => k.startsWith("bd:") && memo.delete(k));
     return handlers2;
   }

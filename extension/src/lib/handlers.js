@@ -381,9 +381,38 @@ export function makeHandlers(host) {
     await host.store.set(WATCHLIST_KEY, list);
     return list;
   };
+  // Breaking now (server/feed.js): the stories come from our server, live for holders and 10 minutes behind for everyone else.
+  // Their launch-time caps go stale fast, so the numbers shown are read live here, and a story whose coins have all died drops out.
+  const FEED_DUST = 5000; // a pump.fun coin starts near $2.7K, so under this nothing much has traded
+  async function breaking() {
+    const h = await holderStored().catch(() => null);
+    return cached(`fd:${h?.token ? 'h' : 'p'}`, 50_000, async () => {
+      const res = await fetch(`${API_BASE}/narratives`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ token: h?.token }), signal: AbortSignal.timeout(12_000) });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `Feed ${res.status}`);
+      const stories = data.stories || [];
+      const refs = [...new Set(stories.flatMap((s) => [s.first, ...s.big]).map((c) => c.a))].map((address) => ({ chain: 'solana', address }));
+      const tokens = refs.length ? await fullTokens(refs).catch(() => []) : [];
+      const live = new Map(tokens.map((t) => [t.address, t]));
+      const coin = (c) => {
+        const t = live.get(c.a);
+        return { address: c.a, symbol: t?.symbol || c.s, name: t?.name || c.n, cap: t ? (t.mcapBacked === false && !t.onCurve ? 0 : t.marketCap || 0) : null };
+      };
+      return {
+        live: !!data.live,
+        asOf: data.asOf,
+        stories: stories.map((s) => {
+          const list = [s.first, ...s.big].map(coin);
+          const known = list.filter((c) => c.cap != null);
+          return { words: s.words, coins: s.coins, wallets: s.wallets, recent: s.recent, startedAt: s.startedAt, first: list[0], biggest: [...known].sort((a, b) => b.cap - a.cap)[0] || null, faded: known.length === list.length && known.every((c) => c.cap < FEED_DUST) };
+        }).filter((s) => !s.faded),
+      };
+    });
+  }
+
   const launchState = () => cached('launch:state', 600_000, async () => (await fetch(`${API_BASE}/launch/settings`, { signal: AbortSignal.timeout(6000) })).json());
 
-  const handlers = { starList, starToggle, videoInfo, tweet, read, coins, fresh, postCoins, mentioned, story, larpcheck, refresh, safety, bundle, image, openWindow, reroute, holderStatus, holderSave, holderWho, holderActive, recentList, recentAdd, recentClear, launchState, lcHolders, lcBoard, lcSettings, lcStart, lcAsk, lcPoll, settings: () => host.settings() };
+  const handlers = { breaking, starList, starToggle, videoInfo, tweet, read, coins, fresh, postCoins, mentioned, story, larpcheck, refresh, safety, bundle, image, openWindow, reroute, holderStatus, holderSave, holderWho, holderActive, recentList, recentAdd, recentClear, launchState, lcHolders, lcBoard, lcSettings, lcStart, lcAsk, lcPoll, settings: () => host.settings() };
   // Changing the RPC drops cached bundle results so they're re-read through the new one.
   handlers.resetBundles = () => memo.forEach((_, k) => k.startsWith('bd:') && memo.delete(k));
   return handlers;

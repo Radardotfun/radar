@@ -1,4 +1,4 @@
-// Radar 1.7.63 on the web: built from the extension source at https://tryradar.fun. Not financial advice.
+// Radar 1.7.64 on the web: built from the extension source at https://tryradar.fun. Not financial advice.
 (() => {
   // extension/src/lib/keywords.js
   var STOP = new Set(`a about above after again against all almost also am an and any are aren as at be because been before
@@ -1489,8 +1489,34 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       await host.store.set(WATCHLIST_KEY, list);
       return list;
     };
+    const FEED_DUST = 5e3;
+    async function breaking() {
+      const h = await holderStored().catch(() => null);
+      return cached(`fd:${h?.token ? "h" : "p"}`, 5e4, async () => {
+        const res = await fetch(`${API_BASE}/narratives`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ token: h?.token }), signal: AbortSignal.timeout(12e3) });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || `Feed ${res.status}`);
+        const stories = data.stories || [];
+        const refs = [...new Set(stories.flatMap((s) => [s.first, ...s.big]).map((c) => c.a))].map((address) => ({ chain: "solana", address }));
+        const tokens = refs.length ? await fullTokens(refs).catch(() => []) : [];
+        const live = new Map(tokens.map((t) => [t.address, t]));
+        const coin = (c) => {
+          const t = live.get(c.a);
+          return { address: c.a, symbol: t?.symbol || c.s, name: t?.name || c.n, cap: t ? t.mcapBacked === false && !t.onCurve ? 0 : t.marketCap || 0 : null };
+        };
+        return {
+          live: !!data.live,
+          asOf: data.asOf,
+          stories: stories.map((s) => {
+            const list = [s.first, ...s.big].map(coin);
+            const known = list.filter((c) => c.cap != null);
+            return { words: s.words, coins: s.coins, wallets: s.wallets, recent: s.recent, startedAt: s.startedAt, first: list[0], biggest: [...known].sort((a, b) => b.cap - a.cap)[0] || null, faded: known.length === list.length && known.every((c) => c.cap < FEED_DUST) };
+          }).filter((s) => !s.faded)
+        };
+      });
+    }
     const launchState = () => cached("launch:state", 6e5, async () => (await fetch(`${API_BASE}/launch/settings`, { signal: AbortSignal.timeout(6e3) })).json());
-    const handlers2 = { starList, starToggle, videoInfo, tweet: tweet2, read, coins, fresh, postCoins: postCoins2, mentioned, story, larpcheck, refresh, safety, bundle, image, openWindow: openWindow2, reroute: reroute2, holderStatus, holderSave, holderWho, holderActive, recentList, recentAdd, recentClear, launchState, lcHolders, lcBoard, lcSettings, lcStart, lcAsk, lcPoll, settings: () => host.settings() };
+    const handlers2 = { breaking, starList, starToggle, videoInfo, tweet: tweet2, read, coins, fresh, postCoins: postCoins2, mentioned, story, larpcheck, refresh, safety, bundle, image, openWindow: openWindow2, reroute: reroute2, holderStatus, holderSave, holderWho, holderActive, recentList, recentAdd, recentClear, launchState, lcHolders, lcBoard, lcSettings, lcStart, lcAsk, lcPoll, settings: () => host.settings() };
     handlers2.resetBundles = () => memo.forEach((_, k) => k.startsWith("bd:") && memo.delete(k));
     return handlers2;
   }
@@ -1994,7 +2020,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       const id = ++this.scanId;
       const stale = () => id !== this.scanId;
       const asked = post?.url || post?.text;
-      if (this.view === "stars") this.view = "scan";
+      if (this.view === "stars" || this.view === "feed") this.view = "scan";
       this.stopTimers();
       this.lastPost = post;
       this.state = { ...this.state, loading: true, early: [], error: null, narrative: null, engineError: null, source: source ?? this.state.source };
@@ -2289,6 +2315,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
           this.view = this.view === "settings" ? "scan" : "settings";
           this.renderBody();
         } else if (b.dataset.act === "stars") this.toggleStarsView();
+        else if (b.dataset.act === "feed") this.toggleFeedView();
         else if (b.dataset.act === "watch") this.watch();
         else if (b.dataset.lcCheck) this.runLcCheck(b.dataset.lcCheck);
         else if (b.dataset.act === "unwatch") this.unwatch(b.dataset.id);
@@ -2320,6 +2347,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
         ${MARK}
         <div class="title">Radar</div>
         <div class="live paused"><i></i><span>READY</span></div>
+        <button class="icon-btn feed-head${this.view === "feed" ? " on" : ""}" data-act="feed" title="Breaking now">${I.bolt}</button>
         <button class="icon-btn star-head${this.stars?.length ? " has" : ""}${this.view === "stars" ? " on" : ""}" data-act="stars" title="Watchlist">${I.star}</button>
         ${this.inline && canSettings() ? `<button class="icon-btn" data-act="settings" title="Settings">${I.gear}</button>` : ""}
         ${this.state.ts && this.state.picks?.length ? `<button class="icon-btn" data-act="share" title="Copy a summary to share">${I.share}</button>` : ""}
@@ -2333,7 +2361,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       </form>` : ""}
       ${source ? `<div class="source"><b>${esc2(source.kind)}</b><span>${esc2(source.label)}</span>${isPostLink(postUrl) && postTimeOf(postUrl) ? `<a href="${esc2(postUrl)}" target="_blank" rel="noopener noreferrer" title="Open the post">${age(postTimeOf(postUrl))} ago \u2197</a>` : ""}</div>` : ""}
       ${this.holderLineHtml()}`;
-      this.leadEl.innerHTML = `${this.watchHtml()}${this.narrativeHtml()}`;
+      this.leadEl.innerHTML = this.view === "feed" || this.view === "stars" ? "" : `${this.watchHtml()}${this.narrativeHtml()}`;
       this.input = this.headEl.querySelector("input");
       if (this.input && typed) this.input.value = typed;
       if (typing) this.input?.focus();
@@ -2369,7 +2397,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     }
     // For anyone who hasn't checked a wallet: one line, on every tab.
     holderLineHtml() {
-      if (!this.holder?.on || this.holder.holder || !this.lastPost) return "";
+      if (!this.holder?.on || this.holder.holder || !this.lastPost || this.view !== "scan") return "";
       return '<div class="holder-line"><span>Alerts and account history for holders</span><button type="button" data-holder-connect>Check my wallet</button></div>';
     }
     whoHtml() {
@@ -2542,6 +2570,10 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
         this.hydrateImages();
         return;
       }
+      if (this.view === "feed") {
+        this.bodyEl.innerHTML = this.feedHtml();
+        return;
+      }
       const { loading, error, picks, others, mentioned, techMatch, ts } = this.state;
       if (loading) {
         const early = this.state.early || [];
@@ -2558,6 +2590,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
         const recent = this.inline ? this.recent || [] : [];
         this.bodyEl.innerHTML = `<div class="empty"><div class="big">Scan any post on X</div>
         <p>${esc2(this.hint || (this.inline ? "Search a narrative, a ticker or a CA above." : "Tap the radar under any post or trend."))}</p>
+        <button type="button" class="feed-entry" data-act="feed">${I.bolt}<span>See what's breaking now</span></button>
         ${recent.length ? `<div class="recent-list"><div class="recent-top"><span>Recent</span><button data-recent-clear>Clear</button></div>${recent.map((r, i) => `<button class="recent-row" data-recent="${i}"><b>$${esc2(r.c)}</b><span>${esc2(r.l)}</span><em>${age(r.t)}</em></button>`).join("")}</div>` : ""}
         ${this.inline ? this.boardHtml() : ""}
         ${trends.length ? `<div class="trend-list"><span>Trending</span>${trends.map((t) => `<button data-trend="${esc2(t)}">${esc2(t)}</button>`).join("")}</div>` : ""}</div>
@@ -2725,6 +2758,49 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
         this.stars = list || [];
       }).catch(() => {
       });
+    }
+    // ---------- Breaking now (server/feed.js) ----------
+    toggleFeedView() {
+      this.view = this.view === "feed" ? "scan" : "feed";
+      this.renderHead();
+      this.renderBody();
+      if (this.view === "feed") this.loadFeed();
+    }
+    async loadFeed() {
+      clearTimeout(this.feedTimer);
+      try {
+        this.feed = await send("breaking");
+      } catch (e) {
+        if (!this.feed?.stories) this.feed = { error: e.message || "Could not load this" };
+      }
+      if (this.view !== "feed") return;
+      const scrollTop = this.scrollEl.scrollTop;
+      this.renderBody();
+      this.scrollEl.scrollTop = scrollTop;
+      this.feedTimer = setTimeout(() => {
+        if (this.view === "feed") this.loadFeed();
+      }, 6e4);
+    }
+    feedHtml() {
+      const top = '<div class="recent-top"><span>Breaking now</span><button data-act-back>Back</button></div>';
+      const fine = `<p class="new-note">Names only: words many new coins are launching under right now. It says what launched, not why, and it isn't a recommendation. Most of these go to zero, so read the checks.</p>`;
+      const f = this.feed;
+      if (!f) return `<div class="star-list">${top}<div class="empty"><span class="spinner"></span></div></div>`;
+      if (f.error) return `<div class="star-list">${top}<div class="empty"><div class="big">Couldn't load this</div><p class="error">${esc2(f.error)}</p></div></div>`;
+      const late = f.live ? "" : `<div class="holder-line feed-late"><span>Holders see this live. This list is 10 minutes behind.</span>${this.holder?.on ? '<button type="button" data-holder-connect>Check my wallet</button>' : ""}</div>`;
+      if (!f.stories.length) return `<div class="star-list">${top}${late}<div class="empty"><div class="big">Nothing breaking right now</div><p>A story shows up here when many new coins launch under the same word, from different wallets.</p></div></div>`;
+      const title = (w) => w.charAt(0).toUpperCase() + w.slice(1);
+      const chip = (label, c, value) => `<button type="button" class="feed-coin" data-feed-coin="${esc2(c.address)}" data-feed-sym="${esc2(c.symbol)}" title="Scan ${esc2(c.name || c.symbol)}"><i>${label}</i><b>$${esc2(c.symbol)}</b>${value ? `<span>${esc2(value)}</span>` : ""}</button>`;
+      return `<div class="star-list">${top}${late}${f.stories.map((s) => `<div class="feed-row">
+        <button type="button" class="feed-open" data-feed-open="${esc2(s.words[0])}" title="Scan this story">
+          <span class="feed-title"><b>${esc2(s.words.map(title).join(" \xB7 "))}</b><em>${s.coins} coins</em></span>
+          <span class="feed-sub">${s.wallets} wallets \xB7 ${s.recent} in the last 10 min \xB7 began ${esc2(age(s.startedAt))} ago</span>
+        </button>
+        <div class="feed-coins">
+          ${s.biggest && s.biggest.address !== s.first.address ? chip("Biggest", s.biggest, s.biggest.cap ? usd(s.biggest.cap) : "") : ""}
+          ${chip("First", s.first, s.first.cap ? usd(s.first.cap) : "")}
+        </div>
+      </div>`).join("")}${fine}</div>`;
     }
     toggleStarsView() {
       this.view = this.view === "stars" ? "scan" : "stars";
@@ -3287,14 +3363,16 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
         if (box) box.innerHTML = "";
         return;
       }
-      const partial = c.word === "OK" && reportSource(a.rug)?.fallback;
-      const word = partial ? "PARTIAL" : c.word;
-      const tone = partial ? "mid" : c.word === "OK" ? "ok" : c.word === "NEUTRAL" ? "mid" : "risk";
-      if (chip) chip.innerHTML = `<span class="verdict ${tone}" title="Coin check: ${esc2(c.call)}${partial ? ". Fallback read: no LP lock or insider data" : ""}">${word} <b>${c.score}</b></span>`;
+      const flagged = c.word === "OK" && !!a.rug && seriousWarning(reportBlock(a.rug));
+      const partial = !flagged && c.word === "OK" && reportSource(a.rug)?.fallback;
+      const word = flagged ? "FLAGGED" : partial ? "PARTIAL" : c.word;
+      const tone = flagged ? "risk" : partial ? "mid" : c.word === "OK" ? "ok" : c.word === "NEUTRAL" ? "mid" : "risk";
+      const score = flagged ? "" : ` <b>${c.score}</b>`;
+      if (chip) chip.innerHTML = `<span class="verdict ${tone}" title="Coin check: ${esc2(flagged ? reportBlock(a.rug) : c.call)}${partial ? ". Fallback read: no LP lock or insider data" : ""}">${word}${score}</span>`;
       if (!box) return;
       const lvl = { ok: "good", watch: "warn", risk: "bad" };
       const val = (f) => f.text ? esc2(f.text) : f.unit === "price" ? pctPlain(f.v, 0) : pctPlain(f.v);
-      box.innerHTML = `<h4>Coin check <span class="verdict ${tone}">${word} <b>${c.score}</b></span></h4>
+      box.innerHTML = `<h4>Coin check <span class="verdict ${tone}">${word}${score}</span></h4>
       ${c.call && !c.facts.some((f) => f.text && c.call.toLowerCase().includes(String(f.text).toLowerCase())) ? `<p class="cc-call">${esc2(c.call)}</p>` : ""}
       <div class="rows">${c.facts.map((f) => `<div class="row ${lvl[f.lvl] || ""}"><span class="dot"></span><span class="k">${esc2(f.k)}</span><span class="v">${val(f)}${f.sub ? `<small>${esc2(f.sub)}</small>` : ""}</span></div>`).join("")}</div>
       <div class="src-line">${esc2([a.rug && reportSource(a.rug).line, a.bundle?.ok && ["Launch block", since(a.bundleAt)].filter(Boolean).join(" \xB7 ")].filter(Boolean).join(" \xB7 "))}</div>`;
@@ -3375,6 +3453,20 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       this.toastTimer = setTimeout(() => this.toastEl.classList.remove("show"), ms);
     }
     async onBodyClick(e) {
+      if (e.target.closest('[data-act="feed"]')) {
+        this.toggleFeedView();
+        return;
+      }
+      const feedOpen = e.target.closest("[data-feed-open]");
+      if (feedOpen) {
+        this.scan({ post: { text: feedOpen.dataset.feedOpen }, source: { kind: "Breaking now", label: feedOpen.dataset.feedOpen } });
+        return;
+      }
+      const feedCoin = e.target.closest("[data-feed-coin]");
+      if (feedCoin) {
+        this.scan({ post: { text: feedCoin.dataset.feedCoin }, source: { kind: "Breaking now", label: `$${feedCoin.dataset.feedSym}` } });
+        return;
+      }
       if (e.target.closest("[data-act-back]")) {
         this.view = "scan";
         this.renderHead();
@@ -4543,6 +4635,25 @@ svg { display: block; }\r
 .hc { font-size: 12.5px; }\r
 .story-call { font-size: 12.5px; }\r
 .narrative { font-size: 13.5px; }\r
+\r
+/* ---------- breaking now ---------- */\r
+.feed-head.on { color: var(--text); background: var(--card-2); }\r
+.feed-late { margin: 0; }\r
+.feed-row { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }\r
+.feed-open { all: unset; display: block; box-sizing: border-box; width: 100%; padding: 11px 12px 8px; cursor: pointer; }\r
+.feed-open:hover { background: var(--card-2); }\r
+.feed-title { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }\r
+.feed-title b { font: 700 15px/1.25 var(--font); color: var(--text); min-width: 0; overflow-wrap: anywhere; }\r
+.feed-title em { flex: none; font: 700 11.5px var(--mono); font-style: normal; color: var(--muted); }\r
+.feed-sub { display: block; margin-top: 3px; font: 500 11.5px/1.35 var(--font); color: var(--muted); }\r
+.feed-coins { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 12px 11px; }\r
+.feed-coin { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 5px 9px; border: 1px solid var(--line-2); border-radius: 8px; background: none; color: var(--text); font: 600 11.5px var(--font); cursor: pointer; }\r
+.feed-coin:hover { background: var(--card-2); }\r
+.feed-coin i { font: 600 10px var(--mono); font-style: normal; letter-spacing: 0.06em; text-transform: uppercase; color: var(--faint); }\r
+.feed-coin b { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 120px; }\r
+.feed-coin span { color: var(--muted); font-variant-numeric: tabular-nums; }\r
+.feed-entry { display: inline-flex; align-items: center; gap: 7px; margin-top: 14px; padding: 9px 13px; border: 1px solid var(--line-2); border-radius: 10px; background: none; color: var(--text); font: 600 12.5px var(--font); cursor: pointer; }\r
+.feed-entry:hover { background: var(--card-2); }\r
 `;
 
   // webapp/main.js

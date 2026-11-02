@@ -24,6 +24,7 @@
     .perks-live { margin-top: 24px; display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 15px; color: var(--muted); }
     .perks-live b { font-weight: 600; color: var(--ink); }
     .perks-live[hidden] { display: none; }
+    .perk-wide { grid-column: 1 / -1; }
     /* Chrome on a phone can't run extensions, so phones keep the Edge route. */
     .hero-phone { display: none; }
     @media (max-width: 600px) { .hero-wide { display: none; } .hero-phone { display: inline-flex; } }
@@ -86,6 +87,10 @@
       <h2>Holder perks</h2>
       <p class="lede">Hold $10 of $RADAR or $LARPCHECK and check your wallet. It's a signature, not a transaction, and it can't move funds.</p>
       <div class="platforms">
+        <article class="platform muted perk-wide">
+          <h3>Breaking now, live</h3>
+          <p>The words many new coins are launching under right now, with the biggest and the first. Everyone else sees it 10 minutes later.</p>
+        </article>
         <article class="platform muted">
           <h3>Who posted this</h3>
           <p>The coins an account has posted before, what each is worth now, and which of those posts are gone.</p>
