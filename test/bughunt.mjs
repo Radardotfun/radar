@@ -5,6 +5,8 @@ import { wordsOf, findStories } from '../bot/wire.js';
 import { aggregate, relevance } from '../extension/src/lib/market.js';
 import { extractKeywords } from '../extension/src/lib/keywords.js';
 import { coinCheck } from '../extension/src/ui/coincheck.js';
+import { txBlock } from '../webapp/launch-guard.js';
+import { coinKey, plainClash, launchFields } from '../server/launch.js';
 
 // A small stand-in for D1, enough for tick's queries.
 function fakeDb({ failInsert = false } = {}) {
@@ -148,4 +150,34 @@ const quiet = async () => ({ score: 90, why: 'a dog', name: 'Biscuit' });
   assert.ok(relevance({ name: 'Café Dog', symbol: 'CAFE' }, ['cafe']).score > 0, 'accents still fold');
   assert.ok(extractKeywords('$川普 is everywhere today', 6).length >= 0);
   console.log('PASS bughunt: names in any alphabet match');
+}
+
+// 11. The launch guard refuses what the server would never list, so nobody pays for a coin Radar can't list.
+{
+  const PUMP = '6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P';
+  const BUDGET = 'ComputeBudget111111111111111111111111111111';
+  const SYSTEM = '11111111111111111111111111111111';
+  const tx = (programs) => ({ message: { staticAccountKeys: ['payer', 'mint', ...programs], header: { numRequiredSignatures: 2 }, compiledInstructions: programs.map((_, i) => ({ programIdIndex: i + 2 })) } });
+  assert.equal(txBlock(tx([BUDGET, BUDGET, PUMP]), 'payer', 'mint'), null, 'the launch itself');
+  assert.match(txBlock(tx([BUDGET, PUMP, SYSTEM]), 'payer', 'mint'), /could not list/, 'a tip added by a wallet');
+  console.log('PASS bughunt: a launch that couldn\'t be listed is never sent');
+}
+
+// 12. Copies don't get past the plain check.
+{
+  const listed = { post: 'https://x.com/a/status/1', symbol: 'DOG', name: 'A Dog', pic: 'p' };
+  const coin = (symbol, name) => ({ post: 'https://x.com/b/status/2', symbol, name, pic: 'q' });
+  assert.equal(coinKey('ＤＯＧ'), 'dog');
+  assert.ok(plainClash(coin('ＤＯＧ', 'Other'), [listed]), 'full-width ticker');
+  assert.ok(plainClash(coin('WOOF', 'DOG'), [listed]), 'the ticker used as a name');
+  assert.ok(plainClash(coin('ADOG', 'Other'), [listed]), 'the name used as a ticker');
+  assert.equal(plainClash(coin('CAT', 'A Cat'), [listed]), null);
+  console.log('PASS bughunt: a copy under another spelling is caught');
+}
+
+// 13. A name too long in bytes says so, in words that make sense for 11 Chinese characters.
+{
+  assert.match(launchFields({ name: '中'.repeat(11), symbol: 'A', post: 'https://x.com/a/status/1', wallet: 'So11111111111111111111111111111111111111112' }).error, /too long/);
+  assert.match(launchFields({ name: '', symbol: 'A', post: 'https://x.com/a/status/1', wallet: 'So11111111111111111111111111111111111111112' }).error, /needs a name/);
+  console.log('PASS bughunt: name errors make sense');
 }

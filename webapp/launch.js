@@ -11,7 +11,8 @@ const PRIORITY_MICRO_LAMPORTS = 200_000;
 const COMPUTE_UNITS = 180_000; // a launch used about 111,000 in a mainnet simulation
 
 const $ = (id) => document.getElementById(id);
-const post = (new URLSearchParams(location.search).get('post') || '').trim();
+// A link to a photo in the post, or with a slash on the end, is still that post.
+const post = (new URLSearchParams(location.search).get('post') || '').trim().replace(/^(https:\/\/(?:www\.|mobile\.)?(?:x|twitter)\.com\/\w{1,15}\/status\/\d{1,25})[/?#].*$/, '$1');
 const ui = {
   message: $('page-message'), connect: $('connect-wallet'), choice: $('wallet-choice'), status: $('wallet-status'), launch: $('launch-button'),
   name: $('coin-name-input'), symbol: $('coin-symbol-input'), description: $('coin-description'), agree: $('agree'),
@@ -39,7 +40,8 @@ const say = (text, kind) => {
 const refresh = () => {
   ui.connect.disabled = busy;
   ui.launch.disabled = busy || !provider || !picture || !ui.agree.checked || !ui.name.value.trim() || !ui.symbol.value.trim() || !samePost(post);
-  ui.launch.textContent = !provider ? 'Connect a wallet to launch' : busy ? 'Working…' : !picture ? 'Choose a picture to launch' : 'Check and launch in wallet';
+  ui.launch.textContent = !samePost(post) ? 'Scan a post first' : !provider ? 'Connect a wallet to launch' : busy ? 'Working…' : !picture ? 'Choose a picture to launch'
+    : !ui.name.value.trim() ? 'Name the coin to launch' : !ui.symbol.value.trim() ? 'Add a ticker to launch' : !ui.agree.checked ? 'Tick the box above to launch' : 'Check and launch in wallet';
 };
 
 // Any picture becomes a 512px square JPEG here, so what's stored is small and the same shape for every coin.
@@ -68,9 +70,9 @@ ui.file.addEventListener('change', async () => {
 // The post: who posted it, what it says, and its picture if it has one.
 async function loadPost() {
   if (!samePost(post)) {
-    say('Open this page from a post in Radar, or add ?post= with a link to a post on X.', 'error');
+    say('A launch starts from a post. Scan a post on X, then press Launch on it.');
     $('post-author').textContent = 'No post yet';
-    $('post-link').hidden = true;
+    Object.assign($('post-link'), { href: '/scan', target: '_self', textContent: 'Scan a post to launch from it' });
     return;
   }
   $('post-link').href = post;
@@ -90,7 +92,8 @@ async function loadPost() {
     }
     if (!picture) say('This post has no picture to use. Choose one for the coin.');
   } catch (e) {
-    say(e.message || 'Could not read that post. You can still launch from it.', 'error');
+    // A browser's own words about a timeout or a dropped connection mean nothing to anyone.
+    say(/^(TimeoutError|TypeError|AbortError|SyntaxError)$/.test(e?.name) || !e?.message ? 'Could not read that post. You can still launch from it.' : e.message, 'error');
   }
   refresh();
 }
@@ -120,7 +123,11 @@ function findWallets() {
     seen.add(p);
     return true;
   });
+  // Rebuilding the list mustn't lose the wallet someone picked.
+  const picked = ui.choice.selectedOptions?.[0]?.textContent;
   ui.choice.replaceChildren(...providers.map(([label], i) => Object.assign(document.createElement('option'), { value: String(i), textContent: label })));
+  const keep = providers.findIndex(([label]) => label === picked);
+  if (keep >= 0) ui.choice.value = String(keep);
   ui.choice.hidden = providers.length < 2;
 }
 
@@ -258,9 +265,11 @@ async function waitFor(p) {
 async function listLaunch(p) {
   for (let i = 0; i < 12; i++) {
     const r = await fetch(`${API}/launch/record`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: p.id, mint: p.mint, signature: p.signature }) }).catch(() => null);
-    if (r?.ok) { dropSent(); return; }
+    if (r?.ok) { dropSent(); ui.launch.hidden = true; return; }
     if (r?.status === 400 || r?.status === 409) {
       dropSent();
+      // The coin is live whatever the list says. Nothing here should offer to pay for a second one.
+      ui.launch.hidden = true;
       const why = (await r.json().catch(() => null))?.error || 'Not listed.';
       say(`Your coin is live on pump.fun, but it isn't on Radar's list. ${why}`, 'error');
       return;
@@ -302,7 +311,7 @@ async function runLaunch() {
       body: JSON.stringify({ name: ui.name.value, symbol: ui.symbol.value, description: ui.description.value, post, wallet, image: picture }),
       signal: AbortSignal.timeout(30000),
     });
-    const meta = await metaRes.json();
+    const meta = await metaRes.json().catch(() => ({ error: 'Radar had a problem saving this. Nothing was launched. Try again.' }));
     showTaken(meta.mint);
     if (!metaRes.ok) throw new Error(meta.error || 'Could not save the details.');
     const mintKey = Keypair.generate();
@@ -311,10 +320,14 @@ async function runLaunch() {
     const tx = await buildLaunch({ mintKey, uri: meta.uri, name: meta.name, symbol: meta.symbol });
     const blocked = txBlock(tx, wallet, mint) || await simulate(tx);
     if (blocked) throw new Error(blocked);
-    say('Check the launch in your wallet and approve it.');
+    say('Check the launch in your wallet and approve it within about 25 seconds. After that Solana refuses it.');
     // A wallet returns its own copy of the transaction, from its own copy of web3.js, and may have added a guard to it.
     // So it's rebuilt from bytes and checked again. The new coin's key signs last, over what the wallet approved.
-    const signed = VersionedTransaction.deserialize((await provider.signTransaction(tx)).serialize());
+    let approved;
+    try { approved = await provider.signTransaction(tx); } catch (e) {
+      throw new Error(e?.code === 4001 || /reject|cancel|denied|declin/i.test(String(e?.message)) ? 'You cancelled it in your wallet. Nothing was launched.' : `Your wallet could not sign this, so nothing was launched. ${String(e?.message || '').slice(0, 120)}`);
+    }
+    const signed = VersionedTransaction.deserialize(approved.serialize());
     const again = txBlock(signed, wallet, mint);
     if (again) throw new Error(again);
     signed.sign([mintKey]);
@@ -326,6 +339,11 @@ async function runLaunch() {
       await rpc('sendTransaction', [b64(signed.serialize()), { encoding: 'base64', skipPreflight: false, maxRetries: 3 }]);
     } catch (e) {
       // Solana refusing it is final. Anything else (a 502, a timeout) says nothing about whether it went through.
+      if (/blockhash not found/i.test(String(e?.message))) {
+        dropSent();
+        ui.done.hidden = true;
+        throw new Error('That took longer than Solana allows, about 30 seconds. Nothing launched and nothing was paid. Press launch again and approve it right away.');
+      }
       if (/simulation failed|blockhash not found|insufficient/i.test(String(e?.message))) {
         dropSent();
         ui.done.hidden = true;
@@ -334,8 +352,9 @@ async function runLaunch() {
     }
     await followLaunch(sent);
   } catch (e) {
-    const m = String(e?.message || e);
-    say(/reject|cancel|denied/i.test(m) ? 'You cancelled it in your wallet. Nothing was launched.' : m, 'error');
+    // A browser's own words about a timeout or a dropped connection mean nothing to anyone.
+    const raw = /^(TimeoutError|TypeError|AbortError|SyntaxError)$/.test(e?.name);
+    say(!raw ? String(e?.message || e) : readSent() ? 'Radar lost the connection. Open this page again and it will check your launch.' : 'Radar took too long to answer. Nothing was launched. Try again.', 'error');
   } finally {
     busy = false;
     refresh();

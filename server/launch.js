@@ -45,8 +45,10 @@ export function launchFields(body) {
   const description = clean(body?.description).slice(0, 280);
   const post = String(body?.post ?? '').trim().replace(/\?.*$/, '').replace('//www.', '//').replace('//mobile.', '//').replace(/\/status\/0+(?=\d)/, '/status/');
   const wallet = String(body?.wallet ?? '').trim();
-  if (!name || bytesOf(name) > 32) return { error: 'The name needs 1 to 32 characters.' };
-  if (!symbol || bytesOf(symbol) > 10) return { error: 'The ticker needs 1 to 10 characters.' };
+  if (!name) return { error: 'The coin needs a name.' };
+  if (bytesOf(name) > 32) return { error: 'That name is too long: 32 bytes at most. Emoji and non-Latin letters count as 2 to 4 each.' };
+  if (!symbol) return { error: 'The coin needs a ticker.' };
+  if (bytesOf(symbol) > 10) return { error: 'That ticker is too long: 10 bytes at most. Emoji and non-Latin letters count as 2 to 4 each.' };
   if (!X_POST.test(post)) return { error: 'A launch needs a link to a post on X.' };
   if (!ADDRESS.test(wallet)) return { error: 'Connect a wallet first.' };
   return { name, symbol, description, post, wallet };
@@ -71,14 +73,17 @@ const b64Bytes = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
 
 export const postId = (post) => String(post || '').match(/status\/0*(\d+)/)?.[1] || '';
 // Letters and digits decide, so "A-Dog" is "a dog". A name of only emoji keeps them: two different ones aren't the same coin.
-export const coinKey = (s) => { const low = String(s || '').toLowerCase(); return low.replace(/[^\p{L}\p{N}]/gu, '') || low.replace(/\s/g, ''); };
+// Full-width letters fold too, so $ＤＯＧ is $DOG.
+export const coinKey = (s) => { const low = String(s || '').normalize('NFKC').toLowerCase(); return low.replace(/[^\p{L}\p{N}]/gu, '') || low.replace(/\s/g, ''); };
 const shortHash = async (bytes) => [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))].slice(0, 12).map((b) => b.toString(16).padStart(2, '0')).join('');
 
 // What plainly makes this coin the same as another: its post, ticker, name or exact picture.
 export function clashKind(coin, r) {
   if (postId(r.post) === postId(coin.post)) return 'post';
-  if (coinKey(r.symbol) === coinKey(coin.symbol)) return 'ticker';
-  if (coinKey(r.name) === coinKey(coin.name)) return 'name';
+  // A ticker used as a name is the same coin too: "DOG" with ticker WOOF beside $DOG.
+  const mine = [coinKey(coin.symbol), coinKey(coin.name)];
+  if (mine.includes(coinKey(r.symbol))) return 'ticker';
+  if (mine.includes(coinKey(r.name))) return 'name';
   return coin.pic && r.pic === coin.pic ? 'picture' : null;
 }
 export const plainClash = (coin, rows) => rows.find((r) => clashKind(coin, r)) || null;
@@ -96,8 +101,8 @@ const heldBy = (kind) => ({ status: 409, data: { error: `Someone is launching wi
 async function listedClash(coin, env, now, mint = '') {
   const exact = await env.DB.prepare('SELECT mint, symbol, name, post, pic FROM launches WHERE post LIKE ? AND mint != ? LIMIT 1').bind(`%/status/${postId(coin.post)}`, mint).first();
   if (exact) return exact;
-  return env.DB.prepare("SELECT mint, symbol, name, post, pic FROM launches WHERE at > ? AND mint != ? AND (symbol_key = ? OR name_key = ? OR (pic != '' AND pic = ?)) LIMIT 1")
-    .bind(now - STORY_LOCK_MS, mint, coinKey(coin.symbol), coinKey(coin.name), coin.pic || '').first();
+  return env.DB.prepare("SELECT mint, symbol, name, post, pic FROM launches WHERE at > ? AND mint != ? AND (symbol_key = ? OR name_key = ? OR symbol_key = ? OR name_key = ? OR (pic != '' AND pic = ?)) LIMIT 1")
+    .bind(now - STORY_LOCK_MS, mint, coinKey(coin.symbol), coinKey(coin.name), coinKey(coin.name), coinKey(coin.symbol), coin.pic || '').first();
 }
 
 // Why this coin can't launch from Radar, or null. sameStory(story, others) and samePicture(picture, others) are the AI's
@@ -164,6 +169,9 @@ export async function launchMeta(body, env, origin, { readPost, sameStory, sameP
   const read = await readPost(postId(fields.post)).catch(() => null);
   if (read === 'gone') return { status: 400, data: { error: 'That post is gone, so a coin can\'t launch from it.' } };
   if (!read) return { status: 503, data: { error: 'Could not read the post just now. Nothing was launched. Try again.' } };
+  // The handle comes from the post too. The link's is whatever was typed, and it goes on-chain for good: x.com/elonmusk/status/<anyone's post>.
+  const author = String(read.author?.screen_name || '');
+  fields.post = `https://x.com/${/^\w{1,15}$/.test(author) ? author : 'i'}/status/${postId(fields.post)}`;
   const story = `${fields.name} ($${fields.symbol}): ${clean([read.text, read.quote?.text].filter(Boolean).join(' / '))}`.slice(0, 500);
   const stored = JSON.stringify([fields.name, fields.symbol, fields.description, fields.post, fields.wallet]);
   const id = await shortHash(new Uint8Array([...new TextEncoder().encode(stored), ...image]));

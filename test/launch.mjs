@@ -127,7 +127,7 @@ const db = (listed = [], pendingRows = []) => {
         if (/FROM launch_meta/.test(sql)) return claims.find((r) => r.id === a[0]) || null;
         if (/WHERE mint = /.test(sql)) return listed.find((r) => r.mint === a[0]) || null;
         if (/post LIKE/.test(sql)) return listed.find((r) => postId(r.post) === postId(a[0]) && (r.mint || '') !== (a[1] ?? '\0')) || null;
-        if (/symbol_key = /.test(sql)) return listed.find((r) => (r.at === undefined || r.at > a[0]) && r.mint !== a[1] && (coinKey(r.symbol) === a[2] || coinKey(r.name) === a[3] || (a[4] && r.pic === a[4]))) || null;
+        if (/symbol_key = /.test(sql)) return listed.find((r) => (r.at === undefined || r.at > a[0]) && r.mint !== a[1] && (coinKey(r.symbol) === a[2] || coinKey(r.name) === a[3] || coinKey(r.symbol) === a[4] || coinKey(r.name) === a[5] || (a[6] && r.pic === a[6]))) || null;
         return null;
       },
       all: async () => ({ results: /SELECT id, image/.test(sql) ? [...listed, ...claims].filter((r) => a.includes(r.id) && r.image) : /FROM launches/.test(sql) ? listed : claims.filter((r) => r.at > a[0] && r.wallet !== a[1]) }),

@@ -147,3 +147,4 @@ footer a { text-decoration:none; }
   .back { padding:10px 0; }
   .mint button { min-height:38px; padding:8px 12px; }
 }
+@media (max-width:560px) { .short-text input, .short-text textarea { font-size:16px; } } /* iOS zooms in on anything smaller */

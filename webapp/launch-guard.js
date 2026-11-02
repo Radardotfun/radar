@@ -14,6 +14,7 @@ const short = (a) => (a ? `${a.slice(0, 4)}…${a.slice(-4)}` : 'unknown');
 
 // Why a built or wallet-signed launch must not be signed or sent, or null when it passes. It must be paid by this
 // wallet, signed only by the wallet and the new coin's address, and call only the programs above.
+const NOT_THE_LAUNCH = new Set(['ComputeBudget111111111111111111111111111111', 'L2TExMFKdjpN9kozasaurPirfHy9P8sbXoAN1qA3S95']);
 export function txBlock(tx, payer, mint) {
   const msg = tx?.message;
   const keys = (msg?.staticAccountKeys || []).map((k) => (typeof k === 'string' ? k : k.toBase58()));
@@ -26,6 +27,8 @@ export function txBlock(tx, payer, mint) {
     if (!program || !PROGRAMS[program]) return `This transaction calls a program Radar does not recognise (${short(program)}). Nothing was signed.`;
   }
   if (!ixs.some((ix) => keys[ix.programIdIndex] === '6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P')) return 'This transaction does not launch on pump.fun. Nothing was signed.';
+  // The server only lists a launch that did nothing else (launchProblem in server/launch.js), so anything more would pay for a coin Radar can't list.
+  if (ixs.filter((ix) => !NOT_THE_LAUNCH.has(keys[ix.programIdIndex])).length !== 1) return 'Your wallet changed this transaction, so Radar could not list the coin. Nothing was sent.';
   return null;
 }
 

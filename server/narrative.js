@@ -208,11 +208,11 @@ async function askFree(ai, system, content, schema) {
   const hasImage = content.some((b) => b.type === 'image');
   const textOnly = () => askFreeOnce(ai, system, content.filter((b) => b.type !== 'image'), schema);
   // If no image-capable model answered a moment ago, don't wait on them again: read the text.
-  if (hasImage && cooling('vision')) return textOnly();
+  if (hasImage && cooling('vision') && !ai.imagesRequired) return textOnly();
   try {
     return await askFreeOnce(ai, system, content, schema);
   } catch (e) {
-    if (!hasImage) throw e;
+    if (!hasImage || ai.imagesRequired) throw e;
     console.warn('vision unavailable, retrying text-only', e?.message);
     coolFor('vision', 60_000);
     return textOnly();
@@ -377,7 +377,9 @@ const pictureBlock = ({ image, type }) => {
 
 /** Launching: picture and others[] are { image (bytes), type }. -> the index in others of a coin showing the same picture, or -1 */
 export async function samePicture(ai, picture, others) {
-  const { same } = await matchBlocks(ai, [pictureBlock(picture)], others.map(pictureBlock));
+  // A model that can't see the pictures can't say they differ, so with none to read them this throws and the launch waits.
+  const must = ai.kind === 'free' ? { ...ai, imagesRequired: true } : { ...ai, free: ai.free && { ...ai.free, imagesRequired: true } };
+  const { same } = await matchBlocks(must, [pictureBlock(picture)], others.map(pictureBlock));
   return same.length ? same[0] : -1;
 }
 
