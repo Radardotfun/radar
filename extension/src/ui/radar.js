@@ -1274,7 +1274,7 @@ class Radar {
               <h4>Launch audit</h4>
               <div class="rows" data-k="audit"></div>
             </section>
-            <div class="links">${links(t).map(([l, u]) => `<a href="${esc(u)}" target="_blank" rel="noopener noreferrer">${l}</a>`).join('')}${BUBBLE_CHAIN[t.chain] ? `<button data-bubble="${t.address}" data-chain="${t.chain}">Bubblemaps</button>` : ''}</div>
+            <div class="links">${links(t).filter(([l]) => !(l === 'Chart' && chartEmbed(t))).map(([l, u]) => `<a href="${esc(u)}" target="_blank" rel="noopener noreferrer">${l}</a>`).join('')}${BUBBLE_CHAIN[t.chain] ? `<button data-bubble="${t.address}" data-chain="${t.chain}">Bubblemaps</button>` : ''}</div>
           </div>
         </div>
       </article>`;
@@ -1596,6 +1596,7 @@ class Radar {
     const why = market || reportBlock(a.rug);
     el.className = `hc ${why ? 'no' : 'ok'}`;
     card.classList.toggle('danger', !!why && seriousWarning(why));
+    card.classList.toggle('not-trading', market === 'not trading');
     // Larpcheck's own line, credited and linked, when its read stands in for RugCheck's.
     const by = a.rug?.source === 'larpcheck' ? `<a class="hc-by" href="${esc(a.rug.page)}" target="_blank" rel="noopener noreferrer">Larpcheck ↗</a>` : '';
     // Where the deciding answer came from. A fallback says so, and says what it can't see.
@@ -1667,7 +1668,7 @@ class Radar {
     const lvl = { ok: 'good', watch: 'warn', risk: 'bad' };
     const val = (f) => (f.text ? esc(f.text) : f.unit === 'price' ? pctPlain(f.v, 0) : pctPlain(f.v));
     box.innerHTML = `<h4>Coin check <span class="verdict ${tone}">${word} <b>${c.score}</b></span></h4>
-      ${c.call ? `<p class="cc-call">${esc(c.call)}</p>` : ''}
+      ${c.call && !c.facts.some((f) => f.text && c.call.toLowerCase().includes(String(f.text).toLowerCase())) ? `<p class="cc-call">${esc(c.call)}</p>` : ''}
       <div class="rows">${c.facts.map((f) => `<div class="row ${lvl[f.lvl] || ''}"><span class="dot"></span><span class="k">${esc(f.k)}</span><span class="v">${val(f)}${f.sub ? `<small>${esc(f.sub)}</small>` : ''}</span></div>`).join('')}</div>
       <div class="src-line">${esc([a.rug && reportSource(a.rug).line, a.bundle?.ok && ['Launch block', since(a.bundleAt)].filter(Boolean).join(' · ')].filter(Boolean).join(' · '))}</div>`;
   }

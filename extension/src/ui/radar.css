@@ -326,7 +326,8 @@ svg { display: block; }
 .toggle { font: 600 11px var(--mono); color: var(--muted); margin-top: 4px; }
 .toggle:hover { color: var(--text); }
 
-.links { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 14px; }
+.links { display: flex; gap: 6px; margin-top: 14px; }
+.links > * { flex: 1 1 0; min-width: 0; }
 .links a, .links button {
   height: 32px;
   display: grid;
@@ -818,7 +819,7 @@ svg { display: block; }
 .nr-root[data-theme="light"] .card.danger { --danger: #d92d3a; }
 .card.danger .hc { background: color-mix(in srgb, var(--danger) 12%, transparent); border-color: color-mix(in srgb, var(--danger) 45%, transparent); color: var(--danger); }
 .card.danger .hc-mark { border-color: var(--danger); color: var(--danger); }
-.card.danger .radar-buy, .card.danger .insta-more { background: none; color: var(--muted); border: 1px solid var(--line-2); }
+.card.danger .radar-buy, .card.danger .insta-more, .card.not-trading .radar-buy, .card.not-trading .insta-more { background: none; color: var(--muted); border: 1px solid var(--line-2); }
 /* Easier to read. */
 .section-label, .story-k, .compact span, .chain, .hc-text small, .lc-foot { font-size: 11px; }
 .tag, .badge { font-size: 11px; }

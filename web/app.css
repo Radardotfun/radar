@@ -116,7 +116,7 @@ h1 {
 .hero-copy > :nth-child(4) { animation-delay: 0.15s; }
 
 /* ---------- sections ---------- */
-section:not(.hero) { max-width: 1160px; margin: 0 auto; padding: clamp(56px, 8vw, 96px) var(--gutter); border-top: 1px solid var(--line); }
+section:not(.hero, .coin-check, .audit, .settings) { max-width: 1160px; margin: 0 auto; padding: clamp(56px, 8vw, 96px) var(--gutter); border-top: 1px solid var(--line); }
 h2 { font-size: clamp(30px, 4.2vw, 48px); line-height: 1.04; letter-spacing: -0.035em; font-weight: 800; }
 h3 { font-size: 18px; letter-spacing: -0.02em; font-weight: 700; }
 

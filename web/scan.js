@@ -1,4 +1,4 @@
-// Radar 1.7.52 on the web: built from the extension source at https://tryradar.fun. Not financial advice.
+// Radar 1.7.53 on the web: built from the extension source at https://tryradar.fun. Not financial advice.
 (() => {
   // extension/src/lib/keywords.js
   var STOP = new Set(`a about above after again against all almost also am an and any are aren as at be because been before
@@ -2891,7 +2891,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
               <h4>Launch audit</h4>
               <div class="rows" data-k="audit"></div>
             </section>
-            <div class="links">${links(t).map(([l, u]) => `<a href="${esc2(u)}" target="_blank" rel="noopener noreferrer">${l}</a>`).join("")}${BUBBLE_CHAIN[t.chain] ? `<button data-bubble="${t.address}" data-chain="${t.chain}">Bubblemaps</button>` : ""}</div>
+            <div class="links">${links(t).filter(([l]) => !(l === "Chart" && chartEmbed(t))).map(([l, u]) => `<a href="${esc2(u)}" target="_blank" rel="noopener noreferrer">${l}</a>`).join("")}${BUBBLE_CHAIN[t.chain] ? `<button data-bubble="${t.address}" data-chain="${t.chain}">Bubblemaps</button>` : ""}</div>
           </div>
         </div>
       </article>`;
@@ -3205,6 +3205,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       const why = market || reportBlock(a.rug);
       el.className = `hc ${why ? "no" : "ok"}`;
       card.classList.toggle("danger", !!why && seriousWarning(why));
+      card.classList.toggle("not-trading", market === "not trading");
       const by = a.rug?.source === "larpcheck" ? `<a class="hc-by" href="${esc2(a.rug.page)}" target="_blank" rel="noopener noreferrer">Larpcheck \u2197</a>` : "";
       const src = market ? ["DexScreener", since(t.updatedAt)].filter(Boolean).join(" \xB7 ") : a.rug ? reportSource(a.rug).line : "RugCheck and Larpcheck had no answer";
       const text = (s) => `<span class="hc-text">${esc2(s)}<small>${esc2(src)}</small></span>`;
@@ -3265,7 +3266,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       const lvl = { ok: "good", watch: "warn", risk: "bad" };
       const val = (f) => f.text ? esc2(f.text) : f.unit === "price" ? pctPlain(f.v, 0) : pctPlain(f.v);
       box.innerHTML = `<h4>Coin check <span class="verdict ${tone}">${word} <b>${c.score}</b></span></h4>
-      ${c.call ? `<p class="cc-call">${esc2(c.call)}</p>` : ""}
+      ${c.call && !c.facts.some((f) => f.text && c.call.toLowerCase().includes(String(f.text).toLowerCase())) ? `<p class="cc-call">${esc2(c.call)}</p>` : ""}
       <div class="rows">${c.facts.map((f) => `<div class="row ${lvl[f.lvl] || ""}"><span class="dot"></span><span class="k">${esc2(f.k)}</span><span class="v">${val(f)}${f.sub ? `<small>${esc2(f.sub)}</small>` : ""}</span></div>`).join("")}</div>
       <div class="src-line">${esc2([a.rug && reportSource(a.rug).line, a.bundle?.ok && ["Launch block", since(a.bundleAt)].filter(Boolean).join(" \xB7 ")].filter(Boolean).join(" \xB7 "))}</div>`;
     }
@@ -4009,7 +4010,8 @@ svg { display: block; }\r
 .toggle { font: 600 11px var(--mono); color: var(--muted); margin-top: 4px; }\r
 .toggle:hover { color: var(--text); }\r
 \r
-.links { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 14px; }\r
+.links { display: flex; gap: 6px; margin-top: 14px; }\r
+.links > * { flex: 1 1 0; min-width: 0; }\r
 .links a, .links button {\r
   height: 32px;\r
   display: grid;\r
@@ -4501,7 +4503,7 @@ svg { display: block; }\r
 .nr-root[data-theme="light"] .card.danger { --danger: #d92d3a; }\r
 .card.danger .hc { background: color-mix(in srgb, var(--danger) 12%, transparent); border-color: color-mix(in srgb, var(--danger) 45%, transparent); color: var(--danger); }\r
 .card.danger .hc-mark { border-color: var(--danger); color: var(--danger); }\r
-.card.danger .radar-buy, .card.danger .insta-more { background: none; color: var(--muted); border: 1px solid var(--line-2); }\r
+.card.danger .radar-buy, .card.danger .insta-more, .card.not-trading .radar-buy, .card.not-trading .insta-more { background: none; color: var(--muted); border: 1px solid var(--line-2); }\r
 /* Easier to read. */\r
 .section-label, .story-k, .compact span, .chain, .hc-text small, .lc-foot { font-size: 11px; }\r
 .tag, .badge { font-size: 11px; }\r
