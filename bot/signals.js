@@ -1,16 +1,16 @@
 // Watches big accounts for posts, replies and quotes that coins get made from. Each minute it asks X for what's new, has
 // Radar's AI read each one, and keeps the answer in D1. It tells nobody by itself: the alerts read what's kept here.
 export const ACCOUNTS = [
-  'elonmusk', 'realDonaldTrump', 'WhiteHouse', 'JDVance', 'DOGE', 'cb_doge',
+  'elonmusk', 'realDonaldTrump', 'WhiteHouse', 'JDVance', 'DOGE', 'cb_doge', 'DonaldJTrumpJr', 'EricTrump', 'RobertKennedyJr', 'GovPressOffice',
   'Polymarket', 'Kalshi',
-  'cz_binance', 'heyibinance', 'binance', 'VitalikButerin', 'saylor', 'brian_armstrong', 'jessepollak', 'solana', 'Pumpfun', 'a1lon9', 'blknoiz06', 'MustStopMurad', 'zachxbt',
-  // Not @grok: it answers everyone, about 2 posts a second, and would spend the day's reads in minutes.
-  'sama', 'OpenAI', 'xai', 'Tesla', 'SpaceX', 'NASA', 'pmarca',
-  'MrBeast', 'kanyewest', 'SnoopDogg', 'Cobratate', 'TuckerCarlson', 'Pontifex',
-  'PopBase', 'PopCrave', 'DramaAlert', 'TMZ', 'Dexerto', 'nypost', 'BBCBreaking', 'DeItaone', 'WatcherGuru', 'unusual_whales', 'spectatorindex', 'disclosetv',
+  'cz_binance', 'heyibinance', 'binance', 'VitalikButerin', 'saylor', 'brian_armstrong', 'jessepollak', 'solana', 'Pumpfun', 'a1lon9', 'blknoiz06', 'MustStopMurad', 'zachxbt', 'rajgokal', 'CryptoHayes', 'HyperliquidX', 'JupiterExchange', 'pudgypenguins',
+  // Not @grok: it answers everyone, about 2 posts a second, and would spend the day's reads in minutes. Not @phantom either: it replies all day.
+  'sama', 'OpenAI', 'xai', 'Tesla', 'SpaceX', 'NASA', 'pmarca', 'sundarpichai', 'AnthropicAI', 'nvidia', 'karpathy',
+  'MrBeast', 'kanyewest', 'SnoopDogg', 'Cobratate', 'TuckerCarlson', 'Pontifex', 'KaiCenat', 'ishowspeedsui', 'Drake', 'KimKardashian', 'taylorswift13', 'KingJames',
+  'PopBase', 'PopCrave', 'DramaAlert', 'TMZ', 'Dexerto', 'nypost', 'BBCBreaking', 'DeItaone', 'WatcherGuru', 'unusual_whales', 'spectatorindex', 'disclosetv', 'pubity', 'NatGeo',
 ];
 
-// X charges $0.005 for each post it hands back, so this is $5 a day. Past it the watcher waits for the next UTC day.
+// X charges $0.005 for each post it hands back, so this is $10 a day. Past it the watcher waits for the next UTC day.
 export const READS_PER_DAY = 2000;
 // A run may make only 50 requests, and the rest wait for the next minute.
 export const AI_READS_PER_RUN = 12;
