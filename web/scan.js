@@ -1,4 +1,4 @@
-// Radar 1.7.54 on the web: built from the extension source at https://tryradar.fun. Not financial advice.
+// Radar 1.7.55 on the web: built from the extension source at https://tryradar.fun. Not financial advice.
 (() => {
   // extension/src/lib/keywords.js
   var STOP = new Set(`a about above after again against all almost also am an and any are aren as at be because been before
@@ -3115,6 +3115,14 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       this.renderHead();
       if (!this.state.picks?.length || this.view === "settings" || this.tab === "new") this.renderBody();
     }
+    async toggleBig() {
+      try {
+        this.alerts = await send("alerts:bigAccounts", { on: this.alerts?.bigAccounts === false });
+      } catch (err) {
+        this.toast(err.message, 3e3);
+      }
+      this.renderBody();
+    }
     async toggleFresh() {
       try {
         this.alerts = await send("alerts:fresh", { on: !this.alerts?.freshBadges });
@@ -3142,6 +3150,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       const watches = a.watches.map((w) => `<div class="al-w"><div><b>${w.word ? `\u201C${esc2(w.word)}\u201D` : w.author ? `@${esc2(w.author)}` : "Post"}</b><span>${esc2(w.label)}</span></div>
       <em>${left(w)}</em><button type="button" data-act="unwatch" data-id="${esc2(w.id)}">Stop</button></div>`).join("");
       const hits = a.feed.slice(0, 5).map((f) => {
+        if (f.kind === "signal") return `<a class="al-hit" href="${esc2(f.watch.url)}" target="_blank" rel="noopener noreferrer"><b>@${esc2(f.watch.author)}</b><span>${esc2([f.coin.name, age(f.at)].filter(Boolean).join(" \xB7 "))}</span><em>${esc2(f.text)}</em></a>`;
         const c = f.coin;
         const larp = f.kind === "guard" ? esc2(f.text) : f.larp ? `${f.larp.by === "Larpcheck" ? "Larpcheck" : "Larp check"} ${esc2(f.larp.word)}${f.larp.score != null ? ` ${esc2(f.larp.score)}` : ""}` : "";
         const link = f.buy || f.chart;
@@ -3155,6 +3164,8 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       ${hits ? `<div class="section-label"><span>Latest alerts</span></div><div class="al-list">${hits}</div>` : ""}
       ${a.notifications ? '<p class="fine">Desktop alerts are on.</p>' : '<button class="fr-btn" data-alerts-notify>Turn on desktop alerts</button><p class="fine">Without them, alerts show on any open X tab and as a number on the Radar icon.</p>'}
       <button class="fr-btn ghost" data-act="fresh-toggle">New-pair badges on X: ${a.freshBadges === false ? "Off" : "On"}</button>
+      <p>Radar also watches big accounts like Elon, Polymarket and Kalshi, and alerts $RADAR and $LARPCHECK holders when one posts something people may launch coins off. It's a heads up, not a pick.</p>
+      <button class="fr-btn ghost" data-act="big-toggle">Big account alerts: ${a.bigAccounts === false ? "Off" : "On"}</button>
     </section>`;
     }
     settingsHtml() {
@@ -3404,6 +3415,10 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       }
       if (e.target.closest('[data-act="fresh-toggle"]')) {
         await this.toggleFresh();
+        return;
+      }
+      if (e.target.closest('[data-act="big-toggle"]')) {
+        await this.toggleBig();
         return;
       }
       const stop = e.target.closest('[data-act="unwatch"]');

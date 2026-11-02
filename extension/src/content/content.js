@@ -411,7 +411,7 @@
     const toneOf = (w) => (['LIKELY LARP', 'LARP'].includes(w) ? 'risk' : ['REAL', 'LIKELY REAL'].includes(w) ? 'ok' : 'mid');
     // The card's Insta Buy uses the amount picked on the panel's cards (0.1 SOL at first), like the panel itself.
     const instaSol = () => { try { const v = localStorage.getItem('nr:insta-sol'); return ['0.05', '0.1', '0.25', '0.5', '1'].includes(v) ? v : '0.1'; } catch { return '0.1'; } };
-    const safeOpen = (url, ...rest) => { if (/^https:\/\/(tryradar\.fun|app\.uniswap\.org|dexscreener\.com)\//.test(url)) window.open(url, ...rest); };
+    const safeOpen = (url, ...rest) => { if (/^https:\/\/(tryradar\.fun|app\.uniswap\.org|dexscreener\.com|x\.com)\//.test(url)) window.open(url, ...rest); };
     function showAlert(item) {
       const c = item.coin;
       if (!stack?.isConnected) { stack = document.createElement('div'); stack.className = 'nr-alerts'; }
@@ -421,10 +421,14 @@
       const sol = instaSol();
       const larp = item.larp ? `<div><i class="${toneOf(item.larp.word)}"></i>${item.larp.by === 'Larpcheck' ? 'Larpcheck' : 'Larp check'}: <b>${esc(item.larp.word)}${item.larp.score != null ? ` ${esc(item.larp.score)}` : ''}</b></div>` : '<div><i></i>Larp check: not ready yet</div>';
       const holders = item.holders ? `<div><i class="${item.holders.ok ? 'ok' : 'risk'}"></i>${esc(item.holders.text)}</div>` : '';
+      const signalCard = () => `<div class="nr-alert-top">${BELL}<span>@${esc(item.watch.author)} just posted</span><button type="button" class="nr-alert-x" data-x aria-label="Close">×</button></div>
+        ${item.coin.name ? `<div class="nr-alert-coin"><b>${esc(item.coin.name)}</b></div>` : ''}
+        <div class="nr-alert-meta">${esc(item.text)}</div>
+        <div class="nr-alert-acts"><button type="button" data-sig>Open in Radar</button><button type="button" data-post>Open the post</button></div>`;
       const card = document.createElement('div');
       card.className = 'nr-alert';
       card.setAttribute('role', 'alert');
-      card.innerHTML = `<div class="nr-alert-top">${BELL}<span>${item.kind === 'guard' ? `Radar Guard` : item.kind === 'verdict' ? `Larpcheck now says ${esc(item.larp.word)}` : item.watch.word ? `New pair on “${esc(item.watch.word)}”` : `New coin off ${item.watch.author ? `@${esc(item.watch.author)}'s` : 'a watched'} post`}</span><button type="button" class="nr-alert-x" data-x aria-label="Close">×</button></div>
+      card.innerHTML = item.kind === 'signal' ? signalCard() : `<div class="nr-alert-top">${BELL}<span>${item.kind === 'guard' ? `Radar Guard` : item.kind === 'verdict' ? `Larpcheck now says ${esc(item.larp.word)}` : item.watch.word ? `New pair on “${esc(item.watch.word)}”` : `New coin off ${item.watch.author ? `@${esc(item.watch.author)}'s` : 'a watched'} post`}</span><button type="button" class="nr-alert-x" data-x aria-label="Close">×</button></div>
         <div class="nr-alert-coin"><b>$${esc(String(c.symbol || '').trim())}</b><span>${esc(c.name || '')}</span></div>
         <div class="nr-alert-meta">${esc([CHAIN[c.chain] || c.chain, c.marketCap ? `${usd(c.marketCap)} MC` : '', c.createdAt ? `launched ${ageOf(c.createdAt)} ago` : ''].filter(Boolean).join(' · '))}</div>
         <div class="nr-alert-checks">${item.kind === 'guard' ? `<div><i class="risk"></i><b>${esc(item.text)}</b></div>` : ''}${larp}${holders}</div>
@@ -443,6 +447,8 @@
           if (quick) safeOpen(`${item.buy}&sol=${sol}&insta=1`, 'radar-insta', 'popup=yes,width=440,height=780');
           else safeOpen(item.buy, '_blank', 'noopener');
         } else if ('chart' in b.dataset) safeOpen(item.chart, '_blank', 'noopener');
+        else if ('post' in b.dataset) safeOpen(item.watch.url, '_blank', 'noopener');
+        else if ('sig' in b.dataset) { card.remove(); launch({ post: { text: item.watch.url }, source: { kind: 'Alert', label: `@${item.watch.author} just posted this` } }); }
         else if ('open' in b.dataset && item.watch.word) { card.remove(); launch({ post: { text: item.watch.word }, source: { kind: 'Alert', label: `$${String(c.symbol || '').trim()} is new on “${item.watch.word}”` }, tab: 'new' }); }
         else if ('open' in b.dataset) { card.remove(); launch({ post: { text: item.watch.url }, source: { kind: 'Alert', label: `$${String(c.symbol || '').trim()} launched off this post` } }); }
       }, true);

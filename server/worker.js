@@ -4,8 +4,9 @@
 //   POST /match     { post, logos }                  -> { same: [i] }: coin logos showing the post's own picture
 //   GET  /larpcheck?address=<CA>                     -> Larpcheck's verdict on the coin (see below)
 import { lcBoard, lcHolders, lcSettings, lcStart, lcPoll, lcAsk, lcHandle } from './lc.js';
+import { signalFeed } from './signals.js';
 import { launchState, launchMeta, launchMetaFile, launchRecord, launchList, launchTaken } from './launch.js';
-import { engine, interpret, judge, storyCheck, transcribe, watchVideo, sameImage, sameStory, samePicture, LOGO_HOST } from './narrative.js';
+import { engine, interpret, memeScore, judge, storyCheck, transcribe, watchVideo, sameImage, sameStory, samePicture, LOGO_HOST } from './narrative.js';
 import { holderOn, holderConfig, holderVerify, holderWho } from './holder.js';
 import { recordPost, readStatus } from './ledger.js';
 
@@ -115,6 +116,11 @@ async function route(kind, request, env, ctx) {
     const key = await sha256(JSON.stringify(['i', post]));
     // A post's words don't change, so neither should its read: a new read every few minutes meant new search words and different coins. One with no words gets another try soon.
     return cachedJson(ctx, `i/${key}`, (r) => (r.terms.length ? 21600 : 300), () => interpret(ai, post), debug);
+  }
+  if (kind === 'meme') {
+    if (!post.text && !post.quoted && !post.parent && !post.images.length) return json(400, { error: 'Empty post' });
+    const key = await sha256(JSON.stringify(['me2', post]));
+    return cachedJson(ctx, `me/${key}`, 21600, () => memeScore(ai, post), debug);
   }
   if (kind === 'story') {
     if (!post.text && !post.quoted && !post.images.length) return json(400, { error: 'Empty post' });
@@ -354,6 +360,11 @@ export default {
     // route stays off for it; 1.7.18 on reads /holder/settings, whose wording comes from here.
     if (pathname === '/holder/config' && request.method === 'GET') return json(200, { on: false });
     if (pathname === '/holder/settings' && request.method === 'GET') return json(200, await holderConfig(env));
+    if (pathname === '/signals' && request.method === 'POST') {
+      if (limited(request.headers.get('cf-connecting-ip') || 'anon')) return json(429, { error: 'Too many checks, slow down a little' });
+      const r = await signalFeed(await request.json().catch(() => ({})), env);
+      return json(r.status, r.body);
+    }
     if ((pathname === '/holder/verify' || pathname === '/holder/who') && request.method === 'POST') {
       if (!holderOn(env)) return json(200, { off: true });
       if (limited(`holder:${request.headers.get('cf-connecting-ip') || 'anon'}`, 120)) return json(429, { error: 'Too many requests. Try again in a few minutes.' });
@@ -371,7 +382,7 @@ export default {
         .map((k) => { const n = String(env[`${k}_API_KEY`] || '').split(/[\s,]+/).filter(Boolean).length; return n ? `${k.toLowerCase()} x${n}` : null; }),
       env.AI && 'workers-ai'].filter(Boolean).join(' > ') || 'none',
     });
-    if (request.method === 'POST' && ['/interpret', '/judge', '/transcribe', '/watch', '/story', '/match'].includes(pathname)) {
+    if (request.method === 'POST' && ['/interpret', '/meme', '/judge', '/transcribe', '/watch', '/story', '/match'].includes(pathname)) {
       try {
         return await route(pathname.slice(1), request, env, ctx);
       } catch (e) {

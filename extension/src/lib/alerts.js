@@ -140,4 +140,18 @@ export function buyUrl(coin) {
   if (coin.chain === 'robinhood') return `https://app.uniswap.org/swap?chain=robinhood&outputCurrency=${encodeURIComponent(coin.address)}`;
   return null;
 }
+// One post the account watcher flagged, as an alert. It says a post may set off coins, never which to buy, so it carries no buy button.
+export const signalItem = (s) => ({
+  id: `signal:${s.id}`,
+  at: Date.now(),
+  kind: 'signal',
+  text: String(s.why || ''),
+  watch: { url: s.url, author: s.author, label: s.name || `@${s.author}` },
+  coin: { symbol: s.name || '', name: s.name || '' },
+  larp: null,
+  holders: null,
+  buy: null,
+  chart: `https://tryradar.fun/scan?url=${encodeURIComponent(s.url)}`,
+});
+
 export const chartUrl = (coin) => coin.url || `https://dexscreener.com/${encodeURIComponent(coin.chain)}/${encodeURIComponent(coin.address)}`;

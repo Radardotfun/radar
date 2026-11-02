@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Radar
 // @namespace    https://tryradar.fun
-// @version      1.7.54
+// @version      1.7.55
 // @description  See the coins behind any post on X and instantly reroute to the biggest match that passes available on-chain safety checks.
 // @homepageURL  https://tryradar.fun
 // @supportURL   https://tryradar.fun
@@ -31,7 +31,7 @@
 // @downloadURL  https://tryradar.fun/radar.user.js
 // ==/UserScript==
 
-// Radar 1.7.54: built from the extension source at https://tryradar.fun. Not financial advice.
+// Radar 1.7.55: built from the extension source at https://tryradar.fun. Not financial advice.
 (() => {
   var __defProp = Object.defineProperty;
   var __export = (target, all) => {
@@ -3224,6 +3224,14 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       this.renderHead();
       if (!this.state.picks?.length || this.view === "settings" || this.tab === "new") this.renderBody();
     }
+    async toggleBig() {
+      try {
+        this.alerts = await send("alerts:bigAccounts", { on: this.alerts?.bigAccounts === false });
+      } catch (err) {
+        this.toast(err.message, 3e3);
+      }
+      this.renderBody();
+    }
     async toggleFresh() {
       try {
         this.alerts = await send("alerts:fresh", { on: !this.alerts?.freshBadges });
@@ -3251,6 +3259,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       const watches = a.watches.map((w) => `<div class="al-w"><div><b>${w.word ? `\u201C${esc2(w.word)}\u201D` : w.author ? `@${esc2(w.author)}` : "Post"}</b><span>${esc2(w.label)}</span></div>
       <em>${left(w)}</em><button type="button" data-act="unwatch" data-id="${esc2(w.id)}">Stop</button></div>`).join("");
       const hits = a.feed.slice(0, 5).map((f) => {
+        if (f.kind === "signal") return `<a class="al-hit" href="${esc2(f.watch.url)}" target="_blank" rel="noopener noreferrer"><b>@${esc2(f.watch.author)}</b><span>${esc2([f.coin.name, age(f.at)].filter(Boolean).join(" \xB7 "))}</span><em>${esc2(f.text)}</em></a>`;
         const c = f.coin;
         const larp = f.kind === "guard" ? esc2(f.text) : f.larp ? `${f.larp.by === "Larpcheck" ? "Larpcheck" : "Larp check"} ${esc2(f.larp.word)}${f.larp.score != null ? ` ${esc2(f.larp.score)}` : ""}` : "";
         const link = f.buy || f.chart;
@@ -3264,6 +3273,8 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       ${hits ? `<div class="section-label"><span>Latest alerts</span></div><div class="al-list">${hits}</div>` : ""}
       ${a.notifications ? '<p class="fine">Desktop alerts are on.</p>' : '<button class="fr-btn" data-alerts-notify>Turn on desktop alerts</button><p class="fine">Without them, alerts show on any open X tab and as a number on the Radar icon.</p>'}
       <button class="fr-btn ghost" data-act="fresh-toggle">New-pair badges on X: ${a.freshBadges === false ? "Off" : "On"}</button>
+      <p>Radar also watches big accounts like Elon, Polymarket and Kalshi, and alerts $RADAR and $LARPCHECK holders when one posts something people may launch coins off. It's a heads up, not a pick.</p>
+      <button class="fr-btn ghost" data-act="big-toggle">Big account alerts: ${a.bigAccounts === false ? "Off" : "On"}</button>
     </section>`;
     }
     settingsHtml() {
@@ -3513,6 +3524,10 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       }
       if (e.target.closest('[data-act="fresh-toggle"]')) {
         await this.toggleFresh();
+        return;
+      }
+      if (e.target.closest('[data-act="big-toggle"]')) {
+        await this.toggleBig();
         return;
       }
       const stop = e.target.closest('[data-act="unwatch"]');
@@ -5149,10 +5164,14 @@ svg { display: block; }\r
         const sol = instaSol2();
         const larp = item.larp ? `<div><i class="${toneOf(item.larp.word)}"></i>${item.larp.by === "Larpcheck" ? "Larpcheck" : "Larp check"}: <b>${esc3(item.larp.word)}${item.larp.score != null ? ` ${esc3(item.larp.score)}` : ""}</b></div>` : "<div><i></i>Larp check: not ready yet</div>";
         const holders = item.holders ? `<div><i class="${item.holders.ok ? "ok" : "risk"}"></i>${esc3(item.holders.text)}</div>` : "";
+        const signalCard = () => `<div class="nr-alert-top">${BELL}<span>@${esc3(item.watch.author)} just posted</span><button type="button" class="nr-alert-x" data-x aria-label="Close">\xD7</button></div>
+        ${item.coin.name ? `<div class="nr-alert-coin"><b>${esc3(item.coin.name)}</b></div>` : ""}
+        <div class="nr-alert-meta">${esc3(item.text)}</div>
+        <div class="nr-alert-acts"><button type="button" data-sig>Open in Radar</button><button type="button" data-post>Open the post</button></div>`;
         const card = document.createElement("div");
         card.className = "nr-alert";
         card.setAttribute("role", "alert");
-        card.innerHTML = `<div class="nr-alert-top">${BELL}<span>${item.kind === "guard" ? `Radar Guard` : item.kind === "verdict" ? `Larpcheck now says ${esc3(item.larp.word)}` : item.watch.word ? `New pair on \u201C${esc3(item.watch.word)}\u201D` : `New coin off ${item.watch.author ? `@${esc3(item.watch.author)}'s` : "a watched"} post`}</span><button type="button" class="nr-alert-x" data-x aria-label="Close">\xD7</button></div>
+        card.innerHTML = item.kind === "signal" ? signalCard() : `<div class="nr-alert-top">${BELL}<span>${item.kind === "guard" ? `Radar Guard` : item.kind === "verdict" ? `Larpcheck now says ${esc3(item.larp.word)}` : item.watch.word ? `New pair on \u201C${esc3(item.watch.word)}\u201D` : `New coin off ${item.watch.author ? `@${esc3(item.watch.author)}'s` : "a watched"} post`}</span><button type="button" class="nr-alert-x" data-x aria-label="Close">\xD7</button></div>
         <div class="nr-alert-coin"><b>$${esc3(String(c.symbol || "").trim())}</b><span>${esc3(c.name || "")}</span></div>
         <div class="nr-alert-meta">${esc3([CHAIN[c.chain] || c.chain, c.marketCap ? `${usd2(c.marketCap)} MC` : "", c.createdAt ? `launched ${ageOf(c.createdAt)} ago` : ""].filter(Boolean).join(" \xB7 "))}</div>
         <div class="nr-alert-checks">${item.kind === "guard" ? `<div><i class="risk"></i><b>${esc3(item.text)}</b></div>` : ""}${larp}${holders}</div>
@@ -5173,7 +5192,11 @@ svg { display: block; }\r
             if (quick) safeOpen(`${item.buy}&sol=${sol}&insta=1`, "radar-insta", "popup=yes,width=440,height=780");
             else safeOpen(item.buy, "_blank", "noopener");
           } else if ("chart" in b.dataset) safeOpen(item.chart, "_blank", "noopener");
-          else if ("open" in b.dataset && item.watch.word) {
+          else if ("post" in b.dataset) safeOpen(item.watch.url, "_blank", "noopener");
+          else if ("sig" in b.dataset) {
+            card.remove();
+            launch({ post: { text: item.watch.url }, source: { kind: "Alert", label: `@${item.watch.author} just posted this` } });
+          } else if ("open" in b.dataset && item.watch.word) {
             card.remove();
             launch({ post: { text: item.watch.word }, source: { kind: "Alert", label: `$${String(c.symbol || "").trim()} is new on \u201C${item.watch.word}\u201D` }, tab: "new" });
           } else if ("open" in b.dataset) {
@@ -5197,7 +5220,7 @@ svg { display: block; }\r
         }
       };
       const safeOpen = (url, ...rest) => {
-        if (/^https:\/\/(tryradar\.fun|app\.uniswap\.org|dexscreener\.com)\//.test(url)) window.open(url, ...rest);
+        if (/^https:\/\/(tryradar\.fun|app\.uniswap\.org|dexscreener\.com|x\.com)\//.test(url)) window.open(url, ...rest);
       };
       ext2.storage.onChanged.addListener((changes, area) => {
         if (area !== "local" || !changes.alerts) return;

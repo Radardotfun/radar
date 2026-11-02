@@ -34,3 +34,5 @@ service = "radar-bot"
 
 [vars]
 BOT_LIVE = "1"
+# The account watcher (bot/signals.js). "0" stops it and its X spending.
+SIGNALS = "1"

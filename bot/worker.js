@@ -19,6 +19,7 @@ import { botCoins, withMemory } from './coins.js';
 import { oauthHeader } from './oauth.js';
 import { wantsCoins, worthRetry, mergeState } from './trigger.js';
 import { createChat } from './chat.js';
+import { tick as signalsTick, recent as signalsRecent, status as signalsStatus } from './signals.js';
 
 const X = 'https://api.x.com/2';
 
@@ -437,6 +438,20 @@ export default {
     if (u.pathname === '/handle' && request.method === 'POST') {
       try { return json(200, await handle(env, await request.json())); } catch (e) { return json(200, { error: String(e.message || e).slice(0, 200) }); }
     }
+    // The account watcher: one minute's work in a run of its own, and what it has seen.
+    if (u.pathname === '/signals-tick' && request.method === 'POST') {
+      if (env.SIGNALS !== '1') return json(200, { off: true });
+      const read = async (post) => {
+        const r = await fetch(`${API_BASE}/meme`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ post }) });
+        if (!r.ok) throw new Error(`read ${r.status}`);
+        return r.json();
+      };
+      const out = await signalsTick({ db: env.DB, x: (url) => xApi(env, 'GET', url), read }).catch((e) => ({ error: String(e.message || e).slice(0, 200) }));
+      if (out.error || out.errors?.length) console.log('signals', JSON.stringify(out));
+      return json(200, out);
+    }
+    if (u.pathname === '/signals') return json(200, await signalsRecent(env.DB, { limit: Number(u.searchParams.get('limit')) || 50, only: u.searchParams.get('only') === '1' }));
+    if (u.pathname === '/signals-status') return json(200, { on: env.SIGNALS === '1', ...(await signalsStatus(env.DB)) });
     if (u.pathname === '/poll' && request.method === 'POST') {
       try { return json(200, await poll(env)); } catch (e) { return json(502, { error: String(e.message || e) }); }
     }
@@ -447,5 +462,6 @@ export default {
     useDexProxy(env);
     ctx.waitUntil(poll(env).catch((e) => console.log('poll failed', e.message)));
     ctx.waitUntil(chatFor(env).tick(env).catch((e) => console.log('chat failed', e.message)));
+    if (env.SIGNALS === '1') ctx.waitUntil(env.SELF.fetch(new Request('https://radar-bot/signals-tick', { method: 'POST', headers: { 'x-bot-token': env.BOT_TOKEN } })).catch((e) => console.log('signals failed', e.message)));
   },
 };

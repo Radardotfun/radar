@@ -1507,6 +1507,11 @@ class Radar {
     if (!this.state.picks?.length || this.view === 'settings' || this.tab === 'new') this.renderBody();
   }
 
+  async toggleBig() {
+    try { this.alerts = await send('alerts:bigAccounts', { on: this.alerts?.bigAccounts === false }); } catch (err) { this.toast(err.message, 3000); }
+    this.renderBody();
+  }
+
   async toggleFresh() {
     try { this.alerts = await send('alerts:fresh', { on: !this.alerts?.freshBadges }); } catch (err) { this.toast(err.message, 3000); }
     this.toast(this.alerts?.freshBadges ? 'New-pair badges are on. Reload X to see them' : 'New-pair badges are off. Reload X to hide them', 3000);
@@ -1529,6 +1534,7 @@ class Radar {
     const watches = a.watches.map((w) => `<div class="al-w"><div><b>${w.word ? `“${esc(w.word)}”` : w.author ? `@${esc(w.author)}` : 'Post'}</b><span>${esc(w.label)}</span></div>
       <em>${left(w)}</em><button type="button" data-act="unwatch" data-id="${esc(w.id)}">Stop</button></div>`).join('');
     const hits = a.feed.slice(0, 5).map((f) => {
+      if (f.kind === 'signal') return `<a class="al-hit" href="${esc(f.watch.url)}" target="_blank" rel="noopener noreferrer"><b>@${esc(f.watch.author)}</b><span>${esc([f.coin.name, age(f.at)].filter(Boolean).join(' · '))}</span><em>${esc(f.text)}</em></a>`;
       const c = f.coin;
       const larp = f.kind === 'guard' ? esc(f.text) : f.larp ? `${f.larp.by === 'Larpcheck' ? 'Larpcheck' : 'Larp check'} ${esc(f.larp.word)}${f.larp.score != null ? ` ${esc(f.larp.score)}` : ''}` : '';
       const link = f.buy || f.chart;
@@ -1542,6 +1548,8 @@ class Radar {
       ${hits ? `<div class="section-label"><span>Latest alerts</span></div><div class="al-list">${hits}</div>` : ''}
       ${a.notifications ? '<p class="fine">Desktop alerts are on.</p>' : '<button class="fr-btn" data-alerts-notify>Turn on desktop alerts</button><p class="fine">Without them, alerts show on any open X tab and as a number on the Radar icon.</p>'}
       <button class="fr-btn ghost" data-act="fresh-toggle">New-pair badges on X: ${a.freshBadges === false ? 'Off' : 'On'}</button>
+      <p>Radar also watches big accounts like Elon, Polymarket and Kalshi, and alerts $RADAR and $LARPCHECK holders when one posts something people may launch coins off. It's a heads up, not a pick.</p>
+      <button class="fr-btn ghost" data-act="big-toggle">Big account alerts: ${a.bigAccounts === false ? 'Off' : 'On'}</button>
     </section>`;
   }
 
@@ -1758,6 +1766,7 @@ class Radar {
     const follow = e.target.closest('[data-act="follow"]');
     if (follow) { await this.follow(follow.dataset.word); return; }
     if (e.target.closest('[data-act="fresh-toggle"]')) { await this.toggleFresh(); return; }
+    if (e.target.closest('[data-act="big-toggle"]')) { await this.toggleBig(); return; }
     const stop = e.target.closest('[data-act="unwatch"]');
     if (stop) { await this.unwatch(stop.dataset.id); return; }
     if (e.target.closest('[data-alerts-notify]')) { await this.allowNotifications(); return; }

@@ -1,6 +1,6 @@
 import { makeHandlers, API_BASE, DEFAULTS } from './lib/handlers.js';
 import { listWallets, buy, KEY_RE, FRONTRUN_ORIGIN } from './lib/frontrun.js';
-import { newWatch, newFollow, verdictTurned, checkWatch, buyUrl, chartUrl, MAX_WATCHES, coinOf, statusOf } from './lib/alerts.js';
+import { newWatch, newFollow, verdictTurned, checkWatch, buyUrl, chartUrl, MAX_WATCHES, coinOf, statusOf, signalItem } from './lib/alerts.js';
 import { GUARD_KEY, GUARD_MINUTES, lookAtStar } from './lib/guard.js';
 import { reportBlock } from './ui/holdercheck.js';
 
@@ -135,7 +135,8 @@ const showBadge = (n) => {
   if (n) ext.action.setBadgeBackgroundColor({ color: '#7c5cff' }).catch(() => {});
 };
 const FRESH_KEY = 'freshBadges'; // content.js reads it: new-pair badges under posts, on unless turned off
-const alertList = async (a) => ({ watches: a.watches.filter((w) => w.until > Date.now()).map(publicWatch), feed: a.feed.slice(0, 20), unread: a.unread, notifications: await canNotify(), freshBadges: (await ext.storage.local.get(FRESH_KEY))[FRESH_KEY] !== false });
+const BIG_KEY = 'bigAccountAlerts'; // on unless turned off
+const alertList = async (a) => ({ watches: a.watches.filter((w) => w.until > Date.now()).map(publicWatch), feed: a.feed.slice(0, 20), unread: a.unread, notifications: await canNotify(), freshBadges: (await ext.storage.local.get(FRESH_KEY))[FRESH_KEY] !== false, bigAccounts: (await ext.storage.local.get(BIG_KEY))[BIG_KEY] !== false });
 
 handlers['alerts:list'] = async () => alertList(await loadAlerts());
 handlers['alerts:watch'] = async ({ post }, sender) => {
@@ -177,6 +178,10 @@ handlers['alerts:fresh'] = async ({ on }) => {
   await ext.storage.local.set({ [FRESH_KEY]: !!on });
   return alertList(await loadAlerts());
 };
+handlers['alerts:bigAccounts'] = async ({ on }) => {
+  await ext.storage.local.set({ [BIG_KEY]: !!on });
+  return alertList(await loadAlerts());
+};
 handlers['alerts:stop'] = async ({ id }) => withAlerts(async (a) => {
   a.watches = a.watches.filter((w) => w.id !== String(id) && w.until > Date.now());
   if (!a.watches.length) await ext.alarms.clear(ALARM);
@@ -209,6 +214,11 @@ const usdShort = (n) => (!(n > 0) ? '' : n >= 1e6 ? `$${(n / 1e6).toFixed(2)}M` 
 const CHAIN_NAME = { solana: 'Solana', robinhood: 'Robinhood Chain', base: 'Base', bsc: 'BNB Chain' };
 async function notify(item) {
   if (!ext.notifications || !(await canNotify())) return;
+  if (item.kind === 'signal') {
+    const big = { type: 'basic', iconUrl: ext.runtime.getURL('icons/icon128.png'), title: `@${item.watch.author}${item.coin.name ? `: ${item.coin.name}` : ' posted something'}`, message: item.text, priority: 2, buttons: [{ title: 'Scan it' }, { title: 'Open the post' }] };
+    try { await ext.notifications.create(item.id, big); } catch { delete big.buttons; await ext.notifications.create(item.id, big).catch(() => {}); }
+    return;
+  }
   const c = item.coin;
   const line = [CHAIN_NAME[c.chain] || c.chain, usdShort(c.marketCap) && `${usdShort(c.marketCap)} MC`].filter(Boolean).join(' · ');
   const larp = item.larp && `${item.larp.by === 'Larpcheck' ? 'Larpcheck' : 'Larp check'}: ${item.larp.word}${item.larp.score != null ? ` ${item.larp.score}` : ''}`;
@@ -379,6 +389,33 @@ async function runGuard() {
   }
 }
 ext.alarms.onAlarm.addListener((alarm) => { if (alarm.name === GUARD_ALARM) runGuard().catch(() => {}); });
+
+// Big account alerts: once a minute, for holders, what the account watcher has flagged since the last look.
+const SIGNAL_ALARM = 'radar-signals';
+const SIGNAL_SINCE = 'signalSince';
+ext.alarms.get(SIGNAL_ALARM).then((a) => a || ext.alarms.create(SIGNAL_ALARM, { periodInMinutes: 1 })).catch(() => {});
+async function runSignals() {
+  const got = await ext.storage.local.get(['radarHolder', BIG_KEY, SIGNAL_SINCE]);
+  const holder = got.radarHolder;
+  if (!(holder?.token && holder.exp > Date.now()) || got[BIG_KEY] === false) return;
+  // The first look starts from now, so turning it on doesn't bring up the last hour.
+  if (!got[SIGNAL_SINCE]) { await ext.storage.local.set({ [SIGNAL_SINCE]: Date.now() }); return; }
+  const res = await fetch(`${API_BASE}/signals`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ token: holder.token, since: got[SIGNAL_SINCE] }), signal: AbortSignal.timeout(10_000) }).catch(() => null);
+  if (!res?.ok) return;
+  const items = (await res.json().catch(() => ({}))).items || [];
+  if (!items.length) return;
+  await ext.storage.local.set({ [SIGNAL_SINCE]: Math.max(...items.map((s) => s.at)) });
+  const fresh = items.filter((s) => s.url).map(signalItem);
+  const added = await withAlerts(async (a) => {
+    const newOnes = fresh.filter((i) => !a.feed.some((f) => f.id === i.id));
+    a.feed = [...newOnes, ...a.feed].slice(0, 30);
+    a.unread += newOnes.length;
+    if (newOnes.length) showBadge(a.unread);
+    return newOnes;
+  });
+  for (const item of added.slice(0, 3)) await notify(item);
+}
+ext.alarms.onAlarm.addListener((alarm) => { if (alarm.name === SIGNAL_ALARM) runSignals().catch(() => {}); });
 // The badge lives in memory only: put it back when the worker starts again.
 loadAlerts().then((a) => showBadge(a.unread)).catch(() => {});
 
