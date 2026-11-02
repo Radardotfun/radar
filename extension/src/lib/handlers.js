@@ -3,7 +3,7 @@
 import { fullTokens, mentionedTokens, typedCashtags, linkedSymbol, LAUNCHPADS, pickThree, searchPairs, aggregate } from './market.js';
 import { rugReport, standInReport } from './rugcheck.js';
 import { readPost, findCoins, postCoins as coinsInPost } from './narrative.js';
-import { freshPairs, postWords, storyWords, BADGE_MS } from './fresh.js';
+import { freshPairs, keepBest, postWords, storyWords, BADGE_MS } from './fresh.js';
 import { norm } from './keywords.js';
 import { makeRpc, analyzeLaunch, PUBLIC_RPC } from './solana.js';
 import { pickReroute, marketBlock, reportBlock, rejectionLine } from './reroute.js';
@@ -73,7 +73,7 @@ export function makeHandlers(host) {
       const found = await findCoins(judge ? { ...r, judge: true } : r, s.chains, { apiBase: API_BASE, cached });
       // The panel's New tab: everything the scan searched, newest first.
       const words = [...new Set([...(found.anchors || []), ...(found.terms || []), ...postWords(post?.text)])];
-      const newPairs = freshPairs([...(found.pool || []), ...(found.roleCandidates || []), ...(found.others || []), ...(found.mentioned || [])], storyWords(words, post?.author, post?.text), { chains: s.chains }).slice(0, 12);
+      const newPairs = keepBest(freshPairs([...(found.pool || []), ...(found.roleCandidates || []), ...(found.others || []), ...(found.mentioned || [])], storyWords(words, post?.author, post?.text), { chains: s.chains }));
       return { ...found, newPairs, words };
     }));
   }

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Radar
 // @namespace    https://tryradar.fun
-// @version      1.7.56
+// @version      1.7.57
 // @description  See the coins behind any post on X and instantly reroute to the biggest match that passes available on-chain safety checks.
 // @homepageURL  https://tryradar.fun
 // @supportURL   https://tryradar.fun
@@ -31,7 +31,7 @@
 // @downloadURL  https://tryradar.fun/radar.user.js
 // ==/UserScript==
 
-// Radar 1.7.56: built from the extension source at https://tryradar.fun. Not financial advice.
+// Radar 1.7.57: built from the extension source at https://tryradar.fun. Not financial advice.
 (() => {
   var __defProp = Object.defineProperty;
   var __export = (target, all) => {
@@ -823,6 +823,14 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
   var COPY_WINDOW_MS = 7 * 864e5;
   var BIG_CAP = 1e5;
   var BIG_LIQUIDITY = 2e4;
+  function keepBest(list, n2 = 12) {
+    if (list.length <= n2) return list;
+    const cap = (t) => t.mcapBacked === false ? 0 : t.marketCap || 0;
+    const firsts = list.filter((t) => !t.copyOf);
+    const copies = list.filter((t) => t.copyOf).sort((a, b) => cap(b) - cap(a)).slice(0, Math.max(0, n2 - firsts.length));
+    const keep = /* @__PURE__ */ new Set([...firsts.slice(0, n2), ...copies]);
+    return list.filter((t) => keep.has(t));
+  }
   var postWords = (text) => extractKeywords(String(text || ""), 3, { strongOnly: true }).filter((w) => norm(w).length >= 3);
   var tradesIn = (t, w) => (t.txns?.[w]?.buys || 0) + (t.txns?.[w]?.sells || 0);
   var trading = (t, hot) => {
@@ -1299,7 +1307,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
         const r = await read({ post });
         const found = await findCoins(judge ? { ...r, judge: true } : r, s.chains, { apiBase: API_BASE, cached });
         const words = [.../* @__PURE__ */ new Set([...found.anchors || [], ...found.terms || [], ...postWords(post?.text)])];
-        const newPairs = freshPairs([...found.pool || [], ...found.roleCandidates || [], ...found.others || [], ...found.mentioned || []], storyWords(words, post?.author, post?.text), { chains: s.chains }).slice(0, 12);
+        const newPairs = keepBest(freshPairs([...found.pool || [], ...found.roleCandidates || [], ...found.others || [], ...found.mentioned || []], storyWords(words, post?.author, post?.text), { chains: s.chains }));
         return { ...found, newPairs, words };
       }));
     }

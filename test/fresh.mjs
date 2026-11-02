@@ -1,6 +1,21 @@
 // Offline: finding new pairs on a story, and following a word. node test/fresh.mjs
 import assert from 'node:assert/strict';
-import { freshPairs, postWords, storyWords, BADGE_MS, NEW_TAB_MS } from '../extension/src/lib/fresh.js';
+import { freshPairs, keepBest, postWords, storyWords, BADGE_MS, NEW_TAB_MS } from '../extension/src/lib/fresh.js';
+
+// The New tab's cut keeps firsts and the biggest copies, in the same order, and leaves a short list alone.
+{
+  const c = (id, cap, first = false, extra = {}) => ({ id, marketCap: cap, copyOf: first ? null : { symbol: 'X' }, ...extra });
+  const newestFirst = [c('first', 2000, true), ...Array.from({ length: 12 }, (_, i) => c(`late${i}`, 50_000 + i)), c('early', 68_000), c('thin', 900_000, false, { mcapBacked: false })];
+  const kept = keepBest(newestFirst, 12);
+  assert.equal(kept.length, 12);
+  assert.equal(kept[0].id, 'first', 'a first of its name always stays');
+  assert.ok(kept.some((t) => t.id === 'early'), 'a big early coin is not lost behind later copies');
+  assert.ok(!kept.some((t) => t.id === 'thin'), 'a cap nothing backs does not earn a place');
+  assert.ok(kept.findIndex((t) => t.id === 'late11') < kept.findIndex((t) => t.id === 'early'), 'the order stays as it was');
+  assert.deepEqual(keepBest(newestFirst.slice(0, 3), 12).map((t) => t.id), newestFirst.slice(0, 3).map((t) => t.id), 'a short list is left alone');
+  const manyFirsts = Array.from({ length: 15 }, (_, i) => c(`f${i}`, 1000, true));
+  assert.equal(keepBest(manyFirsts, 12).length, 12, 'never more than the limit');
+}
 
 assert.deepEqual(storyWords(['regretamine', 'regret', 'elon', 'musk'], 'elonmusk', 'a drug called Regretamine'), ['regretamine', 'regret'], 'the author alone is not the story');
 assert.deepEqual(storyWords(['elon', 'mars'], 'elonmusk', 'Elon is going to Mars'), ['elon', 'mars'], 'unless the post says the name');

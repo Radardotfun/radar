@@ -13,6 +13,17 @@ const COPY_WINDOW_MS = 7 * 86_400_000;
 const BIG_CAP = 100_000;
 const BIG_LIQUIDITY = 20_000;
 
+/** Which of freshPairs' list the New tab keeps. Its order is newest first, so cutting it there lost the coins launched right after a
+ * post, like a $68K first-minute coin behind a dozen later copies. Firsts of a name stay, then the biggest copies, in the same order. */
+export function keepBest(list, n = 12) {
+  if (list.length <= n) return list;
+  const cap = (t) => (t.mcapBacked === false ? 0 : t.marketCap || 0);
+  const firsts = list.filter((t) => !t.copyOf);
+  const copies = list.filter((t) => t.copyOf).sort((a, b) => cap(b) - cap(a)).slice(0, Math.max(0, n - firsts.length));
+  const keep = new Set([...firsts.slice(0, n), ...copies]);
+  return list.filter((t) => keep.has(t));
+}
+
 /** The words of a post worth searching for: names and cashtags, never generic words. */
 export const postWords = (text) => extractKeywords(String(text || ''), 3, { strongOnly: true }).filter((w) => norm(w).length >= 3);
 
