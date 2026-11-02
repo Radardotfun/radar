@@ -48,6 +48,26 @@ const days = (ms) => Math.max(0, Math.round(ms / 86_400_000));
 const handleOf = (url) => String(url || '').match(/(?:x|twitter)\.com\/(?:#!\/)?@?(\w{1,15})(?:[/?#]|$)/i)?.[1] || null;
 
 // Public X account facts via FxTwitter (followers, join date, verification).
+// The first bytes of a response, without reading the rest.
+async function startOf(res, max) {
+  const reader = res.body?.getReader();
+  if (!reader) return '';
+  const chunks = [];
+  let got = 0;
+  try {
+    while (got < max) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      got += value.length;
+    }
+  } catch {} finally { reader.cancel().catch(() => {}); }
+  const all = new Uint8Array(got);
+  let at = 0;
+  for (const c of chunks) { all.set(c, at); at += c.length; }
+  return new TextDecoder().decode(all.subarray(0, max));
+}
+
 async function xAccount(handle) {
   if (!/^\w{1,15}$/.test(handle || '')) return null;
   const res = await fetch(`https://api.fxtwitter.com/${handle}`, { headers: { 'user-agent': 'NarrativeRadar/1.0' } }).catch(() => null);
@@ -89,7 +109,8 @@ async function linkFacts(url) {
   let title = '', finalHost = host;
   if (res) {
     try { finalHost = new URL(res.url).hostname.replace(/^www\./, ''); } catch {}
-    const html = res.ok ? (await res.text().catch(() => '')).slice(0, 60_000) : '';
+    // Only the start: the link is the poster's choice, and it could be a file of any size.
+    const html = res.ok ? await startOf(res, 60_000) : '';
     title = (html.match(/<title[^>]*>([^<]{1,120})/i)?.[1] || '').trim();
   }
   const age = await domainAge(`https://${host}`);

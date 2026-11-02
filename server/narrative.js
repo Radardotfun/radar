@@ -513,6 +513,7 @@ export async function watchVideo(env, videoUrl) {
   if (!key) return { text: '' };
   const res = await fetch(videoUrl, { signal: AbortSignal.timeout(20_000) });
   if (!res.ok) throw new Error(`video ${res.status}`);
+  if (Number(res.headers.get('content-length') || 0) > MAX_WATCH_BYTES) return { text: '', skipped: 'too long' };
   const buffer = await res.arrayBuffer();
   if (buffer.byteLength > MAX_WATCH_BYTES) return { text: '', skipped: 'too long' };
   const bytes = new Uint8Array(buffer);

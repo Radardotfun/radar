@@ -1,4 +1,4 @@
-// Radar 1.7.70 alerts page, built from webapp/alerts.js: https://github.com/Radardotfun/radar
+// Radar 1.7.71 alerts page, built from webapp/alerts.js: https://github.com/Radardotfun/radar
 (() => {
   // extension/src/lib/keywords.js
   var STOP = new Set(`a about above after again against all almost also am an and any are aren as at be because been before
@@ -822,7 +822,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
         }
         const json = await res.json();
         if (json.error) {
-          const err = new Error(json.error.message);
+          const err = new Error(json.error.message || String(json.error));
           err.code = json.error.code;
           throw err;
         }
@@ -1577,7 +1577,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     $("al-status").textContent = live ? "Live. You hold enough to get these as they land." : "You're seeing these 10 minutes late.";
     $("al-status").classList.toggle("on", live);
     $("al-unlock").hidden = live;
-    $("al-notify").hidden = !live || !("Notification" in window) || Notification.permission === "denied";
+    $("al-notify").hidden = !live || !("Notification" in window) || /Android/i.test(navigator.userAgent) || Notification.permission === "denied";
     $("al-notify").textContent = "Notification" in window && Notification.permission === "granted" ? "Alerts on while this page is open" : "Alert me while this page is open";
     $("al-notify").disabled = "Notification" in window && Notification.permission === "granted";
     list.innerHTML = items.map((it) => `<article class="al-card">
@@ -1627,11 +1627,14 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       document.title = `(${unread}) Big account alerts \xB7 Radar`;
       if (live && "Notification" in window && Notification.permission === "granted") {
         for (const it of fresh.slice(0, 3)) {
-          const n2 = new Notification(`@${it.author}${it.name ? `: ${it.name}` : " posted something"}`, { body: it.why, icon: "/icons/icon128.png", tag: `signal:${it.id}` });
-          n2.onclick = () => {
-            window.focus();
-            n2.close();
-          };
+          try {
+            const n2 = new Notification(`@${it.author}${it.name ? `: ${it.name}` : " posted something"}`, { body: it.why, icon: "/icons/icon128.png", tag: `signal:${it.id}` });
+            n2.onclick = () => {
+              window.focus();
+              n2.close();
+            };
+          } catch {
+          }
         }
       }
     }
@@ -1640,6 +1643,10 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
   }
   var tick = () => load().catch(() => {
     $("al-error").hidden = false;
+    if ($("al-status").textContent === "Loading\u2026") {
+      $("al-status").textContent = "Couldn't load";
+      $("al-unlock").hidden = false;
+    }
   });
   document.addEventListener("click", async (e) => {
     const b = e.target.closest?.("[data-ca]");

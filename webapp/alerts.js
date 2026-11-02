@@ -56,7 +56,8 @@ const render = () => {
   $('al-status').textContent = live ? 'Live. You hold enough to get these as they land.' : 'You\'re seeing these 10 minutes late.';
   $('al-status').classList.toggle('on', live);
   $('al-unlock').hidden = live;
-  $('al-notify').hidden = !live || !('Notification' in window) || Notification.permission === 'denied';
+  // Android's Chrome refuses a page's own notifications without a service worker, so the promise couldn't be kept there.
+  $('al-notify').hidden = !live || !('Notification' in window) || /Android/i.test(navigator.userAgent) || Notification.permission === 'denied';
   $('al-notify').textContent = 'Notification' in window && Notification.permission === 'granted' ? 'Alerts on while this page is open' : 'Alert me while this page is open';
   $('al-notify').disabled = 'Notification' in window && Notification.permission === 'granted';
   list.innerHTML = items.map((it) => `<article class="al-card">
@@ -110,15 +111,20 @@ async function load() {
     document.title = `(${unread}) Big account alerts · Radar`;
     if (live && 'Notification' in window && Notification.permission === 'granted') {
       for (const it of fresh.slice(0, 3)) {
-        const n = new Notification(`@${it.author}${it.name ? `: ${it.name}` : ' posted something'}`, { body: it.why, icon: '/icons/icon128.png', tag: `signal:${it.id}` });
-        n.onclick = () => { window.focus(); n.close(); };
+        try {
+          const n = new Notification(`@${it.author}${it.name ? `: ${it.name}` : ' posted something'}`, { body: it.why, icon: '/icons/icon128.png', tag: `signal:${it.id}` });
+          n.onclick = () => { window.focus(); n.close(); };
+        } catch {}
       }
     }
   }
   render();
   scanNext();
 }
-const tick = () => load().catch(() => { $('al-error').hidden = false; });
+const tick = () => load().catch(() => {
+  $('al-error').hidden = false;
+  if ($('al-status').textContent === 'Loading…') { $('al-status').textContent = "Couldn't load"; $('al-unlock').hidden = false; }
+});
 
 document.addEventListener('click', async (e) => {
   const b = e.target.closest?.('[data-ca]');

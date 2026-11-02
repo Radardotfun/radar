@@ -21,6 +21,8 @@ const CORS = {
 const json = (status, body, extra = {}) =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json', ...CORS, ...extra } });
 
+// Who a limit counts. An IPv6 caller holds a whole /64, so that block counts as one.
+const ipOf = (request) => { const a = request.headers.get('cf-connecting-ip') || 'anon'; return a.includes(':') ? a.split(':').slice(0, 4).join(':') : a; };
 // Best-effort per-isolate limiter; the edge cache below absorbs repeat scans of the same post.
 const hits = new Map();
 function limited(ip, limit = 80, windowMs = 10 * 60_000) {
@@ -91,9 +93,10 @@ async function cachedJson(ctx, key, ttl, fn, debug) {
 }
 
 async function route(kind, request, env, ctx) {
-  if (limited(request.headers.get('cf-connecting-ip') || 'anon')) return json(429, { error: 'Too many scans, slow down a little' });
+  if (limited(ipOf(request))) return json(429, { error: 'Too many scans, slow down a little' });
   let body;
   try { body = await request.json(); } catch { return json(400, { error: 'Bad JSON' }); }
+  if (!body || typeof body !== 'object') return json(400, { error: 'Bad JSON' });
   const debug = !!env.DEBUG_TOKEN && body.debug === env.DEBUG_TOKEN;
   const freeModels = debug && Array.isArray(body.models) ? body.models.filter((m) => /^@cf\//.test(m)) : undefined;
   // Debug-only: try other keyed models / thinking levels without redeploying.
@@ -101,19 +104,21 @@ async function route(kind, request, env, ctx) {
   const allowed = ['GEMINI_MODEL', 'GEMINI_EFFORT', 'OPENROUTER_MODEL', 'OPENROUTER_REASONING', 'CLAUDE_MODEL'];
   const env2 = { ...env, ...Object.fromEntries(Object.entries(over).filter(([k]) => allowed.includes(k)).map(([k, v]) => [k, String(v)])) };
   if (over.ONLY) for (const k of ['GROQ', 'CEREBRAS', 'GEMINI', 'OPENROUTER', 'MISTRAL']) if (k !== over.ONLY) delete env2[`${k}_API_KEY`];
-  const ai = engine({ apiKey: env.ANTHROPIC_API_KEY, binding: over.ONLY ? null : env.AI, freeModels, env: env2 });
-  const post = cleanPost(body.post);
+  // A changed character misses the cache, so the paid engine has a daily cap of its own. Past it, scans use the free models.
+  const today = await env.DB.prepare("INSERT INTO counts (day, name, n) VALUES (?, 'ai', 1) ON CONFLICT (day, name) DO UPDATE SET n = n + 1 RETURNING n").bind(new Date().toISOString().slice(0, 10)).first().catch(() => null);
+  const ai = engine({ apiKey: !today || today.n <= (Number(env.AI_DAILY_CAP) || 20000) ? env.ANTHROPIC_API_KEY : undefined, binding: over.ONLY ? null : env.AI, freeModels, env: env2 });
+  const post = cleanPost(body.post || {});
 
   if (kind === 'transcribe') {
     const url = String(body.videoUrl || '');
     if (!/^https:\/\/video\.twimg\.com\/[\w/.-]+\.mp4(\?[\w=&]*)?$/.test(url)) return json(400, { error: 'Not an X video' });
     if (!env.AI) return json(503, { error: 'Transcription unavailable' });
-    return cachedJson(ctx, `t/${await sha256(url)}`, 86400, () => transcribe(env.AI, url), debug);
+    return cachedJson(ctx, `t/${await sha256(url.split('?')[0])}`, 86400, () => transcribe(env.AI, url), debug);
   }
   if (kind === 'watch') {
     const url = String(body.videoUrl || '');
     if (!/^https:\/\/video\.twimg\.com\/[\w/.-]+\.mp4(\?[\w=&]*)?$/.test(url)) return json(400, { error: 'Not an X video' });
-    return cachedJson(ctx, `w/${await sha256(url)}`, 86400, () => watchVideo(env, url), debug);
+    return cachedJson(ctx, `w/${await sha256(url.split('?')[0])}`, 86400, () => watchVideo(env, url), debug);
   }
   if (kind === 'interpret') {
     if (!post.text && !post.quoted && !post.card && !post.images.length) return json(400, { error: 'Empty post' });
@@ -132,7 +137,8 @@ async function route(kind, request, env, ctx) {
     const coin = cleanCoin(body.coin);
     const narrative = clip(body.narrative, 200);
     // Re-checked every few hours at most: a story's evidence doesn't change by the minute.
-    const key = await sha256(JSON.stringify(['s', post.url || post.text, post.author, coin?.address || null]));
+    // The key covers everything the model reads. It came from the caller, so with less a made-up text could plant a verdict on a real post.
+    const key = await sha256(JSON.stringify(['s2', post, narrative, coin]));
     return cachedJson(ctx, `s/${key}`, 3 * 3600, () => storyCheck(ai, { post, narrative, coin }), debug);
   }
   if (kind === 'match') {
@@ -141,7 +147,7 @@ async function route(kind, request, env, ctx) {
     const key = await sha256(JSON.stringify(['m2', post.images, logos]));
     return cachedJson(ctx, `m/${key}`, 3600, () => sameImage(ai, { images: post.images, logos }), debug);
   }
-  const candidates = (Array.isArray(body.candidates) ? body.candidates : []).slice(0, 30).map(cleanCandidate);
+  const candidates = (Array.isArray(body.candidates) ? body.candidates : []).filter(Boolean).slice(0, 30).map(cleanCandidate);
   const narrative = clip(body.narrative, 200);
   if (!candidates.length || !narrative) return json(400, { error: 'Nothing to judge' });
   const key = await sha256(JSON.stringify(['j', narrative, post, candidates]));
@@ -155,6 +161,9 @@ async function route(kind, request, env, ctx) {
 // wallet-signed buy and its status. Browsers can't call the public RPC from a website (it refuses an Origin header).
 const RPC_METHODS = new Set(['getSlot', 'getBlockTime', 'getBlock', 'getBlocks', 'getSignaturesForAddress', 'getTokenSupply', 'getAccountInfo', 'getMultipleAccounts', 'getTransaction',
   'getBalance', 'simulateTransaction', 'sendTransaction', 'getSignatureStatuses', 'getLatestBlockhash']);
+const RPC_MAX = 6000;
+const RPC_PAGES_ONLY = new Set(['simulateTransaction', 'sendTransaction']);
+const RPC_ORIGIN = /^https:\/\/(tryradar\.fun|getradar\.pages\.dev)$/;
 
 // The secret as a usable https endpoint, or null. A pasted URL often carries a newline or stray quotes,
 // and fetch() throws on those, which would take the whole Worker down with it. The value holds an API
@@ -187,7 +196,7 @@ export function smallestMp4(video) {
   return mp4s[0]?.url || (ok(video?.url) ? video.url : null);
 }
 async function readTweet(url, ctx) {
-  const id = String(url || '').match(/^https?:\/\/(?:www\.|mobile\.)?(?:x|twitter)\.com\/\w+\/status\/(\d+)/i)?.[1];
+  const id = String(url || '').match(/^https?:\/\/(?:www\.|mobile\.)?(?:x|twitter)\.com\/(?:\w+|i\/web)\/status\/(\d+)/i)?.[1];
   if (!id) return json(400, { error: 'That is not a link to a post on X' });
   const key = new Request(`https://cache.narrative-radar/tw4/${id}`);
   const hit = await caches.default.match(key);
@@ -262,12 +271,13 @@ async function larpcheck(request, env, ctx) {
   const address = new URL(request.url).searchParams.get('address') || '';
   if (!/^([1-9A-HJ-NP-Za-km-z]{32,44}|0x[0-9a-fA-F]{40})$/.test(address)) return json(400, { error: 'Not a contract address' });
   if (!env.LARPCHECK_KEY) return json(200, { off: true });
-  if (limited(`lc:${request.headers.get('cf-connecting-ip') || 'anon'}`, 300)) return json(429, { error: 'Too many lookups' });
   const id = address.startsWith('0x') ? address.toLowerCase() : address;
   const fresh = new Request(`https://cache.narrative-radar/lc2/${id}`);
   const stale = new Request(`https://cache.narrative-radar/lcs2/${id}`);
   const hit = await caches.default.match(fresh);
   if (hit) return new Response(hit.body, { headers: { 'content-type': 'application/json', ...CORS, 'x-cache': 'hit' } });
+  // Only what reaches Larpcheck counts: its free key allows 30 a minute for everyone together.
+  if (limited(`lc:${ipOf(request)}`, 150)) return json(429, { error: 'Too many lookups' });
   const up = await fetch(`https://larpcheck.app/api/v1/coins/${id}`, {
     headers: { authorization: `Bearer ${env.LARPCHECK_KEY}`, 'user-agent': 'Radar/1.0 (+https://getradar.pages.dev)' },
     signal: AbortSignal.timeout(8000),
@@ -290,23 +300,28 @@ async function larpcheck(request, env, ctx) {
 async function rpcRelay(request, env) {
   const target = relayUrl(env);
   if (!target) return json(503, { error: 'No relay configured' });
-  if (limited(`rpc:${request.headers.get('cf-connecting-ip') || 'anon'}`, 1500)) return json(429, { error: 'Too many RPC calls' });
+  if (limited(`rpc:${ipOf(request)}`, 1500)) return json(429, { error: 'Too many RPC calls' });
+  if (Number(request.headers.get('content-length') || 0) > RPC_MAX) return json(413, { error: 'Request too large' });
   const text = await request.text();
-  if (text.length > 4000) return json(413, { error: 'Request too large' });
+  if (text.length > RPC_MAX) return json(413, { error: 'Request too large' });
   let body;
   try { body = JSON.parse(text); } catch { return json(400, { error: 'Bad JSON' }); }
   if (Array.isArray(body) || !RPC_METHODS.has(body?.method)) return json(400, { error: 'Method not allowed' });
+  // The launch scan asks for 100 addresses at a time. A coin with 83 launch accounts or more never finished its check at 4,000 characters.
+  if (body.method !== 'getMultipleAccounts' && text.length > 4000) return json(413, { error: 'Request too large' });
+  // Sending and simulating are for Radar's own buy and launch pages. An Origin can be faked outside a browser, so this stops other sites, and the limit the rest.
+  if (RPC_PAGES_ONLY.has(body.method) && (!RPC_ORIGIN.test(request.headers.get('origin') || '') || limited(`rpc-send:${ipOf(request)}`, 60))) return json(403, { error: 'Method not allowed' });
   // A relay that dies must not take the scan with it: on failure the caller falls back to the public RPC.
   let upstream;
   try {
-    upstream = await fetch(target, { method: 'POST', headers: { 'content-type': 'application/json' }, body: text, signal: AbortSignal.timeout(20_000) });
+    upstream = await fetch(target, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: body.id ?? 1, method: body.method, params: body.params }), signal: AbortSignal.timeout(20_000) });
   } catch {
     return json(502, { error: 'Relay unreachable' });
   }
   return new Response(upstream.body, { status: upstream.status, headers: { 'content-type': 'application/json', ...CORS } });
 }
 
-export default {
+const app = {
   async fetch(request, env, ctx) {
     const { pathname } = new URL(request.url);
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
@@ -318,7 +333,7 @@ export default {
     const launchFile = request.method === 'GET' && pathname.match(/^\/launch\/meta\/([0-9a-f]{24})\.(json|jpg|png|webp)$/);
     if (launchFile) return launchMetaFile(launchFile[1], launchFile[2], env, new URL(request.url).origin, CORS);
     if ((pathname === '/launch/meta' || pathname === '/launch/record') && request.method === 'POST') {
-      const launcher = request.headers.get('cf-connecting-ip') || 'anon';
+      const launcher = ipOf(request);
       // Separate limits: retrying a listing must never block the next launch. The day's limit keeps one address from using up the shared cap.
       if (pathname === '/launch/meta' ? limited(`launch-meta:${launcher}`, 10) || limited(`launch-day:${launcher}`, 30, 86_400_000) : limited(`launch-record:${launcher}`, 40)) return json(429, { error: 'Too many tries. Wait a few minutes.' });
       if (Number(request.headers.get('content-length') || 0) > 500_000) return json(413, { error: 'That picture is too big.' });
@@ -331,31 +346,34 @@ export default {
     // Scans opened from a bot reply: one number per day, nothing about who opened them.
     const counted = request.method === 'POST' && pathname.match(/^\/count\/(bot|discord|telegram)-scan$/);
     if (counted) {
-      if (limited(`count:${request.headers.get('cf-connecting-ip') || 'anon'}`, 30)) return json(429, { error: 'Too many requests' });
+      if (limited(`count:${ipOf(request)}`, 30)) return json(429, { error: 'Too many requests' });
       ctx.waitUntil(env.DB.prepare('INSERT INTO counts (day, name, n) VALUES (?, ?, 1) ON CONFLICT (day, name) DO UPDATE SET n = n + 1')
         .bind(new Date().toISOString().slice(0, 10), `${counted[1]}-scan`).run().catch(() => {}));
       return new Response(null, { status: 204, headers: CORS });
     }
     // Swap x.com for this site in any post link to scan it: /<user>/status/<id> opens the radar on it.
     const post = request.method === 'GET' && pathname.match(/^\/(\w{1,15})\/status\/(\d+)/);
-    if (post) return Response.redirect(new URL(`/?url=${encodeURIComponent(`https://x.com/${post[1]}/status/${post[2]}`)}`, request.url), 302);
+    if (post) return Response.redirect(new URL(`/scan?url=${encodeURIComponent(`https://x.com/${post[1]}/status/${post[2]}`)}`, request.url), 302);
     // Radar Guard: does a starred coin's post still open? Only a real 404 counts as gone.
     if (pathname === '/post-gone' && request.method === 'GET') {
       const id = new URL(request.url).searchParams.get('id') || '';
       if (!/^\d{5,25}$/.test(id)) return json(400, { error: 'Not a post id' });
-      if (limited(`gone:${request.headers.get('cf-connecting-ip') || 'anon'}`, 120)) return json(429, { error: 'Too many requests' });
+      if (limited(`gone:${ipOf(request)}`, 120)) return json(429, { error: 'Too many requests' });
       return cachedJson(ctx, `g/${id}`, 300, async () => ({ gone: await readStatus(id).then((s) => s === 'gone').catch(() => false) }), false);
     }
-    if (pathname === '/tweet' && request.method === 'GET') return readTweet(new URL(request.url).searchParams.get('url'), ctx);
+    if (pathname === '/tweet' && request.method === 'GET') {
+      if (limited(`tweet:${ipOf(request)}`, 300)) return json(429, { error: 'Too many requests' });
+      return readTweet(new URL(request.url).searchParams.get('url'), ctx);
+    }
     if (pathname === '/larpcheck' && request.method === 'GET') return larpcheck(request, env, ctx);
     // More of Larpcheck's API (server/lc.js).
     if (pathname.startsWith('/lc/')) {
-      if (limited(`lc:${request.headers.get('cf-connecting-ip') || 'anon'}`, 300)) return json(429, { error: 'Too many lookups' });
+      if (limited(`lc:${ipOf(request)}`, 300)) return json(429, { error: 'Too many lookups' });
       const q = new URL(request.url).searchParams;
       if (pathname === '/lc/settings' && request.method === 'GET') return json(200, await lcSettings(env, ctx));
       const out = pathname === '/lc/board' && request.method === 'GET' ? await lcBoard(q.get('sort'), env, ctx)
         : pathname === '/lc/holders' && request.method === 'GET' ? await lcHolders(q.get('address'), q.get('chain'), env, ctx)
-          : pathname === '/lc/check' && request.method === 'GET' ? await lcPoll(q.get('id'), env)
+          : pathname === '/lc/check' && request.method === 'GET' ? ((await lcSettings(env, ctx)).plan ? await lcPoll(q.get('id'), env) : { status: 404, data: { error: 'Not found' } })
             : pathname === '/lc/check' && request.method === 'POST' ? await lcStart(await request.json().catch(() => ({})), env)
               : pathname === '/lc/ask' && request.method === 'POST' ? await lcAsk(await request.json().catch(() => ({})), env)
                 : { status: 404, data: { error: 'Not found' } };
@@ -364,30 +382,30 @@ export default {
     // Holder-only data (server/holder.js). 1.7.17 reads /holder/config and its panel promises Frontrun's data, so that
     // route stays off for it; 1.7.18 on reads /holder/settings, whose wording comes from here.
     if (pathname === '/narratives' && request.method === 'POST') {
-      if (limited(`feed:${request.headers.get('cf-connecting-ip') || 'anon'}`, 120)) return json(429, { error: 'Too many requests. Try again in a few minutes.' });
+      if (limited(`feed:${ipOf(request)}`, 120)) return json(429, { error: 'Too many requests. Try again in a few minutes.' });
       return json(200, await feed(await request.json().catch(() => ({})), env));
     }
     if (pathname === '/holder/config' && request.method === 'GET') return json(200, { on: false });
     if (pathname === '/holder/settings' && request.method === 'GET') return json(200, await holderConfig(env));
     if (pathname === '/holder/google' && request.method === 'POST') {
       if (!holderOn(env)) return json(200, { off: true });
-      if (limited(`holder:${request.headers.get('cf-connecting-ip') || 'anon'}`, 120)) return json(429, { error: 'Too many requests. Try again in a few minutes.' });
+      if (limited(`holder:${ipOf(request)}`, 120)) return json(429, { error: 'Too many requests. Try again in a few minutes.' });
       const r = await holderGoogle(await request.json().catch(() => ({})), env, relayUrl(env));
       return json(r.status, r.body);
     }
     if (pathname === '/holder/pair' && request.method === 'POST') {
-      if (limited(`pair:${request.headers.get('cf-connecting-ip') || 'anon'}`, 300)) return json(429, { error: 'Too many checks, slow down a little' });
+      if (limited(`pair:${ipOf(request)}`, 300)) return json(429, { error: 'Too many checks, slow down a little' });
       const r = await takePair(env.DB, (await request.json().catch(() => ({})))?.id);
       return json(r.status, r.body);
     }
     if (pathname === '/signals' && request.method === 'POST') {
-      if (limited(request.headers.get('cf-connecting-ip') || 'anon')) return json(429, { error: 'Too many checks, slow down a little' });
+      if (limited(`signals:${ipOf(request)}`, 120)) return json(429, { error: 'Too many checks, slow down a little' });
       const r = await signalFeed(await request.json().catch(() => ({})), env);
       return json(r.status, r.body);
     }
     if ((pathname === '/holder/verify' || pathname === '/holder/who') && request.method === 'POST') {
       if (!holderOn(env)) return json(200, { off: true });
-      if (limited(`holder:${request.headers.get('cf-connecting-ip') || 'anon'}`, 120)) return json(429, { error: 'Too many requests. Try again in a few minutes.' });
+      if (limited(`holder:${ipOf(request)}`, 120)) return json(429, { error: 'Too many requests. Try again in a few minutes.' });
       const body = await request.json().catch(() => ({}));
       const r = pathname === '/holder/verify' ? await holderVerify(body, env, relayUrl(env)) : await holderWho(body, env, { limited });
       // Signed on a phone for a computer that showed a QR code: it collects the answer from here.
@@ -418,5 +436,17 @@ export default {
       }
     }
     return json(404, { error: 'Not found' });
+  },
+};
+
+export default {
+  // Anything uncaught still answers in JSON with CORS. Cloudflare's error page has neither, so a page would only say "Failed to fetch".
+  async fetch(request, env, ctx) {
+    try {
+      return await app.fetch(request, env, ctx);
+    } catch (e) {
+      console.error(new URL(request.url).pathname, e?.message);
+      return json(503, { error: 'Radar is busy. Try again in a moment.' });
+    }
   },
 };

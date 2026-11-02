@@ -62,7 +62,7 @@ export function makeRpc(url = PUBLIC_RPC, { concurrency = 2 } = {}) {
       }
       const json = await res.json();
       if (json.error) {
-        const err = new Error(json.error.message);
+        const err = new Error(json.error.message || String(json.error));
         err.code = json.error.code;
         throw err;
       }

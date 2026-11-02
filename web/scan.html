@@ -22,13 +22,13 @@
     // A scan link starts reading its post now, not once the app has loaded. The app's own request then finds it in the cache.
     (function () {
       var u = new URLSearchParams(location.search).get('url');
-      if (u && /^https:\/\/(x|twitter)\.com\/\w+\/status\/\d+/.test(u.trim())) fetch('https://narrative-radar.millenia-portfolio.workers.dev/tweet?url=' + encodeURIComponent(u.trim())).catch(function () {});
+      if (u && /^https:\/\/(x|twitter)\.com\/(\w+|i\/web)\/status\/\d+/.test(u.trim())) fetch('https://narrative-radar.millenia-portfolio.workers.dev/tweet?url=' + encodeURIComponent(u.trim())).catch(function () {});
     })();
   </script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&family=Geist+Mono:wght@500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/app.css?v=1.7.70" />
+  <link rel="stylesheet" href="/app.css?v=1.7.71" />
   <style>
     /* Bigger tap areas on phones, with no change to how the panel looks. */
     @media (pointer: coarse) {
@@ -72,6 +72,6 @@
     <span>Not financial advice. Memecoins are extremely risky.</span>
     <span class="foot-links"><a href="https://github.com/Radardotfun/radar" target="_blank" rel="noopener">Source code</a> · <a href="/privacy">Privacy</a></span>
   </footer>
-  <script src="/scan.js?v=1.7.70"></script>
+  <script src="/scan.js?v=1.7.71"></script>
 </body>
 </html>

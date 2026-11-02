@@ -1,4 +1,4 @@
-// Radar 1.7.70 on the web: built from the extension source at https://tryradar.fun. Not financial advice.
+// Radar 1.7.71 on the web: built from the extension source at https://tryradar.fun. Not financial advice.
 (() => {
   // extension/src/lib/keywords.js
   var STOP = new Set(`a about above after again against all almost also am an and any are aren as at be because been before
@@ -837,7 +837,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
         }
         const json = await res.json();
         if (json.error) {
-          const err = new Error(json.error.message);
+          const err = new Error(json.error.message || String(json.error));
           err.code = json.error.code;
           throw err;
         }
@@ -1711,7 +1711,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       reject(new Error("Extension was reloaded \u2014 refresh this tab"));
     }
   });
-  var X_POST = /^https?:\/\/(?:www\.|mobile\.)?(?:x|twitter)\.com\/\w+\/status\/\d+\S*$/i;
+  var X_POST = /^https?:\/\/(?:www\.|mobile\.)?(?:x|twitter)\.com\/(?:\w+|i\/web)\/status\/\d+\S*$/i;
   var isPostLink = (s) => X_POST.test(String(s || "").trim());
   var CA = /^(0x[a-fA-F0-9]{40}|[1-9A-HJ-NP-Za-km-z]{32,44})$/;
   var scansOnPaste = (s) => isPostLink(s) || CA.test(String(s || "").trim());
@@ -2238,7 +2238,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
         a.bundleAt = Date.now();
         a.bundleErr = null;
       }).catch((e) => {
-        a.bundleErr = e.message;
+        a.bundleErr = e.message || "Couldn't read the launch block";
       }).finally(() => this.renderAudit(t.address));
       await Promise.allSettled([rug, bundle]);
       a.loading = false;

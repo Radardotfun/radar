@@ -40,7 +40,7 @@ const send = (type, payload = {}) => (backend
   }));
 
 // A pasted link to a post on X (nothing else typed) is opened and read as that post.
-const X_POST = /^https?:\/\/(?:www\.|mobile\.)?(?:x|twitter)\.com\/\w+\/status\/\d+\S*$/i;
+const X_POST = /^https?:\/\/(?:www\.|mobile\.)?(?:x|twitter)\.com\/(?:\w+|i\/web)\/status\/\d+\S*$/i;
 export const isPostLink = (s) => X_POST.test(String(s || '').trim());
 const CA = /^(0x[a-fA-F0-9]{40}|[1-9A-HJ-NP-Za-km-z]{32,44})$/;
 export const scansOnPaste = (s) => isPostLink(s) || CA.test(String(s || '').trim());
@@ -553,7 +553,7 @@ class Radar {
       .finally(() => this.renderAudit(t.address));
     const bundle = send('bundle', { mint: t.address, launchMs: t.createdAt, pairs: t.pairAddresses, launchPair: t.launchPair, launchDex: t.launchDex })
       .then((b) => { a.bundle = b; a.bundleAt = Date.now(); a.bundleErr = null; })
-      .catch((e) => { a.bundleErr = e.message; })
+      .catch((e) => { a.bundleErr = e.message || "Couldn't read the launch block"; })
       .finally(() => this.renderAudit(t.address));
     await Promise.allSettled([rug, bundle]);
     a.loading = false;

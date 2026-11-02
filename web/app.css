@@ -212,6 +212,8 @@ h3 { font-size: 18px; letter-spacing: -0.02em; font-weight: 700; }
   .scan-open .scan-panel { height: auto; min-height: 0; overflow: visible; }
   .scan-open .scan-panel .shell { height: auto; }
   .scan-open .scan-panel .scroll { overflow: visible; }
+  /* The panel is as tall as the page now, so a message has to stay on screen. */
+  .scan-open .scan-panel .toast { position: fixed; bottom: calc(20px + env(safe-area-inset-bottom)); z-index: 30; width: max-content; max-width: calc(100vw - 32px); }
   /* The page is long now, so sharing stays within reach, above the coins. */
   .scan-open .scan-app { display: flex; flex-direction: column; }
   .scan-open .scan-share { order: -1; margin: 0 0 12px; }
@@ -232,7 +234,7 @@ h3 { font-size: 18px; letter-spacing: -0.02em; font-weight: 700; }
   .lede { margin-top: 14px; }
   .hero-actions { margin-top: 22px; }
   .hero-actions .btn { flex: 1 1 auto; }
-  .hero-actions .btn-ghost:not(.btn-web) { display: none; }
+  .hero .hero-actions .btn-ghost:not(.btn-web) { display: none; }
   .nav-cta { display: none; }
   .features { grid-template-columns: minmax(0, 1fr); }
   .features article, .features article:nth-child(n) { padding: 28px 0; border-left: 0; }
