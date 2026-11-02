@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Radar
 // @namespace    https://tryradar.fun
-// @version      1.7.55
+// @version      1.7.56
 // @description  See the coins behind any post on X and instantly reroute to the biggest match that passes available on-chain safety checks.
 // @homepageURL  https://tryradar.fun
 // @supportURL   https://tryradar.fun
@@ -31,7 +31,7 @@
 // @downloadURL  https://tryradar.fun/radar.user.js
 // ==/UserScript==
 
-// Radar 1.7.55: built from the extension source at https://tryradar.fun. Not financial advice.
+// Radar 1.7.56: built from the extension source at https://tryradar.fun. Not financial advice.
 (() => {
   var __defProp = Object.defineProperty;
   var __export = (target, all) => {
@@ -4795,6 +4795,14 @@ svg { display: block; }\r
     .nr-alert-checks div{display:flex;gap:7px;align-items:center}
     .nr-alert-checks i{width:7px;height:7px;border-radius:50%;flex:none;background:#8b939e}
     .nr-alert-checks i.ok{background:#3ddc84}.nr-alert-checks i.risk{background:#ff5c6c}.nr-alert-checks i.mid{background:#ffb547}
+    .nr-alert-cas{margin-top:10px;display:grid;gap:5px}
+    .nr-alert-cas button{all:unset;cursor:pointer;display:flex;align-items:center;gap:7px;min-width:0;height:30px;padding:0 10px;border-radius:9px;background:rgba(255,255,255,.06);font:600 12px/1 ui-monospace,SFMono-Regular,Menlo,monospace;color:#fff}
+    .nr-alert-cas button:hover{background:rgba(255,255,255,.12)}
+    .nr-alert-cas i{font-style:normal;color:#8b939e;flex:none}
+    .nr-alert-cas b{flex:none;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .nr-alert-cas span{color:#c9ced6;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
+    .nr-alert-cas em{font-style:normal;color:#a78bfa;flex:none}
+    .nr-alert-note{margin-top:7px;color:#8b939e;font-size:12px}
     .nr-alert-acts{margin-top:12px;display:grid;grid-template-columns:1fr 1fr;gap:6px}
     .nr-alert-acts button{all:unset;cursor:pointer;height:34px;padding:0 12px;border-radius:10px;display:inline-flex;align-items:center;justify-content:center;font:700 12.5px/1 TwitterChirp,-apple-system,"Segoe UI",system-ui,sans-serif;white-space:nowrap;
       border:1px solid rgba(255,255,255,.16);color:#fff;transition:background .15s}
@@ -5167,6 +5175,7 @@ svg { display: block; }\r
         const signalCard = () => `<div class="nr-alert-top">${BELL}<span>@${esc3(item.watch.author)} just posted</span><button type="button" class="nr-alert-x" data-x aria-label="Close">\xD7</button></div>
         ${item.coin.name ? `<div class="nr-alert-coin"><b>${esc3(item.coin.name)}</b></div>` : ""}
         <div class="nr-alert-meta">${esc3(item.text)}</div>
+        ${item.coins?.length ? `<div class="nr-alert-cas">${item.coins.map((k) => `<button type="button" data-ca="${esc3(k.address)}" title="Copy ${esc3(k.address)}">${k.label ? `<i>${esc3(k.label)}</i>` : ""}<b>$${esc3(k.symbol)}</b><span>${esc3(k.address.slice(0, 6))}\u2026${esc3(k.address.slice(-4))}</span><em>Copy</em></button>`).join("")}</div><div class="nr-alert-note">Found by name and not checked yet. Open in Radar for the checks.</div>` : ""}
         <div class="nr-alert-acts"><button type="button" data-sig>Open in Radar</button><button type="button" data-post>Open the post</button></div>`;
         const card = document.createElement("div");
         card.className = "nr-alert";
@@ -5192,7 +5201,13 @@ svg { display: block; }\r
             if (quick) safeOpen(`${item.buy}&sol=${sol}&insta=1`, "radar-insta", "popup=yes,width=440,height=780");
             else safeOpen(item.buy, "_blank", "noopener");
           } else if ("chart" in b.dataset) safeOpen(item.chart, "_blank", "noopener");
-          else if ("post" in b.dataset) safeOpen(item.watch.url, "_blank", "noopener");
+          else if ("ca" in b.dataset) {
+            navigator.clipboard?.writeText(b.dataset.ca).then(() => {
+              const em = b.querySelector("em");
+              if (em) em.textContent = "Copied";
+            }).catch(() => {
+            });
+          } else if ("post" in b.dataset) safeOpen(item.watch.url, "_blank", "noopener");
           else if ("sig" in b.dataset) {
             card.remove();
             launch({ post: { text: item.watch.url }, source: { kind: "Alert", label: `@${item.watch.author} just posted this` } });

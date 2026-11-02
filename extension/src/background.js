@@ -1,6 +1,6 @@
 import { makeHandlers, API_BASE, DEFAULTS } from './lib/handlers.js';
 import { listWallets, buy, KEY_RE, FRONTRUN_ORIGIN } from './lib/frontrun.js';
-import { newWatch, newFollow, verdictTurned, checkWatch, buyUrl, chartUrl, MAX_WATCHES, coinOf, statusOf, signalItem } from './lib/alerts.js';
+import { newWatch, newFollow, verdictTurned, checkWatch, buyUrl, chartUrl, MAX_WATCHES, coinOf, statusOf, signalItem, signalCoins } from './lib/alerts.js';
 import { GUARD_KEY, GUARD_MINUTES, lookAtStar } from './lib/guard.js';
 import { reportBlock } from './ui/holdercheck.js';
 
@@ -215,7 +215,8 @@ const CHAIN_NAME = { solana: 'Solana', robinhood: 'Robinhood Chain', base: 'Base
 async function notify(item) {
   if (!ext.notifications || !(await canNotify())) return;
   if (item.kind === 'signal') {
-    const big = { type: 'basic', iconUrl: ext.runtime.getURL('icons/icon128.png'), title: `@${item.watch.author}${item.coin.name ? `: ${item.coin.name}` : ' posted something'}`, message: item.text, priority: 2, buttons: [{ title: 'Scan it' }, { title: 'Open the post' }] };
+    const cas = (item.coins || []).map((k) => `$${k.symbol} ${k.address}`).join('\n');
+    const big = { type: 'basic', iconUrl: ext.runtime.getURL('icons/icon128.png'), title: `@${item.watch.author}${item.coin.name ? `: ${item.coin.name}` : ' posted something'}`, message: [item.text, cas].filter(Boolean).join('\n'), priority: 2, buttons: [{ title: 'Scan it' }, { title: 'Open the post' }] };
     try { await ext.notifications.create(item.id, big); } catch { delete big.buttons; await ext.notifications.create(item.id, big).catch(() => {}); }
     return;
   }
@@ -405,7 +406,13 @@ async function runSignals() {
   const items = (await res.json().catch(() => ({}))).items || [];
   if (!items.length) return;
   await ext.storage.local.set({ [SIGNAL_SINCE]: Math.max(...items.map((s) => s.at)) });
-  const fresh = items.filter((s) => s.url).map(signalItem);
+  const known = (await loadAlerts()).feed;
+  const waiting = items.filter((s) => s.url && !known.some((f) => f.id === `signal:${s.id}`));
+  // The scan takes a few seconds. If it can't finish, the alert still goes out, without coins.
+  const fresh = await Promise.all(waiting.map(async (s) => {
+    const found = await Promise.race([handlers.coins({ post: s.post || { text: s.text, author: s.author, url: s.url, images: [] } }), new Promise((r) => setTimeout(r, 20_000, null))]).catch(() => null);
+    return { ...signalItem(s), coins: signalCoins(found) };
+  }));
   const added = await withAlerts(async (a) => {
     const newOnes = fresh.filter((i) => !a.feed.some((f) => f.id === i.id));
     a.feed = [...newOnes, ...a.feed].slice(0, 30);

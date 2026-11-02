@@ -27,6 +27,8 @@ export async function signalFeed(body, env, { now = Date.now() } = {}) {
         why: String(r.narrative || '').replace(/^\d+:\s*/, ''),
         text: String(post.text || '').slice(0, 200),
         url: post.url || '',
+        // What the extension scans for the top 3 coins.
+        post: { text: String(post.text || '').slice(0, 1500), quoted: String(post.quoted || '').slice(0, 800), parent: String(post.parent || '').slice(0, 800), parentAuthor: post.parentAuthor || '', author: post.author || r.author, authorName: post.authorName || '', url: post.url || '', images: post.images || [], hasVideo: !!post.hasVideo },
       };
     }) },
   };

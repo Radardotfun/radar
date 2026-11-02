@@ -140,6 +140,15 @@ export function buyUrl(coin) {
   if (coin.chain === 'robinhood') return `https://app.uniswap.org/swap?chain=robinhood&outputCurrency=${encodeURIComponent(coin.address)}`;
   return null;
 }
+// The top 3 coins a scan found on a post: any it names, then Radar's picks. Found by the scan, not vouched for.
+const ROLE_LABEL = { top: 'Top', og: 'OG', mover: 'Mover' };
+export function signalCoins(found) {
+  const list = [...(found?.mentioned || []).map((token) => ({ token, label: 'In the post' })), ...(found?.picks || []).filter(Boolean).map((p) => ({ token: p.token, label: ROLE_LABEL[p.role] || '' }))];
+  const seen = new Set();
+  return list.filter(({ token }) => token?.address && !seen.has(token.address) && seen.add(token.address)).slice(0, 3)
+    .map(({ token, label }) => ({ address: token.address, symbol: String(token.symbol || '').trim(), chain: token.chain, marketCap: token.marketCap || 0, label }));
+}
+
 // One post the account watcher flagged, as an alert. It says a post may set off coins, never which to buy, so it carries no buy button.
 export const signalItem = (s) => ({
   id: `signal:${s.id}`,
@@ -151,6 +160,7 @@ export const signalItem = (s) => ({
   larp: null,
   holders: null,
   buy: null,
+  coins: [],
   chart: `https://tryradar.fun/scan?url=${encodeURIComponent(s.url)}`,
 });
 

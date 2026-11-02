@@ -1,7 +1,7 @@
 // The account watcher, offline, on a real SQLite standing in for D1. node test/signals.mjs
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
-import { signalItem } from '../extension/src/lib/alerts.js';
+import { signalItem, signalCoins } from '../extension/src/lib/alerts.js';
 import { signalFeed } from '../server/signals.js';
 import { makeToken } from '../server/holder.js';
 import { ACCOUNTS, READS_PER_DAY, AI_READS_PER_RUN, queries, searchUrl, postFrom, readable, isSignal, tick, recent, status } from '../bot/signals.js';
@@ -160,6 +160,14 @@ assert.equal(item.id, 'signal:200');
 assert.equal(item.buy, null, 'an alert about a post never offers a buy');
 assert.equal(item.coin.name, 'Regretamine');
 assert.equal(item.chart, 'https://tryradar.fun/scan?url=https%3A%2F%2Fx.com%2Felonmusk%2Fstatus%2F200');
+// The top 3: a coin the post names first, then the picks, no repeats, never more than 3, and nothing when the scan found nothing.
+const tok = (address, symbol) => ({ address, symbol, chain: 'solana', marketCap: 1000 });
+const three = signalCoins({ mentioned: [tok('a1', 'NAMED')], picks: [{ role: 'top', token: tok('a2', 'TOP') }, null, { role: 'og', token: tok('a1', 'NAMED') }, { role: 'mover', token: tok('a3', 'MOVE') }, { role: 'x', token: tok('a4', 'FOUR') }] });
+assert.deepEqual(three.map((c) => c.address), ['a1', 'a2', 'a3']);
+assert.deepEqual(three.map((c) => c.label), ['In the post', 'Top', 'Mover']);
+assert.deepEqual(signalCoins(null), []);
+assert.deepEqual(signalCoins({ picks: [] }), []);
+assert.deepEqual(item.coins, [], 'the alert starts with none');
 // Holders only, and a bad token gets nothing out of the table.
 const shut = await signalFeed({}, { DB: { prepare() { throw new Error('should not reach the table'); } }, HOLDER_SECRET: 'x' });
 assert.equal(shut.status, 401);
@@ -180,6 +188,8 @@ assert.equal(one.author, 'elonmusk');
 assert.equal(one.name, 'Regretamine');
 assert.equal(one.why, 'A made up drug', 'the score is taken off the reason');
 assert.equal(one.url, 'https://x.com/elonmusk/status/600');
+assert.equal(one.post.author, 'elonmusk');
+assert.match(one.post.text, /Regretamine/, 'the post comes along, for the scan');
 assert.equal(one.at, now, 'the cursor is when it was judged');
 // An older post flagged after a newer one was delivered is still picked up.
 const db7 = fakeD1();
