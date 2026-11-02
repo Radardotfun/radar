@@ -40,35 +40,66 @@
   // Not offered inside a wallet's browser, where Google refuses to sign anyone in.
   let googleCredential = null;
   const google = (extra) => fetch(`${API}/holder/google`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ credential: googleCredential, ...extra }), signal: AbortSignal.timeout(15000) }).then(async (r) => ({ ok: r.ok, d: await r.json().catch(() => ({})) }));
+  // Kept for this tab, so reloading after adding a wallet doesn't ask for Google again. Google's answer is good for about an hour.
+  const CREDENTIAL = 'nr:googleCredential';
+  const remember = (credential) => { try { if (credential) sessionStorage.setItem(CREDENTIAL, credential); else sessionStorage.removeItem(CREDENTIAL); } catch {} };
+  const remembered = () => {
+    try {
+      const credential = sessionStorage.getItem(CREDENTIAL);
+      const { exp } = JSON.parse(atob(credential.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+      if (exp * 1000 > Date.now() + 60_000) return credential;
+    } catch {}
+    remember(null);
+    return null;
+  };
   async function googleSignedIn(credential) {
     googleCredential = credential;
     say('Checking your Google account…');
     try {
       const { ok, d } = await google();
-      if (!ok) { say(d.error || "Couldn't check that. Try again.", 'error'); return; }
+      if (!ok || d.error) { googleCredential = null; remember(null); $('google-button').hidden = false; say(d.error || "Couldn't check that. Try again.", 'error'); return; }
       // Already linked, so there's nothing to link when it finishes.
-      if (d.linked && d.holder) { googleCredential = null; await finish(d); return; }
+      if (d.linked) { googleCredential = null; remember(null); }
+      if (d.linked && d.holder) { await finish(d); return; }
       if (d.linked) { say(holdings(d), 'error'); return; }
+      remember(credential);
+      // Signed in: the button's job is done, so nothing invites a second go.
+      $('google-button').hidden = true;
       $('google-note').textContent = 'Signed in with Google.';
-      if (find().length) say('One step left. Connect and sign once, and this Google account remembers that wallet.');
-      else if (window.RadarWalletOpen?.available()) say('One step left. Prove your wallet once using the options above, and this Google account remembers it.');
+      // A wallet is right here: carry straight on to it.
+      if (find().length) { button.click(); return; }
+      if (window.RadarWalletOpen?.available()) say('One step left. Prove your wallet once using the options above, and this Google account remembers it.');
       // A computer with no wallet has nothing to sign with, so the link has to be made where the wallet is.
-      else say("One step left. This Google account isn't linked to a wallet yet. Open tryradar.fun/holder where your wallet is, on your phone or in a browser that has it, sign in with Google there and sign once. After that, Google works here too.");
-      if (!find().length && window.RadarWalletOpen?.isPhone()) { offered = false; offerNoWallet(); }
+      else say('One step left. Link a wallet once: open tryradar.fun/holder on your phone or in a browser with your wallet, and sign in with Google there. After that, Google works here too.');
+      if (window.RadarWalletOpen?.isPhone()) { offered = false; offerNoWallet(); }
     } catch { say("Couldn't check that. Try again.", 'error'); }
   }
   async function offerGoogle() {
     if (pair || (window.RadarWalletOpen?.isPhone() && find().length)) return;
     const cfg = await fetch(`${API}/holder/settings`, { signal: AbortSignal.timeout(6000) }).then((r) => r.json()).catch(() => null);
     if (!cfg?.googleClientId || (!cfg.googleLive && params.get('google') !== '1')) return;
+    $('google-box').hidden = false;
+    // Back from adding a wallet, still signed in: no second Google step.
+    const back = remembered();
+    if (back) { $('google-button').hidden = true; googleSignedIn(back); return; }
+    $('google-button').style.visibility = 'hidden';
     const s = document.createElement('script');
     s.src = 'https://accounts.google.com/gsi/client';
     s.async = true;
     s.onload = () => {
+      const box = $('google-button');
+      const target = $('google-signin');
       window.google.accounts.id.initialize({ client_id: cfg.googleClientId, callback: (r) => googleSignedIn(r.credential) });
-      window.google.accounts.id.renderButton($('google-signin'), { theme: 'filled_black', size: 'large', shape: 'pill', text: 'continue_with' });
-      $('google-box').hidden = false;
+      // Google's button stops at 400 wide and 40 high, so it's stretched to cover all of ours.
+      const width = Math.min(400, box.clientWidth);
+      window.google.accounts.id.renderButton(target, { theme: 'outline', size: 'large', text: 'continue_with', width });
+      target.style.width = `${width}px`;
+      const fit = () => { target.style.transform = `scale(${box.clientWidth / width},${(box.clientHeight / 40) * 1.2})`; };
+      fit();
+      addEventListener('resize', fit);
+      box.style.visibility = '';
     };
+    s.onerror = () => { $('google-box').hidden = true; };
     document.head.append(s);
   }
 
@@ -76,6 +107,8 @@
   async function finish(d) {
     // Signed in with Google and just proved a wallet: remember it. A failed link doesn't undo the check.
     if (googleCredential && d.token) await google({ token: d.token }).catch(() => {});
+    googleCredential = null;
+    remember(null);
     // Signed on this phone for a computer: the token is the computer's to collect.
     if (pair) { say(`You hold ${usd(d.value)} of $${d.symbol}. You're in. Go back to the page that sent you here. It picks this up by itself.`, 'success'); return; }
     // The site's own pages read it from here. A wallet's browser on a phone may have no opener to hand it to.
