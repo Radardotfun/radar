@@ -23,7 +23,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
 // Majors: a $BTC cashtag says "crypto", not a memecoin narrative.
 const MAJORS = new Set('btc eth sol usdc usdt bnb xrp ada doge trx usd eur'.split(' '));
 
-const norm = (s) => s.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]/g, '');
+const norm = (s) => s.toLowerCase().normalize('NFKD').replace(/[^\p{L}\p{N}]/gu, '');
 
 export function extractKeywords(text, max = 6, { strongOnly = false } = {}) {
   if (!text) return [];

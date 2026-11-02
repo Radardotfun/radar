@@ -95,8 +95,12 @@ export function aggregate(pairs) {
   }
   const tokens = [];
   for (const list of byToken.values()) {
-    const primary = [...list].sort((a, b) =>
+    let primary = [...list].sort((a, b) =>
       n(b.liquidity?.usd) - n(a.liquidity?.usd) || n(b.volume?.h24) - n(a.volume?.h24))[0];
+    // Curves report no liquidity, so any side pool outranks them, and a $1 pool made a live curve coin read as dead.
+    // Only a curve that traded in the last hour counts: a graduated coin keeps an old curve pair, and a dead one mustn't read as alive.
+    const curve = list.filter((p) => LAUNCHPADS.has(p.dexId) && n(p.marketCap) > 0 && n(p.txns?.h1?.buys) + n(p.txns?.h1?.sells) > 0).sort((a, b) => n(b.volume?.h24) - n(a.volume?.h24))[0];
+    if (curve && !LAUNCHPADS.has(primary.dexId) && realLiquidity(primary) < 1000) primary = curve;
     const dated = list.filter((p) => p.pairCreatedAt).sort((a, b) => a.pairCreatedAt - b.pairCreatedAt);
     const first = dated[0];
     const info = list.find((p) => p.info?.imageUrl)?.info || primary.info || {};
@@ -147,7 +151,7 @@ export function aggregate(pairs) {
 export function relevance(token, keywords) {
   const sym = norm(token.symbol || '');
   const name = norm(token.name || '');
-  const words = new Set(`${token.name} ${token.symbol}`.split(/[^A-Za-z0-9À-ɏ]+/).map(norm).filter(Boolean));
+  const words = new Set(`${token.name} ${token.symbol}`.split(/[^\p{L}\p{N}]+/u).map(norm).filter(Boolean));
   let score = 0;
   const matched = [];
   keywords.forEach((kw, i) => {

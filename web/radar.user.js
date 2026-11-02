@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Radar
 // @namespace    https://tryradar.fun
-// @version      1.7.67
+// @version      1.7.68
 // @description  See the coins behind any post on X and instantly reroute to the biggest match that passes available on-chain safety checks.
 // @homepageURL  https://tryradar.fun
 // @supportURL   https://tryradar.fun
@@ -31,7 +31,7 @@
 // @downloadURL  https://tryradar.fun/radar.user.js
 // ==/UserScript==
 
-// Radar 1.7.67: built from the extension source at https://tryradar.fun. Not financial advice.
+// Radar 1.7.68: built from the extension source at https://tryradar.fun. Not financial advice.
 (() => {
   var __defProp = Object.defineProperty;
   var __export = (target, all) => {
@@ -107,7 +107,7 @@ thread follow retweet repost reply replies link bio here via exclusive developin
 says said tells told claims claimed per amid after hours minutes earlier later reportedly allegedly sir guys lol lmao
 wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
   var MAJORS = new Set("btc eth sol usdc usdt bnb xrp ada doge trx usd eur".split(" "));
-  var norm = (s) => s.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]/g, "");
+  var norm = (s) => s.toLowerCase().normalize("NFKD").replace(/[^\p{L}\p{N}]/gu, "");
   function extractKeywords(text, max = 6, { strongOnly = false } = {}) {
     if (!text) return [];
     const scores = /* @__PURE__ */ new Map();
@@ -308,7 +308,9 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     }
     const tokens = [];
     for (const list of byToken.values()) {
-      const primary = [...list].sort((a, b) => n(b.liquidity?.usd) - n(a.liquidity?.usd) || n(b.volume?.h24) - n(a.volume?.h24))[0];
+      let primary = [...list].sort((a, b) => n(b.liquidity?.usd) - n(a.liquidity?.usd) || n(b.volume?.h24) - n(a.volume?.h24))[0];
+      const curve = list.filter((p) => LAUNCHPADS.has(p.dexId) && n(p.marketCap) > 0 && n(p.txns?.h1?.buys) + n(p.txns?.h1?.sells) > 0).sort((a, b) => n(b.volume?.h24) - n(a.volume?.h24))[0];
+      if (curve && !LAUNCHPADS.has(primary.dexId) && realLiquidity(primary) < 1e3) primary = curve;
       const dated = list.filter((p) => p.pairCreatedAt).sort((a, b) => a.pairCreatedAt - b.pairCreatedAt);
       const first = dated[0];
       const info = list.find((p) => p.info?.imageUrl)?.info || primary.info || {};
@@ -357,7 +359,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
   function relevance(token, keywords) {
     const sym2 = norm(token.symbol || "");
     const name = norm(token.name || "");
-    const words = new Set(`${token.name} ${token.symbol}`.split(/[^A-Za-z0-9À-ɏ]+/).map(norm).filter(Boolean));
+    const words = new Set(`${token.name} ${token.symbol}`.split(/[^\p{L}\p{N}]+/u).map(norm).filter(Boolean));
     let score = 0;
     const matched = [];
     keywords.forEach((kw, i) => {
@@ -693,11 +695,11 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
   function anchorHits(t, anchors) {
     const name = norm(t.name || "");
     const sym2 = norm(t.symbol || "");
-    const words = new Set(`${t.name} ${t.symbol}`.split(/[^A-Za-z0-9À-ɏ]+/).map(norm).filter(Boolean));
+    const words = new Set(`${t.name} ${t.symbol}`.split(/[^\p{L}\p{N}]+/u).map(norm).filter(Boolean));
     return anchors.filter((a) => {
       const k = norm(a);
       if (!k) return false;
-      return k.length <= 3 ? words.has(k) || sym2 === k : name.includes(k) || sym2.includes(k);
+      return k.length <= 4 ? words.has(k) || sym2 === k : name.includes(k) || sym2.includes(k);
     }).length;
   }
   var TECH_CUES = /\b(?:technology|tech|software|hardware|application|app|platform|tool|open[- ]?source|github|repository|repo|developer|coding|code|artificial intelligence|ai|large language model|llm|model|agent|robot(?:ics)?|gpu|chip|semiconductor|compute|computing|protocol|framework|library|browser|operating system|cloud|saas|api)\b/i;
@@ -775,6 +777,8 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       new Promise((resolve) => setTimeout(() => resolve(refs), 5e3))
       // keep search data if pool lookups stall
     ]).catch(() => refs);
+    const gotPools = new Set(tokens.map((t) => t.address));
+    tokens = [...tokens, ...refs.filter((t) => !gotPools.has(t.address))];
     lap("pools");
     tokens = tokens.filter((t) => scores.has(t.address)).map((t) => ({
       ...t,
@@ -1324,6 +1328,14 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       const coins2 = freshPairs(aggregate(pairs), words, { chains: s.chains, maxAge: BADGE_MS, hot: true }).filter((t) => !t.copyOf).slice(0, 5);
       return { coins: coins2.map((t) => ({ address: t.address, symbol: t.symbol, createdAt: t.createdAt })) };
     }
+    async function forgetCoins({ post }) {
+      const s = await host.settings();
+      const k = postKey(post, s.chains);
+      const r = await memo.get(`rd:${k}`)?.p.catch(() => null);
+      for (const t of r?.terms || []) memo.delete(`q:${t.toLowerCase()}`);
+      memo.delete(`co:${k}`);
+      memo.delete(`co:j:${k}`);
+    }
     async function story({ post, narrative, coin }) {
       return cached(`st:${post.url || post.text}:${coin?.address || ""}`, 6e5, async () => {
         const res = await gmFetch(`${API_BASE}/story`, {
@@ -1480,11 +1492,12 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       await host.openWindow(url);
       return true;
     }
-    async function reroute({ post, candidates = null }) {
+    async function reroute({ post, candidates = null, named = [] }) {
       const s = await host.settings();
       const report = (t) => safety({ mint: t.address, pairs: t.pairAddresses || [] });
       const body = [post?.text, post?.quoted, post?.card, post?.parent].filter(Boolean).join("\n").slice(0, 2e3);
-      const inPost = body ? await mentionedTokens(body, s.chains).catch(() => []) : [];
+      let inPost = named.length ? named : body ? await mentionedTokens(body, s.chains).catch(() => []) : [];
+      if (!inPost.length && !candidates?.length) inPost = (await coins({ post }).catch(() => null))?.mentioned || [];
       let token;
       let checked;
       let reason;
@@ -1610,7 +1623,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       });
     }
     const launchState = () => cached("launch:state", 6e5, async () => (await gmFetch(`${API_BASE}/launch/settings`, { signal: AbortSignal.timeout(6e3) })).json());
-    const handlers2 = { breaking, starList, starToggle, videoInfo, tweet, read, coins, fresh, postCoins: postCoins2, mentioned, story, larpcheck, refresh, safety, bundle, image, openWindow, reroute, holderStatus, holderSave, holderWho, holderActive, recentList, recentAdd, recentClear, launchState, lcHolders, lcBoard, lcSettings, lcStart, lcAsk, lcPoll, settings: () => host.settings() };
+    const handlers2 = { forgetCoins, breaking, starList, starToggle, videoInfo, tweet, read, coins, fresh, postCoins: postCoins2, mentioned, story, larpcheck, refresh, safety, bundle, image, openWindow, reroute, holderStatus, holderSave, holderWho, holderActive, recentList, recentAdd, recentClear, launchState, lcHolders, lcBoard, lcSettings, lcStart, lcAsk, lcPoll, settings: () => host.settings() };
     handlers2.resetBundles = () => memo.forEach((_, k) => k.startsWith("bd:") && memo.delete(k));
     return handlers2;
   }
@@ -2149,7 +2162,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       if (this.view === "stars" || this.view === "feed") this.view = "scan";
       this.stopTimers();
       this.lastPost = post;
-      this.state = { ...this.state, loading: true, early: [], error: null, narrative: null, engineError: null, source: source ?? this.state.source };
+      this.state = { ...this.state, loading: true, early: [], error: null, narrative: null, engineError: null, story: null, source: source ?? this.state.source };
       this.updateLive();
       this.renderFoot();
       this.renderHead();
@@ -2201,7 +2214,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       }
     }
     showCoins(res) {
-      this.state = { ...this.state, ...res, loading: false };
+      this.state = { ...this.state, roleCandidates: [], roleCut: 0, ...res, loading: false };
       this.tokens.clear();
       for (const t of [...res.mentioned, ...res.bioCoins || [], ...res.techMatch ? [res.techMatch] : [], ...res.roleCandidates || [], ...res.picks.map((x) => x.token), ...res.others, ...res.newPairs || []]) this.tokens.set(t.address, t);
       this.renderHead();
@@ -2243,8 +2256,11 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       }
       return this.prepared.get(post.url);
     }
-    rescan() {
-      if (this.lastPost) this.scan({ post: this.lastPost });
+    async rescan() {
+      if (!this.lastPost) return;
+      await this.preparePost(this.lastPost).then((post) => send("forgetCoins", { post })).catch(() => {
+      });
+      this.scan({ post: this.lastPost });
     }
     cardTokens() {
       const tokens = [...this.state.mentioned, ...this.bioCards(), ...this.state.techMatch ? [this.state.techMatch] : [], ...this.state.picks.map((p) => p.token), ...this.state.others.filter((t) => this.expanded.has(t.address)), ...this.newCards()];
@@ -2358,6 +2374,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       if (document.hidden || !this.inline && !this.isOpen) return;
       const list = [...this.tokens.values()].map((t) => ({ chain: t.chain, address: t.address }));
       if (!list.length) return;
+      const scanAtStart = this.scanId;
       try {
         const deep = this.cardTokens().map((t) => t.address);
         const fresh = await send("refresh", {
@@ -2366,6 +2383,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
           roleCandidates: this.state.roleCandidates || [],
           roleCut: this.state.roleCut ?? 0
         });
+        if (scanAtStart !== this.scanId) return;
         for (const [addr, t] of Object.entries(fresh.tokens || {})) {
           const prev = this.tokens.get(addr);
           if (!prev) continue;
@@ -2374,6 +2392,13 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
           this.patchCard(prev, next);
         }
         const ranked = fresh.ranking;
+        if (ranked?.picks?.length) {
+          const namedCap = Math.max(0, ...this.state.mentioned.map((m) => (this.tokens.get(m.address) || m).marketCap || 0));
+          const dropped = ranked.picks.filter((p) => p.role === "top" && (p.token.marketCap || 0) < namedCap);
+          ranked.picks = ranked.picks.filter((p) => !dropped.includes(p));
+          const ranks = new Set(ranked.roleCandidates.map((t) => t.address));
+          ranked.others = [...ranked.others, ...dropped.map((p) => p.token), ...this.state.others.filter((t) => !ranks.has(t.address))].filter((t) => t.address !== this.state.techMatch?.address);
+        }
         if (ranked?.picks?.length && !this.bodyEl.matches(":hover")) {
           const signature = (items) => items.map(
             (p) => [p.role, p.token.address, Number(p.alsoTop), Number(p.alsoOg), Number(p.alsoMover)].join(":")
@@ -3890,9 +3915,9 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
         this.toast(`Bought ${symbol ? `$${symbol}` : "it"} \xB7 confirmed on ${/^0x/.test(e.data.mint || "") ? "Robinhood Chain" : "Solana"}`, 4200);
       });
     }
-    async route(post, candidates = null) {
+    async route(post, candidates = null, named = []) {
       const p = await this.preparePost(post);
-      return send("reroute", { post: p, candidates });
+      return send("reroute", { post: p, candidates, named });
     }
     async rerouteFromPanel(button) {
       const fresh = (t) => this.tokens.get(t.address) || t;
@@ -3904,7 +3929,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       button.disabled = true;
       button.textContent = "Checking\u2026";
       try {
-        const r = await this.route(this.lastPost || {}, candidates);
+        const r = await this.route(this.lastPost || {}, candidates, this.state.mentioned);
         this.toast(`Opening $${r.symbol} \xB7 ${r.reason}${r.holders ? ` \xB7 ${r.holders.toLocaleString("en-US")} holders` : ""}`, 3200);
       } catch (err) {
         this.toast(err.message, 4200);

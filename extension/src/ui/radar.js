@@ -365,7 +365,7 @@ class Radar {
     if (this.view === 'stars' || this.view === 'feed') this.view = 'scan';
     this.stopTimers();
     this.lastPost = post;
-    this.state = { ...this.state, loading: true, early: [], error: null, narrative: null, engineError: null, source: source ?? this.state.source };
+    this.state = { ...this.state, loading: true, early: [], error: null, narrative: null, engineError: null, story: null, source: source ?? this.state.source };
     this.updateLive();
     this.renderFoot();
     this.renderHead();
@@ -416,7 +416,7 @@ class Radar {
   }
 
   showCoins(res) {
-    this.state = { ...this.state, ...res, loading: false };
+    this.state = { ...this.state, roleCandidates: [], roleCut: 0, ...res, loading: false };
     this.tokens.clear();
     for (const t of [...res.mentioned, ...(res.bioCoins || []), ...(res.techMatch ? [res.techMatch] : []), ...(res.roleCandidates || []), ...res.picks.map((x) => x.token), ...res.others, ...(res.newPairs || [])]) this.tokens.set(t.address, t);
     this.renderHead();
@@ -460,8 +460,10 @@ class Radar {
     return this.prepared.get(post.url);
   }
 
-  rescan() {
-    if (this.lastPost) this.scan({ post: this.lastPost });
+  async rescan() {
+    if (!this.lastPost) return;
+    await this.preparePost(this.lastPost).then((post) => send('forgetCoins', { post })).catch(() => {});
+    this.scan({ post: this.lastPost });
   }
 
   cardTokens() {
@@ -576,6 +578,7 @@ class Radar {
     if (document.hidden || (!this.inline && !this.isOpen)) return;
     const list = [...this.tokens.values()].map((t) => ({ chain: t.chain, address: t.address }));
     if (!list.length) return;
+    const scanAtStart = this.scanId;
     try {
       const deep = this.cardTokens().map((t) => t.address);
       const fresh = await send('refresh', {
@@ -584,6 +587,8 @@ class Radar {
         roleCandidates: this.state.roleCandidates || [],
         roleCut: this.state.roleCut ?? 0,
       });
+      // A new post was opened while this was out: it's about the old one.
+      if (scanAtStart !== this.scanId) return;
       for (const [addr, t] of Object.entries(fresh.tokens || {})) {
         const prev = this.tokens.get(addr);
         if (!prev) continue;
@@ -594,6 +599,14 @@ class Radar {
       const ranked = fresh.ranking;
       // Never move a card while the pointer is on the panel: a role swap under the cursor could send a
       // click to a different coin. The next tick re-ranks once the pointer has left.
+      if (ranked?.picks?.length) {
+        // Same rule as findCoins: nothing smaller than the coin the post names is Highest MC, and coins left out of the ranking stay listed.
+        const namedCap = Math.max(0, ...this.state.mentioned.map((m) => (this.tokens.get(m.address) || m).marketCap || 0));
+        const dropped = ranked.picks.filter((p) => p.role === 'top' && (p.token.marketCap || 0) < namedCap);
+        ranked.picks = ranked.picks.filter((p) => !dropped.includes(p));
+        const ranks = new Set(ranked.roleCandidates.map((t) => t.address));
+        ranked.others = [...ranked.others, ...dropped.map((p) => p.token), ...this.state.others.filter((t) => !ranks.has(t.address))].filter((t) => t.address !== this.state.techMatch?.address);
+      }
       if (ranked?.picks?.length && !this.bodyEl.matches(':hover')) {
         const signature = (items) => items.map((p) =>
           [p.role, p.token.address, Number(p.alsoTop), Number(p.alsoOg), Number(p.alsoMover)].join(':')
@@ -2020,9 +2033,9 @@ class Radar {
     });
   }
 
-  async route(post, candidates = null) {
+  async route(post, candidates = null, named = []) {
     const p = await this.preparePost(post);
-    return send('reroute', { post: p, candidates });
+    return send('reroute', { post: p, candidates, named });
   }
 
   async rerouteFromPanel(button) {
@@ -2035,7 +2048,7 @@ class Radar {
     button.disabled = true;
     button.textContent = 'Checking…';
     try {
-      const r = await this.route(this.lastPost || {}, candidates);
+      const r = await this.route(this.lastPost || {}, candidates, this.state.mentioned);
       this.toast(`Opening $${r.symbol} · ${r.reason}${r.holders ? ` · ${r.holders.toLocaleString('en-US')} holders` : ''}`, 3200);
     } catch (err) {
       this.toast(err.message, 4200);

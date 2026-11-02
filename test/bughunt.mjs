@@ -2,7 +2,8 @@
 import assert from 'node:assert/strict';
 import { tick } from '../bot/signals.js';
 import { wordsOf, findStories } from '../bot/wire.js';
-import { aggregate } from '../extension/src/lib/market.js';
+import { aggregate, relevance } from '../extension/src/lib/market.js';
+import { extractKeywords } from '../extension/src/lib/keywords.js';
 import { coinCheck } from '../extension/src/ui/coincheck.js';
 
 // A small stand-in for D1, enough for tick's queries.
@@ -124,4 +125,27 @@ const quiet = async () => ({ score: 90, why: 'a dog', name: 'Biscuit' });
   const c = coinCheck({ liquidity: 50000, createdAt: NOW - 3_600_000 }, {}, null);
   assert.ok(!c || !/Spread-out/.test(c.call), 'no facts, no claim');
   console.log('PASS bughunt: nothing read means nothing said');
+}
+
+// 9. A dust side pool doesn't make a live curve coin look dead, and a dead graduated coin doesn't look alive.
+{
+  const SOL = 'So11111111111111111111111111111111111111112';
+  const pool = (dexId, liq, cap, h1) => ({ chainId: 'solana', dexId, pairAddress: dexId, baseToken: { address: 'C', symbol: 'C' }, quoteToken: { address: SOL }, priceUsd: '1', priceNative: '1', liquidity: { usd: liq, quote: liq / 2 }, marketCap: cap, txns: { h1: { buys: h1, sells: 0 } }, volume: { h24: h1 } });
+  const live = aggregate([pool('meteora', 0.64, 0, 0), pool('pumpfun', 0, 46800, 12)])[0];
+  assert.equal(live.marketCap, 46800);
+  assert.equal(live.onCurve, true);
+  const dead = aggregate([pool('pumpswap', 300, 2000, 1), pool('pumpfun', 0, 69000, 0)])[0];
+  assert.equal(dead.onCurve, false, 'graduated, its curve long quiet');
+  assert.equal(dead.marketCap, 2000);
+  const real = aggregate([pool('pumpswap', 50000, 200000, 30), pool('pumpfun', 0, 69000, 5)])[0];
+  assert.equal(real.onCurve, false, 'a real pool stays the main one');
+  console.log('PASS bughunt: a dust pool can\'t hide a curve, an old curve can\'t revive a dead coin');
+}
+
+// 10. Non-Latin names count, accents still fold, and emoji are still nothing.
+{
+  assert.ok(relevance({ name: '川普', symbol: '川普' }, ['川普']).score > 0, 'a Chinese name matches');
+  assert.ok(relevance({ name: 'Café Dog', symbol: 'CAFE' }, ['cafe']).score > 0, 'accents still fold');
+  assert.ok(extractKeywords('$川普 is everywhere today', 6).length >= 0);
+  console.log('PASS bughunt: names in any alphabet match');
 }

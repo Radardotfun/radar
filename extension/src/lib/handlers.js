@@ -90,6 +90,16 @@ export function makeHandlers(host) {
     return { coins: coins.map((t) => ({ address: t.address, symbol: t.symbol, createdAt: t.createdAt })) };
   }
 
+  // Rescan: look for coins again, keeping the AI's read of the post.
+  async function forgetCoins({ post }) {
+    const s = await host.settings();
+    const k = postKey(post, s.chains);
+    const r = await memo.get(`rd:${k}`)?.p.catch(() => null);
+    for (const t of r?.terms || []) memo.delete(`q:${t.toLowerCase()}`);
+    memo.delete(`co:${k}`);
+    memo.delete(`co:j:${k}`);
+  }
+
   // Story check: is the post's story real, and is the coin tied to it? Read on our server (it looks
   // up the author's account, the coin's links and domain ages); results are kept for 10 minutes.
   async function story({ post, narrative, coin }) {
@@ -275,11 +285,13 @@ export function makeHandlers(host) {
   // open the biggest coin on the post that isn't an obvious rug and has real holders.
   // A CA written in the post goes through the same checks and is never swapped for another coin.
   // `candidates`: the panel passes the coins it already found, so nothing is searched twice.
-  async function reroute({ post, candidates = null }) {
+  async function reroute({ post, candidates = null, named = [] }) {
     const s = await host.settings();
     const report = (t) => safety({ mint: t.address, pairs: t.pairAddresses || [] });
     const body = [post?.text, post?.quoted, post?.card, post?.parent].filter(Boolean).join('\n').slice(0, 2000);
-    const inPost = body ? await mentionedTokens(body, s.chains).catch(() => []) : [];
+    let inPost = named.length ? named : body ? await mentionedTokens(body, s.chains).catch(() => []) : [];
+    // The post button has no panel behind it: the read knows the CAs shown in images.
+    if (!inPost.length && !candidates?.length) inPost = (await coins({ post }).catch(() => null))?.mentioned || [];
 
     let token;
     let checked;
@@ -413,7 +425,7 @@ export function makeHandlers(host) {
 
   const launchState = () => cached('launch:state', 600_000, async () => (await fetch(`${API_BASE}/launch/settings`, { signal: AbortSignal.timeout(6000) })).json());
 
-  const handlers = { breaking, starList, starToggle, videoInfo, tweet, read, coins, fresh, postCoins, mentioned, story, larpcheck, refresh, safety, bundle, image, openWindow, reroute, holderStatus, holderSave, holderWho, holderActive, recentList, recentAdd, recentClear, launchState, lcHolders, lcBoard, lcSettings, lcStart, lcAsk, lcPoll, settings: () => host.settings() };
+  const handlers = { forgetCoins, breaking, starList, starToggle, videoInfo, tweet, read, coins, fresh, postCoins, mentioned, story, larpcheck, refresh, safety, bundle, image, openWindow, reroute, holderStatus, holderSave, holderWho, holderActive, recentList, recentAdd, recentClear, launchState, lcHolders, lcBoard, lcSettings, lcStart, lcAsk, lcPoll, settings: () => host.settings() };
   // Changing the RPC drops cached bundle results so they're re-read through the new one.
   handlers.resetBundles = () => memo.forEach((_, k) => k.startsWith('bd:') && memo.delete(k));
   return handlers;

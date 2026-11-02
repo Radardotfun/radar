@@ -1,4 +1,4 @@
-// Radar 1.7.67 alerts page, built from webapp/alerts.js: https://github.com/Radardotfun/radar
+// Radar 1.7.68 alerts page, built from webapp/alerts.js: https://github.com/Radardotfun/radar
 (() => {
   // extension/src/lib/keywords.js
   var STOP = new Set(`a about above after again against all almost also am an and any are aren as at be because been before
@@ -18,7 +18,7 @@ thread follow retweet repost reply replies link bio here via exclusive developin
 says said tells told claims claimed per amid after hours minutes earlier later reportedly allegedly sir guys lol lmao
 wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
   var MAJORS = new Set("btc eth sol usdc usdt bnb xrp ada doge trx usd eur".split(" "));
-  var norm = (s) => s.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]/g, "");
+  var norm = (s) => s.toLowerCase().normalize("NFKD").replace(/[^\p{L}\p{N}]/gu, "");
   function extractKeywords(text, max = 6, { strongOnly = false } = {}) {
     if (!text) return [];
     const scores = /* @__PURE__ */ new Map();
@@ -198,7 +198,9 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     }
     const tokens = [];
     for (const list of byToken.values()) {
-      const primary = [...list].sort((a, b) => n(b.liquidity?.usd) - n(a.liquidity?.usd) || n(b.volume?.h24) - n(a.volume?.h24))[0];
+      let primary = [...list].sort((a, b) => n(b.liquidity?.usd) - n(a.liquidity?.usd) || n(b.volume?.h24) - n(a.volume?.h24))[0];
+      const curve = list.filter((p) => LAUNCHPADS.has(p.dexId) && n(p.marketCap) > 0 && n(p.txns?.h1?.buys) + n(p.txns?.h1?.sells) > 0).sort((a, b) => n(b.volume?.h24) - n(a.volume?.h24))[0];
+      if (curve && !LAUNCHPADS.has(primary.dexId) && realLiquidity(primary) < 1e3) primary = curve;
       const dated = list.filter((p) => p.pairCreatedAt).sort((a, b) => a.pairCreatedAt - b.pairCreatedAt);
       const first = dated[0];
       const info = list.find((p) => p.info?.imageUrl)?.info || primary.info || {};
@@ -247,7 +249,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
   function relevance(token, keywords) {
     const sym2 = norm(token.symbol || "");
     const name = norm(token.name || "");
-    const words = new Set(`${token.name} ${token.symbol}`.split(/[^A-Za-z0-9À-ɏ]+/).map(norm).filter(Boolean));
+    const words = new Set(`${token.name} ${token.symbol}`.split(/[^\p{L}\p{N}]+/u).map(norm).filter(Boolean));
     let score = 0;
     const matched = [];
     keywords.forEach((kw, i) => {
@@ -583,11 +585,11 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
   function anchorHits(t, anchors) {
     const name = norm(t.name || "");
     const sym2 = norm(t.symbol || "");
-    const words = new Set(`${t.name} ${t.symbol}`.split(/[^A-Za-z0-9À-ɏ]+/).map(norm).filter(Boolean));
+    const words = new Set(`${t.name} ${t.symbol}`.split(/[^\p{L}\p{N}]+/u).map(norm).filter(Boolean));
     return anchors.filter((a) => {
       const k = norm(a);
       if (!k) return false;
-      return k.length <= 3 ? words.has(k) || sym2 === k : name.includes(k) || sym2.includes(k);
+      return k.length <= 4 ? words.has(k) || sym2 === k : name.includes(k) || sym2.includes(k);
     }).length;
   }
   var TECH_CUES = /\b(?:technology|tech|software|hardware|application|app|platform|tool|open[- ]?source|github|repository|repo|developer|coding|code|artificial intelligence|ai|large language model|llm|model|agent|robot(?:ics)?|gpu|chip|semiconductor|compute|computing|protocol|framework|library|browser|operating system|cloud|saas|api)\b/i;
@@ -665,6 +667,8 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       new Promise((resolve) => setTimeout(() => resolve(refs), 5e3))
       // keep search data if pool lookups stall
     ]).catch(() => refs);
+    const gotPools = new Set(tokens.map((t) => t.address));
+    tokens = [...tokens, ...refs.filter((t) => !gotPools.has(t.address))];
     lap("pools");
     tokens = tokens.filter((t) => scores.has(t.address)).map((t) => ({
       ...t,
@@ -1202,6 +1206,14 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       const coins3 = freshPairs(aggregate(pairs), words, { chains: s.chains, maxAge: BADGE_MS, hot: true }).filter((t) => !t.copyOf).slice(0, 5);
       return { coins: coins3.map((t) => ({ address: t.address, symbol: t.symbol, createdAt: t.createdAt })) };
     }
+    async function forgetCoins({ post }) {
+      const s = await host.settings();
+      const k = postKey(post, s.chains);
+      const r = await memo.get(`rd:${k}`)?.p.catch(() => null);
+      for (const t of r?.terms || []) memo.delete(`q:${t.toLowerCase()}`);
+      memo.delete(`co:${k}`);
+      memo.delete(`co:j:${k}`);
+    }
     async function story({ post, narrative, coin }) {
       return cached(`st:${post.url || post.text}:${coin?.address || ""}`, 6e5, async () => {
         const res = await fetch(`${API_BASE}/story`, {
@@ -1358,11 +1370,12 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       await host.openWindow(url);
       return true;
     }
-    async function reroute({ post, candidates = null }) {
+    async function reroute({ post, candidates = null, named = [] }) {
       const s = await host.settings();
       const report = (t) => safety({ mint: t.address, pairs: t.pairAddresses || [] });
       const body = [post?.text, post?.quoted, post?.card, post?.parent].filter(Boolean).join("\n").slice(0, 2e3);
-      const inPost = body ? await mentionedTokens(body, s.chains).catch(() => []) : [];
+      let inPost = named.length ? named : body ? await mentionedTokens(body, s.chains).catch(() => []) : [];
+      if (!inPost.length && !candidates?.length) inPost = (await coins2({ post }).catch(() => null))?.mentioned || [];
       let token;
       let checked;
       let reason;
@@ -1488,7 +1501,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       });
     }
     const launchState = () => cached("launch:state", 6e5, async () => (await fetch(`${API_BASE}/launch/settings`, { signal: AbortSignal.timeout(6e3) })).json());
-    const handlers2 = { breaking, starList, starToggle, videoInfo, tweet, read, coins: coins2, fresh, postCoins: postCoins2, mentioned, story, larpcheck, refresh, safety, bundle, image, openWindow, reroute, holderStatus, holderSave, holderWho, holderActive, recentList, recentAdd, recentClear, launchState, lcHolders, lcBoard, lcSettings, lcStart, lcAsk, lcPoll, settings: () => host.settings() };
+    const handlers2 = { forgetCoins, breaking, starList, starToggle, videoInfo, tweet, read, coins: coins2, fresh, postCoins: postCoins2, mentioned, story, larpcheck, refresh, safety, bundle, image, openWindow, reroute, holderStatus, holderSave, holderWho, holderActive, recentList, recentAdd, recentClear, launchState, lcHolders, lcBoard, lcSettings, lcStart, lcAsk, lcPoll, settings: () => host.settings() };
     handlers2.resetBundles = () => memo.forEach((_, k) => k.startsWith("bd:") && memo.delete(k));
     return handlers2;
   }

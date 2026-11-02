@@ -115,15 +115,15 @@ export async function readPost(post, chains, { apiBase, cached = passthrough }) 
 
 /** Stage 2: which on-chain coins are really about it? */
 // Does a token's name or ticker contain one of the narrative's anchor words?
-// Short anchors (<= 3 chars, e.g. "doj") must be a whole word or the exact ticker.
+// Short anchors (<= 4 chars, e.g. "doj", "king") must be a whole word or the exact ticker: "king" isn't "Thinking Cat".
 function anchorHits(t, anchors) {
   const name = norm(t.name || '');
   const sym = norm(t.symbol || '');
-  const words = new Set(`${t.name} ${t.symbol}`.split(/[^A-Za-z0-9À-ɏ]+/).map(norm).filter(Boolean));
+  const words = new Set(`${t.name} ${t.symbol}`.split(/[^\p{L}\p{N}]+/u).map(norm).filter(Boolean));
   return anchors.filter((a) => {
     const k = norm(a);
     if (!k) return false;
-    return k.length <= 3 ? words.has(k) || sym === k : name.includes(k) || sym.includes(k);
+    return k.length <= 4 ? words.has(k) || sym === k : name.includes(k) || sym.includes(k);
   }).length;
 }
 
@@ -216,6 +216,8 @@ export async function findCoins({ narrative, coinable, terms, anchors = [], judg
     fullTokens(refs, new Set(refs.slice(0, 6).map((t) => t.address))),
     new Promise((resolve) => setTimeout(() => resolve(refs), 5_000)), // keep search data if pool lookups stall
   ]).catch(() => refs);
+  const gotPools = new Set(tokens.map((t) => t.address));
+  tokens = [...tokens, ...refs.filter((t) => !gotPools.has(t.address))];
   lap('pools');
   tokens = tokens.filter((t) => scores.has(t.address)).map((t) => ({
     ...t, relevance: scores.get(t.address).score, reason: scores.get(t.address).reason, fromPost: fromPost.has(t.address), guessed: !!scores.get(t.address).guessed,
