@@ -49,6 +49,8 @@ export function replyEntries(result, now = Date.now()) {
   const stat = (t, s) => [s, quiet(t, now) && tradesLine(t)].filter(Boolean).join(' · ');
   // Highest MC means it beat something: alone on the story, or with a bigger namesake left out, the title isn't claimed.
   const noTop = result?.alone || result?.outranked;
+  // Launched long before the post, it wasn't made for this story, whatever its name (a BNB mascot called Max, on a robot called Max).
+  const older = (t) => result?.postAt && t.createdAt && result.postAt - t.createdAt > 7 * 86_400_000;
   if (named) {
     const roles = won(named.address);
     entries.push({ label: `${result.how === 'picture' ? '🖼 Same picture as the post' : result.how === 'bio' ? '👤 In the poster\'s bio' : '📌 In the post'}${roles.length ? ` (${roles.join(', ')})` : ''}`, t: named, stat: stat(named, usd(named.marketCap)) });
@@ -58,7 +60,7 @@ export function replyEntries(result, now = Date.now()) {
     if (!t || t.address === named?.address) continue;
     const also = won(t.address).filter((r) => !label.endsWith(r));
     // A coin alone holds whichever role it landed on (OG or Mover too, when its market cap isn't backed) and beat nobody for it.
-    entries.push({ label: [result?.alone || (role === 'top' && noTop) ? '🎯 On this story' : label, ...also].join(', '), t, stat: stat(t, role === 'top' ? usd(t.marketCap)
+    entries.push({ label: [result?.alone || (role === 'top' && noTop) ? (older(t) ? '🔁 Same name, older coin' : '🎯 On this story') : label, ...also].join(', '), t, stat: stat(t, role === 'top' ? usd(t.marketCap)
       : role === 'og' ? (ago(t.createdAt, now) ? `launched ${ago(t.createdAt, now)} ago` : usd(t.marketCap))
         : usd(t.volume?.h24) ? `${usd(t.volume.h24)} vol 24h` : usd(t.marketCap)) });
   }
