@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Radar
 // @namespace    https://tryradar.fun
-// @version      1.7.69
+// @version      1.7.70
 // @description  See the coins behind any post on X and instantly reroute to the biggest match that passes available on-chain safety checks.
 // @homepageURL  https://tryradar.fun
 // @supportURL   https://tryradar.fun
@@ -31,7 +31,7 @@
 // @downloadURL  https://tryradar.fun/radar.user.js
 // ==/UserScript==
 
-// Radar 1.7.69: built from the extension source at https://tryradar.fun. Not financial advice.
+// Radar 1.7.70: built from the extension source at https://tryradar.fun. Not financial advice.
 (() => {
   var __defProp = Object.defineProperty;
   var __export = (target, all) => {
@@ -763,7 +763,10 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
         links: t.links.slice(0, 2)
       });
       const halves = candidates.length > 12 ? [candidates.slice(0, Math.ceil(candidates.length / 2)), candidates.slice(Math.ceil(candidates.length / 2))] : [candidates];
-      const verdicts = await Promise.all(halves.map((part) => engine(apiBase, "judge", { narrative, post, candidates: part.map(brief) }, 9e3).then((v) => v.matches.map((m) => ({ ...m, t: part[m.i]?.t }))).catch(() => part.filter((c) => c.r >= 3).slice(0, 5).map((c) => ({ t: c.t, score: Math.min(85, 55 + c.r * 4), guessed: true })))));
+      const verdicts = await Promise.all(halves.map((part) => engine(apiBase, "judge", { narrative, post, candidates: part.map(brief) }, 9e3).then((v) => v.matches.map((m) => ({ ...m, t: part[m.i]?.t }))).catch(() => {
+        base.judgeFailed = true;
+        return part.filter((c) => c.r >= 3).slice(0, 5).map((c) => ({ t: c.t, score: Math.min(85, 55 + c.r * 4), guessed: true }));
+      })));
       lap("judge");
       scores = new Map(verdicts.flat().filter((m) => m.t).map((m) => [m.t.address, { score: m.score, reason: "", guessed: !!m.guessed }]));
     }

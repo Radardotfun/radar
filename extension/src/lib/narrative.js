@@ -200,7 +200,7 @@ export async function findCoins({ narrative, coinable, terms, anchors = [], judg
     // A half that's slow or fails falls back to name relevance for its coins, so the panel always answers.
     const verdicts = await Promise.all(halves.map((part) => engine(apiBase, 'judge', { narrative, post, candidates: part.map(brief) }, 9_000)
       .then((v) => v.matches.map((m) => ({ ...m, t: part[m.i]?.t })))
-      .catch(() => part.filter((c) => c.r >= 3).slice(0, 5).map((c) => ({ t: c.t, score: Math.min(85, 55 + c.r * 4), guessed: true })))));
+      .catch(() => { base.judgeFailed = true; return part.filter((c) => c.r >= 3).slice(0, 5).map((c) => ({ t: c.t, score: Math.min(85, 55 + c.r * 4), guessed: true })); })));
     lap('judge');
     scores = new Map(verdicts.flat().filter((m) => m.t).map((m) => [m.t.address, { score: m.score, reason: '', guessed: !!m.guessed }]));
   }

@@ -8,14 +8,14 @@
 // - leaves out copies of our own coin, anything else called Radar, unless the post gives its contract;
 // - keeps the story's main runner (its biggest real coin, carrying a name the post uses) even when the judge rates it
 //   low, so a pile of small copies can't take Highest MC from it.
-import { aggregate, pickThree, alive, olderTwinOf } from '../extension/src/lib/market.js';
+import { aggregate, pickThree, alive, olderTwinOf, isMemecoin, MAJOR_TICKERS } from '../extension/src/lib/market.js';
 import { sym, lower, key, telling, tiedToPost, bioCas, tiedToBio, chainInPost } from '../extension/src/lib/bio.js';
 
 export { tiedToPost, bioCas, tiedToBio };
 
 // PEPE, DOGE and SHIB live on chains the bot doesn't scan, so what it finds under those tickers are copies (a $2M "PEPE"
-// on Base as Highest MC on a Pepe meme).
-const MAJORS = new Set('BTC ETH SOL HYPE XRP BNB USDC USDT WBTC WETH WSOL PEPE DOGE SHIB'.split(' '));
+// on Base as Highest MC on a Pepe meme). A typed $LINK or $ADA is the real one, not a BSC "ChainLink Token".
+const MAJORS = new Set([...'BTC ETH SOL HYPE XRP BNB USDC USDT WBTC WETH WSOL PEPE DOGE SHIB USD'.split(' '), ...MAJOR_TICKERS]);
 // The real $RADAR (RADAR_MINT in the server's wrangler.toml). An $84K "Radar" on BNB Chain was Highest MC on a post
 // that mentions Radar, which sent people to a copy of our own coin.
 const RADAR_MINT = 'HyDSdtgiSa5mHqkTVoz8cTFTeVLFKdZ8amPvtNYfpump';
@@ -128,7 +128,7 @@ export function withMemory(scan, known = null) {
   }
   const judged = new Set([...(scan?.roleCandidates || []), ...(scan?.picks || []).map((p) => p.token), ...(scan?.others || []), scan?.techMatch].filter((t) => t?.address).map((t) => t.address));
   const noVerdict = (t) => t?.guessed && !Number.isFinite(memo[t.address]);
-  const guessed = [...seen.values()].filter((t) => judged.has(t.address) && noVerdict(t)).length;
+  const guessed = [...seen.values()].filter((t) => judged.has(t.address) && noVerdict(t)).length + (scan?.judgeFailed ? 1 : 0);
   const scored = [...seen.values()]
     .map((t) => (Number.isFinite(memo[t.address]) ? { ...t, relevance: memo[t.address] } : judged.has(t.address) && !noVerdict(t) ? t : null))
     .filter((t) => t && (t.relevance || 0) >= 60);
@@ -191,7 +191,7 @@ export async function botCoins(res, post, { search, lookupCa, lookupBio = lookup
     const seenInImage = (res?.tickers || []).map((t) => String(t).toUpperCase()).filter((t) => !MAJORS.has(t));
     const wanted = (typed.length ? typed : seenInImage.length === 1 ? seenInImage : []).slice(0, 2);
     for (const tk of wanted) {
-      const found = aggregate(await search(tk).catch(() => [])).filter((t) => chains.includes(t.chain));
+      const found = aggregate(await search(tk).catch(() => [])).filter((t) => chains.includes(t.chain) && isMemecoin(t));
       named = pickNamed(tk, [...scanned, ...found], text);
       if (named) break;
     }
@@ -203,7 +203,7 @@ export async function botCoins(res, post, { search, lookupCa, lookupBio = lookup
   if (!named && matchImages && picturePost(post)) {
     const have = new Set();
     const logos = [...scanned, ...(res?.pool || [])].filter((t) => t?.image && live(t) && !MAJORS.has(sym(t)) && !isRadarCopy(t) && !have.has(t.address) && have.add(t.address)).slice(0, 16);
-    if (logos.length) pictured = (await matchImages(post.images, logos.map((t) => t.image)).catch(() => [])).map((i) => logos[i]).filter(Boolean);
+    if (logos.length) pictured = (await matchImages(post.images, logos.map((t) => t.image))).map((i) => logos[i]).filter(Boolean);
     named = leadOf(pictured);
     if (named) how = 'picture';
   }
@@ -235,6 +235,8 @@ export async function botCoins(res, post, { search, lookupCa, lookupBio = lookup
   if (lead) story = story.filter((t) => t.address === lead.address || !sameCoin(t, lead) || (t.createdAt || 0) < (lead.createdAt || 0));
   // Other coins with the same picture under another name were made for this post too.
   for (const t of pictured) if (!seen.has(t.address) && !sameCoin(t, named)) { seen.add(t.address); story.push({ ...t, relevance: 99 }); }
+  // A second address in the post is a coin the post names too.
+  for (const t of (res?.mentioned || []).slice(1)) if (chains.includes(t.chain) && !seen.has(t.address) && !sameCoin(t, named)) { seen.add(t.address); story.push({ ...t, relevance: 99 }); }
   if (named) story.push({ ...named, relevance: Math.max(100, ...story.map((t) => t.relevance || 0)) });
   // The panel's tiers (narrative.js findCoins) without its last fallback to every judged coin, so Highest MC is the
   // biggest coin on the story itself.

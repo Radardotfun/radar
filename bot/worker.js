@@ -51,9 +51,9 @@ let dexActive = 0;
 let dexLast = 0;
 let dexCoolUntil = 0;
 const dexWaiting = [];
-// Each DexScreener URL's last answer this run: one still at 429 or 503 at the end is a lookup the scan went without.
+// Each DexScreener URL's last answer this run: one still failing at the end is a lookup the scan went without. 0 is no answer at all.
 const dexLastStatus = new Map();
-const dexLost = () => [...dexLastStatus.values()].filter((st) => st === 429 || st === 503).length;
+const dexLost = () => [...dexLastStatus.values()].filter((st) => st === 0 || st === 403 || st === 429 || st >= 500).length;
 async function dexSlot() {
   if (dexActive >= 2) await new Promise((r) => dexWaiting.push(r));
   dexActive += 1;
@@ -89,6 +89,9 @@ async function dexFetch(input, init = {}) {
     if (res.status === 429) { dexCoolUntil = Date.now() + 2500; calls.retries = (calls.retries || 0) + 1; }
     dexLastStatus.set(url, res.status);
     return res;
+  } catch (e) {
+    dexLastStatus.set(url, 0);
+    throw e;
   } finally {
     dexDone();
   }
@@ -156,6 +159,8 @@ async function lookupCa(ca) {
 // Which coin logos show the post's own picture (the engine's /match: one AI call comparing up to 16 logos).
 async function matchImages(images, logos) {
   const r = await fetch(`${API_BASE}/match`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ post: { images }, logos }), signal: AbortSignal.timeout(30_000) });
+  // A failed look is not "no picture matches", so the tag waits and tries again.
+  if (r.status === 429 || r.status >= 500) throw new Error(`Radar could not read this post right now (match ${r.status})`);
   return r.ok ? (await r.json()).same || [] : [];
 }
 
@@ -185,13 +190,15 @@ const lookupBio = async (ca) => (await lookupCa(ca).catch(() => null)) || jupite
 
 // One post, as the bot would answer it. Kept 10 minutes, so a post tagged many times is scanned once.
 const scans = new Map();
+// Posts whose scan lost lookups: a new tag on one mustn't read that scan from the shared cache and say "No coins".
+const dirty = new Set();
 // known: the verdicts this post got on earlier tags ({ address: score }), which win over a new judge call.
 // fresh: a retry, after DexScreener left lookups unanswered: nothing cached in this run is reused (the server's own
 // caches of the AI's answers still are).
 async function replyFor(postUrl, known = null, fresh = false) {
   const hit = !fresh && scans.get(postUrl);
   if (hit && Date.now() - hit.at < 600_000) return hit.p;
-  const h = fresh ? makeHandlers(HOST) : handlers;
+  const h = fresh || dirty.delete(postUrl) ? makeHandlers(HOST) : handlers;
   const p = (async () => {
     const { post: read } = await h.tweet({ url: postUrl });
     // The bot looks at the poster's bio itself (coins.js), so the scan doesn't.
@@ -303,7 +310,7 @@ async function poll(env) {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-bot-token': env.BOT_TOKEN },
     body: JSON.stringify({ mention: entry.mention, target: entry.target, live, tries: entry.tries || 0, scores: s.judged?.[entry.target]?.s || null }),
-  }).then((r) => r.json()).then((r) => Object.assign(entry, r)).catch((e) => { entry.error = String(e.message || e).slice(0, 200); })));
+  }).then((r) => (r.ok ? r.json() : { error: `handle ${r.status}` })).then((r) => Object.assign(entry, r)).catch((e) => { entry.error = String(e.message || e).slice(0, 200); })));
 
   for (const e of done) if (e.reply || e.dry) s.sent += 1;
   // Each post's verdicts, for its next tags: kept a day, for the 50 posts tagged last.
@@ -351,6 +358,7 @@ async function handle(env, { mention, target, live, scores: known = null, tries 
   const lost = dexLost();
   if (lost && tries < 4) {
     scans.delete(postUrl);
+    dirty.add(postUrl);
     throw new Error(`DexScreener rate-limited ${lost} lookup${lost === 1 ? '' : 's'}, trying again next minute`);
   }
   const out = { story, chars: xLength(text), text, scores, ...(lost ? { lost } : {}) };
@@ -360,14 +368,20 @@ async function handle(env, { mention, target, live, scores: known = null, tries 
   let sent = Date.now() < Date.parse('2026-11-05T18:00:00Z') ? links : text;
   let posted;
   try {
-    posted = await post(sent);
+    try {
+      posted = await post(sent);
+    } catch (e) {
+      // X won't take crypto addresses in an app's first 7 days: send the short form instead. And it refuses a reply
+      // identical to an earlier one, so the time makes it different.
+      if (/crypto address/i.test(e.message)) sent = short;
+      else if (!/duplicate/i.test(e.message)) throw e;
+      sent = varied(sent);
+      posted = await post(sent);
+    }
   } catch (e) {
-    // X won't take crypto addresses in an app's first 7 days: send the short form instead. And it refuses a reply
-    // identical to an earlier one, so the time makes it different.
-    if (/crypto address/i.test(e.message)) sent = short;
-    else if (!/duplicate/i.test(e.message)) throw e;
-    sent = varied(sent);
-    posted = await post(sent);
+    // X took too long to answer, so it may have posted. A retry could answer the same tag twice, and the time in the text would get past X's duplicate check.
+    if (e.name === 'TimeoutError') return { ...out, unsure: String(e.message || e).slice(0, 200) };
+    throw e;
   }
   return { ...out, text: sent, chars: xLength(sent), form: sent === short ? 'short' : sent === links ? 'links' : 'full', reply: posted.data?.id };
 }

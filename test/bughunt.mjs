@@ -6,6 +6,8 @@ import { aggregate, relevance } from '../extension/src/lib/market.js';
 import { extractKeywords } from '../extension/src/lib/keywords.js';
 import { coinCheck } from '../extension/src/ui/coincheck.js';
 import { txBlock } from '../webapp/launch-guard.js';
+import { worthRetry } from '../bot/trigger.js';
+import { botCoins } from '../bot/coins.js';
 import { coinKey, plainClash, launchFields } from '../server/launch.js';
 
 // A small stand-in for D1, enough for tick's queries.
@@ -180,4 +182,27 @@ const quiet = async () => ({ score: 90, why: 'a dog', name: 'Biscuit' });
   assert.match(launchFields({ name: '中'.repeat(11), symbol: 'A', post: 'https://x.com/a/status/1', wallet: 'So11111111111111111111111111111111111111112' }).error, /too long/);
   assert.match(launchFields({ name: '', symbol: 'A', post: 'https://x.com/a/status/1', wallet: 'So11111111111111111111111111111111111111112' }).error, /needs a name/);
   console.log('PASS bughunt: name errors make sense');
+}
+
+// 14. A typed stock or major names no coin, a real typed ticker still does, and a second address counts.
+{
+  const SOL = 'So11111111111111111111111111111111111111112';
+  const pair = (address, symbol, name, cap) => ({ chainId: 'solana', dexId: 'pumpswap', pairAddress: `p${address}`, baseToken: { address, symbol, name }, quoteToken: { address: SOL }, priceUsd: '1', priceNative: '1', liquidity: { usd: 90000, quote: 45000 }, marketCap: cap, volume: { h24: 90000 }, pairCreatedAt: NOW - 86_400_000 });
+  const tool = (pairs) => ({ search: async () => pairs, lookupCa: async () => null, capOf: async () => null, chains: ['solana'] });
+  const ask = (text, pairs) => botCoins({ mentioned: [] }, { text }, tool(pairs));
+  const names = (r) => JSON.stringify(r);
+  assert.ok(!/Robinhood/.test(names(await ask('$TSLA earnings beat', [pair('t', 'TSLA', 'Tesla • Robinhood Token', 4_300_000)]))), 'a stock token isn\'t the coin');
+  assert.ok(!/ChainLink/.test(names(await ask('$LINK breakout', [pair('l', 'LINK', 'ChainLink Token', 99_000_000)]))), 'a major\'s copy isn\'t the coin');
+  assert.ok(/Dogwif/.test(names(await ask('$DWIF is moving', [pair('d', 'DWIF', 'Dogwif Two', 500_000)]))), 'a real typed ticker still names its coin');
+  console.log('PASS bughunt: a typed stock or major names no coin');
+}
+
+// 15. What's worth another try.
+{
+  assert.ok(worthRetry('Every AI key is at its limit right now'));
+  assert.ok(worthRetry('Free AI limit reached for today'));
+  assert.ok(worthRetry('X 403: You are not allowed to create a Tweet with duplicate content.'));
+  assert.ok(worthRetry('handle 500'));
+  assert.ok(!worthRetry('That post is private'));
+  console.log('PASS bughunt: a limit or a duplicate gets another try');
 }

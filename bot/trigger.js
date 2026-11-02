@@ -21,7 +21,7 @@ export function wantsCoins(m, username) {
 }
 
 // A busy DexScreener, AI, post reader or X is worth another try next minute; anything else is not.
-export const worthRetry = (message) => /rate.?limit|\b429\b|\b50\d\b|timed out|timeout|could not read|too many|busy|overload|engine failed|fetch failed|network/i.test(String(message || ''));
+export const worthRetry = (message) => /rate.?limit|at its limit|ai limit|duplicate|\b429\b|\b50\d\b|timed out|timeout|could not read|too many|busy|overload|engine failed|fetch failed|network/i.test(String(message || ''));
 
 const newerId = (a, b) => { try { return BigInt(a || 0) >= BigInt(b || 0) ? a : b; } catch { return a || b; } };
 
