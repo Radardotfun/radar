@@ -1,4 +1,4 @@
-// Radar 1.7.66 alerts page, built from webapp/alerts.js: https://github.com/Radardotfun/radar
+// Radar 1.7.67 alerts page, built from webapp/alerts.js: https://github.com/Radardotfun/radar
 (() => {
   // extension/src/lib/keywords.js
   var STOP = new Set(`a about above after again against all almost also am an and any are aren as at be because been before
@@ -123,6 +123,8 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     // USDC
     "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
     // USDT
+    "USD1ttGY1N17NEEHLmELoaybftRBUSErhqYiQzvEmuB",
+    // USD1
     // Robinhood Chain: WETH, native ETH (Uniswap v4 pools) and USDG, the dollar its pools trade against. Its stock tokens
     // (SPY, NVDA…) also pair memecoins, but copies of them exist, so they don't count as real liquidity.
     "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73",
@@ -136,6 +138,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d",
     "0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56"
   ].map(quoteKey));
+  var REAL_QUOTES = /* @__PURE__ */ new Set([...QUOTES, "t9bnCGiZVUYsRKvx4d5dPcoDCSyuBM9C33ZNGNULARP"]);
   var LAUNCHPADS = /* @__PURE__ */ new Set(["pumpfun", "launchlab", "meteoradbc", "moonshot", "boop", "heaven", "believe", "bags", "moonit", "jupstudio", "flapsh", "fourmeme"]);
   async function getJson(url) {
     for (let i = 0; i < 4; i++) {
@@ -180,7 +183,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
   }
   var n = (x) => Number.isFinite(+x) ? +x : 0;
   function realLiquidity(p) {
-    if (!QUOTES.has(quoteKey(p.quoteToken?.address))) return 0;
+    if (!REAL_QUOTES.has(quoteKey(p.quoteToken?.address))) return 0;
     const quoteUsd = n(p.liquidity?.quote) * (n(p.priceNative) ? n(p.priceUsd) / n(p.priceNative) : 0);
     return Math.min(n(p.liquidity?.usd), 2 * quoteUsd);
   }
@@ -796,7 +799,9 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
           res = await fetch(url, {
             method: "POST",
             headers: { "content-type": "application/json" },
-            body: JSON.stringify({ jsonrpc: "2.0", id: ++id, method, params })
+            body: JSON.stringify({ jsonrpc: "2.0", id: ++id, method, params }),
+            // A call that never answers would hold its place in the queue, and the launch scan would never end.
+            signal: AbortSignal.timeout(15e3)
           });
         } catch (e) {
           if (attempt >= retries) throw e;
@@ -1405,8 +1410,8 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     };
     async function holderStatus() {
       const config = await cached("holder:config", 6e5, async () => (await fetch(`${API_BASE}/holder/settings`, { signal: AbortSignal.timeout(6e3) })).json()).catch(() => ({ on: false }));
-      if (!config.on) return { on: false };
       const h = await holderStored();
+      if (!config.on && !h) return { on: false };
       return { on: true, pitch: config.pitch, holder: !!h, exp: h?.exp || null };
     }
     const holderActive = async () => !!await holderStored();

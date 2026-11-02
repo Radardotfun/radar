@@ -8,6 +8,7 @@ const QUOTES = new Set([
   'So11111111111111111111111111111111111111112', // wSOL
   'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', // USDC
   'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB', // USDT
+  'USD1ttGY1N17NEEHLmELoaybftRBUSErhqYiQzvEmuB', // USD1
   // Robinhood Chain: WETH, native ETH (Uniswap v4 pools) and USDG, the dollar its pools trade against. Its stock tokens
   // (SPY, NVDA…) also pair memecoins, but copies of them exist, so they don't count as real liquidity.
   '0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73',
@@ -21,6 +22,8 @@ const QUOTES = new Set([
   '0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d',
   '0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56',
 ].map(quoteKey));
+// Coins that also back real pools but are memecoins themselves, so they can still be picks: pump.fun pairs coins to $LARPCHECK.
+const REAL_QUOTES = new Set([...QUOTES, 't9bnCGiZVUYsRKvx4d5dPcoDCSyuBM9C33ZNGNULARP']);
 // Launchpad curves: the pair opens in the same tx the token is born (flapsh: flap.sh on Robinhood Chain and BNB
 // Chain; fourmeme: four.meme on BNB Chain).
 export const LAUNCHPADS = new Set(['pumpfun', 'launchlab', 'meteoradbc', 'moonshot', 'boop', 'heaven', 'believe', 'bags', 'moonit', 'jupstudio', 'flapsh', 'fourmeme']);
@@ -72,10 +75,10 @@ export async function allPairsMany(refs, concurrency = 6) {
 
 const n = (x) => (Number.isFinite(+x) ? +x : 0);
 
-// Liquidity you could actually sell into: 2x the SOL/USDC/USDT side of each pool.
+// Liquidity you could actually sell into: 2x the real-money side of each pool.
 // One-sided / self-paired pools report huge "liquidity" with almost nothing behind it.
 function realLiquidity(p) {
-  if (!QUOTES.has(quoteKey(p.quoteToken?.address))) return 0;
+  if (!REAL_QUOTES.has(quoteKey(p.quoteToken?.address))) return 0;
   const quoteUsd = n(p.liquidity?.quote) * (n(p.priceNative) ? n(p.priceUsd) / n(p.priceNative) : 0);
   return Math.min(n(p.liquidity?.usd), 2 * quoteUsd);
 }

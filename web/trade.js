@@ -99,6 +99,7 @@
   // A coin on a market PumpPortal can't build buys on: say so, keep Buy off, and point to the terminals.
   let unbuyable = '';
   let routeQuote = null;
+  let portalFee = '';
   const blockBuy = (why) => {
     unbuyable = why;
     buyButton.disabled = true;
@@ -117,6 +118,7 @@
       if (guard.quickBuyable(pairs, mint) === false) blockBuy(guard.marketWhy(pairs, mint));
       routeQuote = guard.quoteRoute(pairs, mint);
       if (routeQuote) {
+        portalFee = $('fee-text').textContent;
         $('fee-text').textContent = "This coin is paired to another token, so the buy goes through that token in one transaction, built with pump.fun's own SDK. No PumpPortal fee here. You pay pump.fun's fees, a 0.0001 SOL priority fee and Solana network fees. Before your wallet sees it, Radar checks that only your wallet pays, that it uses known swap programs, and that a simulation spends no more than your amount plus fees.";
       }
       coinKnown = true;
@@ -413,6 +415,12 @@
       const { bytes } = await route.buildRouteBuy({ rpcUrl: RELAY, wallet: connectedAddress, mint, quoteMint: routeQuote, sol: solAmount, slippagePct: slippage });
       return bytes;
     } catch (e) {
+      // pump's SDK finds no pool for some pairs, USDC ones among them. PumpPortal can build those, and says so if it can't.
+      if (/No tradable curve or canonical pool/.test(e?.message || '')) {
+        routeQuote = null;
+        $('fee-text').textContent = portalFee;
+        return buildPortal(solAmount, slippage);
+      }
       throw new Error(guard.simulationWhy(e?.message, []));
     }
   };

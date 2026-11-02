@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Radar
 // @namespace    https://tryradar.fun
-// @version      1.7.66
+// @version      1.7.67
 // @description  See the coins behind any post on X and instantly reroute to the biggest match that passes available on-chain safety checks.
 // @homepageURL  https://tryradar.fun
 // @supportURL   https://tryradar.fun
@@ -31,7 +31,7 @@
 // @downloadURL  https://tryradar.fun/radar.user.js
 // ==/UserScript==
 
-// Radar 1.7.66: built from the extension source at https://tryradar.fun. Not financial advice.
+// Radar 1.7.67: built from the extension source at https://tryradar.fun. Not financial advice.
 (() => {
   var __defProp = Object.defineProperty;
   var __export = (target, all) => {
@@ -233,6 +233,8 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     // USDC
     "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
     // USDT
+    "USD1ttGY1N17NEEHLmELoaybftRBUSErhqYiQzvEmuB",
+    // USD1
     // Robinhood Chain: WETH, native ETH (Uniswap v4 pools) and USDG, the dollar its pools trade against. Its stock tokens
     // (SPY, NVDA…) also pair memecoins, but copies of them exist, so they don't count as real liquidity.
     "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73",
@@ -246,6 +248,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d",
     "0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56"
   ].map(quoteKey));
+  var REAL_QUOTES = /* @__PURE__ */ new Set([...QUOTES, "t9bnCGiZVUYsRKvx4d5dPcoDCSyuBM9C33ZNGNULARP"]);
   var LAUNCHPADS = /* @__PURE__ */ new Set(["pumpfun", "launchlab", "meteoradbc", "moonshot", "boop", "heaven", "believe", "bags", "moonit", "jupstudio", "flapsh", "fourmeme"]);
   async function getJson(url) {
     for (let i = 0; i < 4; i++) {
@@ -290,7 +293,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
   }
   var n = (x) => Number.isFinite(+x) ? +x : 0;
   function realLiquidity(p) {
-    if (!QUOTES.has(quoteKey(p.quoteToken?.address))) return 0;
+    if (!REAL_QUOTES.has(quoteKey(p.quoteToken?.address))) return 0;
     const quoteUsd = n(p.liquidity?.quote) * (n(p.priceNative) ? n(p.priceUsd) / n(p.priceNative) : 0);
     return Math.min(n(p.liquidity?.usd), 2 * quoteUsd);
   }
@@ -900,7 +903,9 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
           res = await gmFetch(url, {
             method: "POST",
             headers: { "content-type": "application/json" },
-            body: JSON.stringify({ jsonrpc: "2.0", id: ++id, method, params })
+            body: JSON.stringify({ jsonrpc: "2.0", id: ++id, method, params }),
+            // A call that never answers would hold its place in the queue, and the launch scan would never end.
+            signal: AbortSignal.timeout(15e3)
           });
         } catch (e) {
           if (attempt >= retries) throw e;
@@ -1527,8 +1532,8 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     };
     async function holderStatus() {
       const config = await cached("holder:config", 6e5, async () => (await gmFetch(`${API_BASE}/holder/settings`, { signal: AbortSignal.timeout(6e3) })).json()).catch(() => ({ on: false }));
-      if (!config.on) return { on: false };
       const h = await holderStored();
+      if (!config.on && !h) return { on: false };
       return { on: true, pitch: config.pitch, holder: !!h, exp: h?.exp || null };
     }
     const holderActive = async () => !!await holderStored();
@@ -1679,7 +1684,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     if (launchHeld != null || linked != null) {
       facts.push({ k: "Insiders hold", v: insiders, lvl: lvIns, sub: !insiders ? "" : linked != null && linked >= (launchHeld ?? 0) ? `${rug.insiderWallets} linked wallets` : "launch wallets" });
     }
-    const dev = b ? b.devHeldPct : rug?.creatorPct ?? null;
+    const dev = b || rug?.creatorPct != null ? Math.max(b?.devHeldPct ?? 0, rug?.creatorPct ?? 0) : null;
     const lvDev = level(dev, T.dev);
     note(lvDev, 6, 18);
     if (dev != null) facts.push({ k: "Dev holds", v: dev, lvl: lvDev });
@@ -1738,7 +1743,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
   function callLine(word, facts) {
     const ranked = facts.filter((f) => f.lvl === "risk").concat(facts.filter((f) => f.lvl === "watch"));
     const pick = (ranked.length ? ranked : facts).slice(0, 2).map((f) => f.text ? `${f.k.toLowerCase()}: ${f.text.toLowerCase()}` : f.unit === "price" ? `insiders selling would drop price ~${pctText(f.v)}` : `${f.k.toLowerCase()} ${pctText(f.v)}`);
-    if (!pick.length) return word === "OK" ? "Spread-out holders, no live controls." : "";
+    if (!pick.length) return "";
     const s = pick.join(" \xB7 ");
     return s.charAt(0).toUpperCase() + s.slice(1);
   }
@@ -1968,6 +1973,11 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
   var hoodBuyUrl = (addr, eth) => `https://tryradar.fun/trade-robinhood?token=${encodeURIComponent(addr)}${eth ? `&eth=${eth}&insta=1` : ""}`;
   var QUICK_MARKETS = /* @__PURE__ */ new Set(["pumpfun", "pumpswap", "raydium"]);
   var quickBuyable = (t) => t.chain === "solana" && (!t.dexId || QUICK_MARKETS.has(t.dexId));
+  function checkWord(c, rug) {
+    const flagged = c.word === "OK" && !!rug && seriousWarning(reportBlock(rug));
+    const partial = !flagged && c.word === "OK" && (!rug || !!reportSource(rug)?.fallback);
+    return { flagged, partial, word: flagged ? "FLAGGED" : partial ? "PARTIAL" : c.word };
+  }
   function terminals(t) {
     const a = t.address;
     if (t.chain === "robinhood") return [{ id: "uniswap", name: "Uniswap", url: `https://app.uniswap.org/swap?chain=robinhood&outputCurrency=${a}` }];
@@ -3453,7 +3463,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
         const t = this.tokens.get(p.token.address) || p.token;
         const a = this.audits.get(t.address) || {};
         const c = coinCheck(t, a.rug, a.bundle);
-        lines.push(`${ROLE_NAME[p.role] || "Pick"}: $${String(t.symbol).trim()} ${usd(t.marketCap)}${c ? ` \xB7 coin check ${c.word} ${c.score}` : ""}`);
+        lines.push(`${ROLE_NAME[p.role] || "Pick"}: $${String(t.symbol).trim()} ${usd(t.marketCap)}${c ? ` \xB7 coin check ${checkWord(c, a.rug).word}${checkWord(c, a.rug).flagged ? "" : ` ${c.score}`}` : ""}`);
       }
       const st = s.story;
       if (st?.larpcheck?.checked) lines.push(`Larpcheck: ${st.larpcheck.verdict}${st.larpcheck.score != null ? ` ${st.larpcheck.score}` : ""} ${st.larpcheck.url || ""}`.trim());
@@ -3479,12 +3489,10 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
         if (box) box.innerHTML = "";
         return;
       }
-      const flagged = c.word === "OK" && !!a.rug && seriousWarning(reportBlock(a.rug));
-      const partial = !flagged && c.word === "OK" && reportSource(a.rug)?.fallback;
-      const word = flagged ? "FLAGGED" : partial ? "PARTIAL" : c.word;
+      const { flagged, partial, word } = checkWord(c, a.rug);
       const tone = flagged ? "risk" : partial ? "mid" : c.word === "OK" ? "ok" : c.word === "NEUTRAL" ? "mid" : "risk";
       const score = flagged ? "" : ` <b>${c.score}</b>`;
-      if (chip) chip.innerHTML = `<span class="verdict ${tone}" title="Coin check: ${esc2(flagged ? reportBlock(a.rug) : c.call)}${partial ? ". Fallback read: no LP lock or insider data" : ""}">${word}${score}</span>`;
+      if (chip) chip.innerHTML = `<span class="verdict ${tone}" title="Coin check: ${esc2(flagged ? reportBlock(a.rug) : c.call)}${partial ? a.rug ? ". Fallback read: no LP lock or insider data" : ". No holder report: mint and freeze unread" : ""}">${word}${score}</span>`;
       if (!box) return;
       const lvl = { ok: "good", watch: "warn", risk: "bad" };
       const val = (f) => f.text ? esc2(f.text) : f.unit === "price" ? pctPlain(f.v, 0) : pctPlain(f.v);

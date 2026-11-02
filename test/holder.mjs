@@ -96,7 +96,7 @@ price = 0.00002;
 assert.equal((await holderVerify(good, env, 'https://rpc.test', now)).body.holder, true, 'the same tokens pass once they are worth $1');
 price = 0;
 assert.equal((await holderVerify(good, env, 'https://rpc.test', now)).status, 502, 'no price, no pass');
-assert.equal((await holderConfig(env)).on, false, 'no price: off, since nobody could be checked');
+assert.equal((await holderConfig(env)).on, true, 'no price: perks stay on for people who passed, and the check above refuses until it can read one');
 price = 0.0000117;
 const config = await holderConfig(env);
 assert.equal(config.on, true);

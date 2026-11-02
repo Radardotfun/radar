@@ -200,6 +200,14 @@ const hoodBuyUrl = (addr, eth) => `https://tryradar.fun/trade-robinhood?token=${
 // Meteora get no Insta Buy; a coin whose market isn't known yet keeps it, and the buy page explains if it can't.
 const QUICK_MARKETS = new Set(['pumpfun', 'pumpswap', 'raydium']);
 const quickBuyable = (t) => t.chain === 'solana' && (!t.dexId || QUICK_MARKETS.has(t.dexId));
+// What a coin check says out loud, on the card and in the copied summary. The score only weighs who holds the coin, so it can be
+// fine while RugCheck flags a danger, and a good score doesn't sit beside that. A fallback can't see LP locks or insiders, and with
+// no report at all mint and freeze are unread, so neither says a plain OK. A bad result stands: what it did see was bad.
+function checkWord(c, rug) {
+  const flagged = c.word === 'OK' && !!rug && seriousWarning(reportBlock(rug));
+  const partial = !flagged && c.word === 'OK' && (!rug || !!reportSource(rug)?.fallback);
+  return { flagged, partial, word: flagged ? 'FLAGGED' : partial ? 'PARTIAL' : c.word };
+}
 
 function terminals(t) {
   const a = t.address;
@@ -1687,7 +1695,7 @@ class Radar {
       const t = this.tokens.get(p.token.address) || p.token;
       const a = this.audits.get(t.address) || {};
       const c = coinCheck(t, a.rug, a.bundle);
-      lines.push(`${ROLE_NAME[p.role] || 'Pick'}: $${String(t.symbol).trim()} ${usd(t.marketCap)}${c ? ` · coin check ${c.word} ${c.score}` : ''}`);
+      lines.push(`${ROLE_NAME[p.role] || 'Pick'}: $${String(t.symbol).trim()} ${usd(t.marketCap)}${c ? ` · coin check ${checkWord(c, a.rug).word}${checkWord(c, a.rug).flagged ? '' : ` ${c.score}`}` : ''}`);
     }
     const st = s.story;
     if (st?.larpcheck?.checked) lines.push(`Larpcheck: ${st.larpcheck.verdict}${st.larpcheck.score != null ? ` ${st.larpcheck.score}` : ''} ${st.larpcheck.url || ''}`.trim());
@@ -1715,14 +1723,10 @@ class Radar {
       if (box) box.innerHTML = '';
       return;
     }
-    // A fallback can't see LP locks or insiders, so it never says a plain OK. A bad result stands: what it did see was bad.
-    // The score only weighs who holds the coin, so it can be fine while RugCheck flags a danger. A good score doesn't sit beside that.
-    const flagged = c.word === 'OK' && !!a.rug && seriousWarning(reportBlock(a.rug));
-    const partial = !flagged && c.word === 'OK' && reportSource(a.rug)?.fallback;
-    const word = flagged ? 'FLAGGED' : partial ? 'PARTIAL' : c.word;
+    const { flagged, partial, word } = checkWord(c, a.rug);
     const tone = flagged ? 'risk' : partial ? 'mid' : c.word === 'OK' ? 'ok' : c.word === 'NEUTRAL' ? 'mid' : 'risk';
     const score = flagged ? '' : ` <b>${c.score}</b>`;
-    if (chip) chip.innerHTML = `<span class="verdict ${tone}" title="Coin check: ${esc(flagged ? reportBlock(a.rug) : c.call)}${partial ? '. Fallback read: no LP lock or insider data' : ''}">${word}${score}</span>`;
+    if (chip) chip.innerHTML = `<span class="verdict ${tone}" title="Coin check: ${esc(flagged ? reportBlock(a.rug) : c.call)}${partial ? (a.rug ? '. Fallback read: no LP lock or insider data' : '. No holder report: mint and freeze unread') : ''}">${word}${score}</span>`;
     if (!box) return;
     const lvl = { ok: 'good', watch: 'warn', risk: 'bad' };
     const val = (f) => (f.text ? esc(f.text) : f.unit === 'price' ? pctPlain(f.v, 0) : pctPlain(f.v));

@@ -15,6 +15,8 @@ export const READS_PER_DAY = 2000;
 // A run may make only 50 requests, and the rest wait for the next minute.
 export const AI_READS_PER_RUN = 12;
 const QUERY_MAX = 480;
+// After an outage a post this old is no alert: it would go out looking new.
+const STALE_MS = 30 * 60_000;
 const SEARCH = 'https://api.x.com/2/tweets/search/recent';
 const FIELDS = {
   'tweet.fields': 'created_at,author_id,referenced_tweets,note_tweet,attachments,entities',
@@ -99,7 +101,7 @@ const getMeta = async (db, k) => (await db.prepare('SELECT v FROM signal_meta WH
 const setMeta = (db, k, v) => db.prepare('INSERT INTO signal_meta (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v').bind(k, String(v)).run();
 
 /** db: D1. x(url): X's JSON answer. read(post): the AI's read. One minute's work: fetch what's new, then read what's waiting. */
-export async function tick({ db, x, read, now = Date.now(), accounts = ACCOUNTS, cap = READS_PER_DAY }) {
+export async function tick({ db, x, read, now = Date.now(), accounts = ACCOUNTS, cap = READS_PER_DAY, clock = Date.now }) {
   for (const sql of SCHEMA) await db.prepare(sql).run();
   const day = dayOf(now);
   const spentKey = `reads:${day}`;
@@ -117,6 +119,8 @@ export async function tick({ db, x, read, now = Date.now(), accounts = ACCOUNTS,
       page = await x(searchUrl({ query: list[i], ...from }));
     } catch (e) {
       out.errors.push(String(e.message || e).slice(0, 160));
+      // X refuses a cursor older than its search window, so that query would fail like this for good. It starts again from now.
+      if (e.status === 400 && since) await setMeta(db, key, '');
       // X asked us to slow down or the money ran out: asking again this minute only makes it worse.
       if (e.status === 429 || e.status === 402 || e.status === 403) break;
       continue;
@@ -125,15 +129,17 @@ export async function tick({ db, x, read, now = Date.now(), accounts = ACCOUNTS,
     const posts = page.data || [];
     spent += posts.length + (page.includes?.tweets?.length || 0);
     await setMeta(db, spentKey, spent);
-    if (page.meta?.newest_id) await setMeta(db, key, page.meta.newest_id);
     for (const t of posts) {
       const p = postFrom(t, page.includes);
       await db.prepare('INSERT OR IGNORE INTO signals (id, author, at, kind, post, state) VALUES (?, ?, ?, ?, ?, ?)')
         .bind(p.id, p.post.author, p.at, p.kind, JSON.stringify(p.post), readable(p) ? 'new' : 'skipped').run();
       out.fetched += 1;
     }
+    // Only once they're saved: moved first, a failed save would lose those posts for good.
+    if (page.meta?.newest_id) await setMeta(db, key, page.meta.newest_id);
   }
   out.spent = spent;
+  await db.prepare("UPDATE signals SET state = 'old' WHERE state = 'new' AND at <= ?").bind(now - STALE_MS).run();
   // Newest first: if posts pile up, the fresh ones are the ones worth knowing about.
   const waiting = (await db.prepare("SELECT id, post FROM signals WHERE state = 'new' ORDER BY at DESC LIMIT ?").bind(AI_READS_PER_RUN).all()).results || [];
   for (const row of waiting) {
@@ -146,7 +152,7 @@ export async function tick({ db, x, read, now = Date.now(), accounts = ACCOUNTS,
     }
     const hit = isSignal(r);
     await db.prepare("UPDATE signals SET state = 'read', signal = ?, narrative = ?, terms = ?, read_at = ? WHERE id = ?")
-      .bind(hit ? 1 : 0, `${Math.round(r?.score || 0)}: ${String(r?.why || '').slice(0, 180)}`, JSON.stringify(r?.name ? [r.name] : []), now, row.id).run();
+      .bind(hit ? 1 : 0, `${Math.round(r?.score || 0)}: ${String(r?.why || '').slice(0, 180)}`, JSON.stringify(r?.name ? [r.name] : []), clock(), row.id).run();
     out.read += 1;
     if (hit) out.signals += 1;
   }

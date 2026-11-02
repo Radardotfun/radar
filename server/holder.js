@@ -41,7 +41,8 @@ export async function holderConfig(env) {
   const minUsd = holderMinUsd(env);
   if (!holderOn(env)) return { on: false, minUsd };
   const google = env.GOOGLE_CLIENT_ID ? { googleClientId: env.GOOGLE_CLIENT_ID, googleLive: env.GOOGLE_LIVE === '1' } : {};
-  try { await coinPrices(env); return { on: true, minUsd, pitch: pitch(env), ...google }; } catch { return { on: false, minUsd }; }
+  // A failed price read isn't a reason to hide holder perks from people who've already passed: the check itself says when it can't read a price.
+  return { on: true, minUsd, pitch: pitch(env), ...google };
 }
 
 // What the wallet signs. web/holder.js writes the same words.

@@ -324,6 +324,8 @@ async function runAlertChecks() {
   }
 }
 ext.alarms.onAlarm.addListener((alarm) => { if (alarm.name === ALARM) runAlertChecks(); });
+// A browser update or restart can clear alarms, and only a new watch makes this one, so running watches would stop in silence.
+ext.alarms.get(ALARM).then((a) => a || loadAlerts().then((x) => x.watches.length && ext.alarms.create(ALARM, { periodInMinutes: 1 }))).catch(() => {});
 
 // Radar Guard: every few minutes, one look at each starred coin, for holders. Its alarm is left alone once set, because setting
 // it again would restart the wait each time the worker wakes.
@@ -405,7 +407,6 @@ async function runSignals() {
   if (!res?.ok) return;
   const items = (await res.json().catch(() => ({}))).items || [];
   if (!items.length) return;
-  await ext.storage.local.set({ [SIGNAL_SINCE]: Math.max(...items.map((s) => s.at)) });
   const known = (await loadAlerts()).feed;
   const waiting = items.filter((s) => s.url && !known.some((f) => f.id === `signal:${s.id}`));
   // The scan takes a few seconds. If it can't finish, the alert still goes out, without coins.
@@ -420,6 +421,8 @@ async function runSignals() {
     if (newOnes.length) showBadge(a.unread);
     return newOnes;
   });
+  // Only once they're saved: the browser can close during the scan, and a repeat is caught by the id check above.
+  await ext.storage.local.set({ [SIGNAL_SINCE]: Math.max(...items.map((s) => s.at)) });
   for (const item of added.slice(0, 3)) await notify(item);
 }
 ext.alarms.onAlarm.addListener((alarm) => { if (alarm.name === SIGNAL_ALARM) runSignals().catch(() => {}); });

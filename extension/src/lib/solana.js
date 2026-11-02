@@ -47,6 +47,8 @@ export function makeRpc(url = PUBLIC_RPC, { concurrency = 2 } = {}) {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ jsonrpc: '2.0', id: ++id, method, params }),
+          // A call that never answers would hold its place in the queue, and the launch scan would never end.
+          signal: AbortSignal.timeout(15_000),
         });
       } catch (e) {
         if (attempt >= retries) throw e;

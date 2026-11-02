@@ -26,8 +26,12 @@
     const list = [['Phantom', window.phantom?.solana], ['Solflare', window.solflare], ['Backpack', window.backpack?.solana], ['Solana wallet', window.solana]];
     const seen = new Set();
     const found = list.filter(([, p]) => p && typeof p.connect === 'function' && typeof p.signMessage === 'function' && !seen.has(p) && seen.add(p));
+    // Rebuilding the list must not lose the wallet someone picked.
+    const picked = choice.selectedOptions[0]?.textContent;
     choice.replaceChildren();
     found.forEach(([label], i) => { const o = document.createElement('option'); o.value = String(i); o.textContent = label; choice.append(o); });
+    const keep = found.findIndex(([label]) => label === picked);
+    if (keep >= 0) choice.value = String(keep);
     choice.hidden = found.length < 2;
     return found;
   };
@@ -57,11 +61,11 @@
     say('Checking your Google account…');
     try {
       const { ok, d } = await google();
-      if (!ok || d.error) { googleCredential = null; remember(null); $('google-button').hidden = false; say(d.error || "Couldn't check that. Try again.", 'error'); return; }
-      // Already linked, so there's nothing to link when it finishes.
-      if (d.linked) { googleCredential = null; remember(null); }
-      if (d.linked && d.holder) { await finish(d); return; }
-      if (d.linked) { say(holdings(d), 'error'); return; }
+      if (!ok || d.error) { googleCredential = null; remember(null); showGoogle(); say(d.error || "Couldn't check that. Try again.", 'error'); return; }
+      // Already linked and passing, so there's nothing to link when it finishes.
+      if (d.linked && d.holder) { googleCredential = null; remember(null); await finish(d); return; }
+      // Linked to a wallet that's now under the line: the answer is kept, so signing with another wallet moves the link there.
+      if (d.linked) { $('google-button').hidden = true; say(`${holdings(d)} Sign with a wallet that holds enough and this Google account moves to it.`, 'error'); return; }
       remember(credential);
       // Signed in: the button's job is done, so nothing invites a second go.
       $('google-button').hidden = true;
@@ -72,24 +76,27 @@
       // A computer with no wallet has nothing to sign with, so the link has to be made where the wallet is.
       else say('One step left. Link a wallet once: open tryradar.fun/holder on your phone or in a browser with your wallet, and sign in with Google there. After that, Google works here too.');
       if (window.RadarWalletOpen?.isPhone()) { offered = false; offerNoWallet(); }
-    } catch { say("Couldn't check that. Try again.", 'error'); }
+    } catch { showGoogle(); say("Couldn't check that. Try again.", 'error'); }
   }
-  async function offerGoogle() {
-    if (pair || (window.RadarWalletOpen?.isPhone() && find().length)) return;
-    const cfg = await fetch(`${API}/holder/settings`, { signal: AbortSignal.timeout(6000) }).then((r) => r.json()).catch(() => null);
-    if (!cfg?.googleClientId || (!cfg.googleLive && params.get('google') !== '1')) return;
-    $('google-box').hidden = false;
-    // Back from adding a wallet, still signed in: no second Google step.
+  // Coming back from linking on another device, on a computer with no wallet: the check runs again by itself.
+  addEventListener('focus', () => {
     const back = remembered();
-    if (back) { $('google-button').hidden = true; googleSignedIn(back); return; }
-    $('google-button').style.visibility = 'hidden';
+    if (back && !find().length && !window.RadarWalletOpen?.available()) googleSignedIn(back);
+  });
+  let googleId = null;
+  // The button, loaded the first time it's needed: a page that came back still signed in hasn't loaded it yet.
+  function showGoogle() {
+    const box = $('google-button');
+    box.hidden = false;
+    if (!googleId || googleId.loaded) return;
+    googleId.loaded = true;
+    box.style.visibility = 'hidden';
     const s = document.createElement('script');
     s.src = 'https://accounts.google.com/gsi/client';
     s.async = true;
     s.onload = () => {
-      const box = $('google-button');
       const target = $('google-signin');
-      window.google.accounts.id.initialize({ client_id: cfg.googleClientId, callback: (r) => googleSignedIn(r.credential) });
+      window.google.accounts.id.initialize({ client_id: googleId.client, callback: (r) => googleSignedIn(r.credential) });
       // Google's button stops at 400 wide and 40 high, so it's stretched to cover all of ours.
       const width = Math.min(400, box.clientWidth);
       window.google.accounts.id.renderButton(target, { theme: 'outline', size: 'large', text: 'continue_with', width });
@@ -101,6 +108,17 @@
     };
     s.onerror = () => { $('google-box').hidden = true; };
     document.head.append(s);
+  }
+  async function offerGoogle() {
+    if (pair || (window.RadarWalletOpen?.isPhone() && find().length)) return;
+    const cfg = await fetch(`${API}/holder/settings`, { signal: AbortSignal.timeout(6000) }).then((r) => r.json()).catch(() => null);
+    if (!cfg?.googleClientId || (!cfg.googleLive && params.get('google') !== '1')) return;
+    $('google-box').hidden = false;
+    // Back from adding a wallet, still signed in: no second Google step.
+    const back = remembered();
+    googleId = { client: cfg.googleClientId, loaded: false };
+    if (back) { $('google-button').hidden = true; googleSignedIn(back); return; }
+    showGoogle();
   }
 
   // A passing check, wherever it was signed.
@@ -154,8 +172,11 @@
         const r = await fetch(`${API}/holder/pair`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id }), signal: AbortSignal.timeout(8000) }).catch(() => null);
         const d = r?.ok ? await r.json().catch(() => null) : null;
         if (d?.ready) {
-          el.hidden = true;
-          if (d.holder) await finish(d); else say(holdings(d), 'error');
+          if (d.holder) { el.hidden = true; await finish(d); return; }
+          // Under the line: say so, and keep a fresh code up so the phone can try another wallet.
+          say(holdings(d), 'error');
+          rounds = 0;
+          round();
           return;
         }
         if (Date.now() < until) { setTimeout(poll, POLL_MS); return; }

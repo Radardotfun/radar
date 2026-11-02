@@ -333,8 +333,9 @@ export function makeHandlers(host) {
   };
   async function holderStatus() {
     const config = await cached('holder:config', 600_000, async () => (await fetch(`${API_BASE}/holder/settings`, { signal: AbortSignal.timeout(6000) })).json()).catch(() => ({ on: false }));
-    if (!config.on) return { on: false };
     const h = await holderStored();
+    // Someone who has already passed keeps their perks through a failed settings read.
+    if (!config.on && !h) return { on: false };
     return { on: true, pitch: config.pitch, holder: !!h, exp: h?.exp || null };
   }
   // Whether this browser holds a current holder check, for perks that run here (launch alerts).

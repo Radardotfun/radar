@@ -20,8 +20,9 @@ const GENERIC = new Set(('the and for with this that you your our are was his he
   + 'ai agent bot gpt web net app dao fi lol wtf gm gn yes no digital trench pumpfun open '
   + 'never life wif just like only time love good bad best last next first free get out now day night world work home').split(' '));
 
-export const wordsOf = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').split(/\s+/)
-  .filter((w) => w.length >= 3 && !/^\d+$/.test(w) && !GENERIC.has(w));
+// Any alphabet counts: a story can break in Chinese. Two characters is already a word there.
+export const wordsOf = (s) => String(s || '').toLowerCase().replace(/[^\p{L}\p{N} ]+/gu, ' ').split(/\s+/)
+  .filter((w) => w.length >= (/^[\x00-\x7f]*$/.test(w) ? 3 : 2) && !/^\d+$/.test(w) && !GENERIC.has(w));
 
 // One launch as kept: the feed's fields the wire reads.
 export const compact = (pool) => {

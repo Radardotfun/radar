@@ -117,7 +117,9 @@
   function marketWhy(pairs, mint) {
     const top = (Array.isArray(pairs) ? pairs : []).filter((p) => p && p.chainId === 'solana' && p.baseToken && p.baseToken.address === mint)
       .sort((a, b) => ((b.liquidity && b.liquidity.usd) || 0) - ((a.liquidity && a.liquidity.usd) || 0))[0];
-    const where = top ? MARKET_NAMES[top.dexId] || 'a market' : 'a market';
+    // PumpPortal turned it down and the market isn't known: only say what's sure.
+    if (!top) return "Quick Buy can't buy this coin yet: PumpPortal, which builds Radar's buys, has no route for it. Open it on a terminal below. Nothing was signed.";
+    const where = MARKET_NAMES[top.dexId] || 'a market';
     return `Quick Buy can't buy this coin yet. It trades on ${where}, and PumpPortal, which builds Radar's buys, only covers pump.fun, PumpSwap and Raydium. Open it on a terminal below. Nothing was signed.`;
   }
 

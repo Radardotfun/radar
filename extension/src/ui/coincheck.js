@@ -53,7 +53,8 @@ export function coinCheck(token, rug, bundle) {
     facts.push({ k: 'Insiders hold', v: insiders, lvl: lvIns, sub: !insiders ? '' : linked != null && linked >= (launchHeld ?? 0) ? `${rug.insiderWallets} linked wallets` : 'launch wallets' });
   }
 
-  const dev = b ? b.devHeldPct : rug?.creatorPct ?? null;
+  // The larger of the two reads: the launch scan alone can miss what RugCheck saw the creator holding.
+  const dev = b || rug?.creatorPct != null ? Math.max(b?.devHeldPct ?? 0, rug?.creatorPct ?? 0) : null;
   const lvDev = level(dev, T.dev);
   note(lvDev, 6, 18);
   if (dev != null) facts.push({ k: 'Dev holds', v: dev, lvl: lvDev });
@@ -98,7 +99,7 @@ const pctText = (v) => `${Math.abs(v) < 10 ? Math.abs(v).toFixed(1) : Math.round
 function callLine(word, facts) {
   const ranked = facts.filter((f) => f.lvl === 'risk').concat(facts.filter((f) => f.lvl === 'watch'));
   const pick = (ranked.length ? ranked : facts).slice(0, 2).map((f) => (f.text ? `${f.k.toLowerCase()}: ${f.text.toLowerCase()}` : f.unit === 'price' ? `insiders selling would drop price ~${pctText(f.v)}` : `${f.k.toLowerCase()} ${pctText(f.v)}`));
-  if (!pick.length) return word === 'OK' ? 'Spread-out holders, no live controls.' : '';
+  if (!pick.length) return '';
   const s = pick.join(' · ');
   return s.charAt(0).toUpperCase() + s.slice(1);
 }

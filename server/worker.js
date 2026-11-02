@@ -26,10 +26,12 @@ const hits = new Map();
 function limited(ip, limit = 80, windowMs = 10 * 60_000) {
   const now = Date.now();
   const list = (hits.get(ip) || []).filter((t) => now - t < windowMs);
+  // A refused ask doesn't count, or a busy caller would keep itself locked out for as long as it kept asking.
+  if (list.length >= limit) { hits.set(ip, list); return true; }
   list.push(now);
   hits.set(ip, list);
   if (hits.size > 5000) hits.delete(hits.keys().next().value);
-  return list.length > limit;
+  return false;
 }
 
 async function sha256(text) {
@@ -375,7 +377,7 @@ export default {
     }
     if (pathname === '/holder/pair' && request.method === 'POST') {
       if (limited(`pair:${request.headers.get('cf-connecting-ip') || 'anon'}`, 300)) return json(429, { error: 'Too many checks, slow down a little' });
-      const r = await takePair(env.DB, (await request.json().catch(() => ({}))).id);
+      const r = await takePair(env.DB, (await request.json().catch(() => ({})))?.id);
       return json(r.status, r.body);
     }
     if (pathname === '/signals' && request.method === 'POST') {
