@@ -11,7 +11,7 @@ export const ACCOUNTS = [
 ];
 
 // X charges $0.005 for each post it hands back, so this is $5 a day. Past it the watcher waits for the next UTC day.
-export const READS_PER_DAY = 1000;
+export const READS_PER_DAY = 2000;
 // A run may make only 50 requests, and the rest wait for the next minute.
 export const AI_READS_PER_RUN = 12;
 const QUERY_MAX = 480;
