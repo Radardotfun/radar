@@ -10,7 +10,11 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&family=Geist+Mono:wght@500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/trade.css?v=1.7.71" />
+  <script>
+    // Swap x.com for this site in a post link and it opens a scan of that post. _redirects can't put a placeholder in a query string.
+    (function () { var m = location.pathname.match(/^\/(\w{1,15}|i\/web)\/status\/(\d{1,25})/); if (m) location.replace('/scan?url=' + encodeURIComponent('https://x.com/' + m[1] + '/status/' + m[2])); })();
+  </script>
+  <link rel="stylesheet" href="/trade.css?v=1.7.72" />
 </head>
 <body>
   <header class="nav">

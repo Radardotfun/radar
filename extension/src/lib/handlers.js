@@ -248,7 +248,7 @@ export function makeHandlers(host) {
     const id = String(url || '').match(/status\/(\d+)/)?.[1];
     if (!id) return null;
     return cached(`vid:${id}`, 3_600_000, async () => {
-      const res = await fetch(`https://cdn.syndication.twimg.com/tweet-result?id=${id}&lang=en&token=${embedToken(id)}`);
+      const res = await fetch(`https://cdn.syndication.twimg.com/tweet-result?id=${id}&lang=en&token=${embedToken(id)}`, { signal: AbortSignal.timeout(8000) });
       if (!res.ok) return null;
       const data = await res.json().catch(() => null);
       const media = (data?.mediaDetails || []).find((m) => m.type === 'video' || m.type === 'animated_gif');

@@ -1,4 +1,4 @@
-// Radar 1.7.71 alerts page, built from webapp/alerts.js: https://github.com/Radardotfun/radar
+// Radar 1.7.72 alerts page, built from webapp/alerts.js: https://github.com/Radardotfun/radar
 (() => {
   // extension/src/lib/keywords.js
   var STOP = new Set(`a about above after again against all almost also am an and any are aren as at be because been before
@@ -1342,7 +1342,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       const id = String(url || "").match(/status\/(\d+)/)?.[1];
       if (!id) return null;
       return cached(`vid:${id}`, 36e5, async () => {
-        const res = await fetch(`https://cdn.syndication.twimg.com/tweet-result?id=${id}&lang=en&token=${embedToken(id)}`);
+        const res = await fetch(`https://cdn.syndication.twimg.com/tweet-result?id=${id}&lang=en&token=${embedToken(id)}`, { signal: AbortSignal.timeout(8e3) });
         if (!res.ok) return null;
         const data = await res.json().catch(() => null);
         const media = (data?.mediaDetails || []).find((m) => m.type === "video" || m.type === "animated_gif");

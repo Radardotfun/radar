@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Radar
 // @namespace    https://tryradar.fun
-// @version      1.7.71
+// @version      1.7.72
 // @description  See the coins behind any post on X and instantly reroute to the biggest match that passes available on-chain safety checks.
 // @homepageURL  https://tryradar.fun
 // @supportURL   https://tryradar.fun
@@ -31,7 +31,7 @@
 // @downloadURL  https://tryradar.fun/radar.user.js
 // ==/UserScript==
 
-// Radar 1.7.71: built from the extension source at https://tryradar.fun. Not financial advice.
+// Radar 1.7.72: built from the extension source at https://tryradar.fun. Not financial advice.
 (() => {
   var __defProp = Object.defineProperty;
   var __export = (target, all) => {
@@ -1464,7 +1464,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       const id = String(url || "").match(/status\/(\d+)/)?.[1];
       if (!id) return null;
       return cached(`vid:${id}`, 36e5, async () => {
-        const res = await gmFetch(`https://cdn.syndication.twimg.com/tweet-result?id=${id}&lang=en&token=${embedToken(id)}`);
+        const res = await gmFetch(`https://cdn.syndication.twimg.com/tweet-result?id=${id}&lang=en&token=${embedToken(id)}`, { signal: AbortSignal.timeout(8e3) });
         if (!res.ok) return null;
         const data = await res.json().catch(() => null);
         const media = (data?.mediaDetails || []).find((m) => m.type === "video" || m.type === "animated_gif");
