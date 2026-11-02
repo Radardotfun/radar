@@ -11,8 +11,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&family=Geist+Mono:wght@500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/trade.css?v=1.7.58" />
-  <script defer src="/holder.js?v=1.7.58"></script>
+  <link rel="stylesheet" href="/trade.css?v=1.7.59" />
+  <script defer src="/wallet-open.js?v=1.7.59"></script>
+  <script defer src="/holder.js?v=1.7.59"></script>
 </head>
 <body class="insta">
   <header class="nav">
@@ -35,6 +36,7 @@
         <p>Your wallet signs a short message to prove the wallet is yours. It can't move funds, and it costs nothing. Radar then reads your $RADAR and $LARPCHECK balances on-chain. The check lasts a day.</p>
       </div>
       <button id="check-button" class="button primary" type="button">Connect and sign</button>
+      <div id="wallet-open" hidden></div>
       <p id="page-message" class="message" role="status" aria-live="polite"></p>
     </section>
     <p class="risk">Radar never asks for your seed phrase or private key. Not financial advice.</p>

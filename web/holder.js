@@ -17,6 +17,9 @@
     message.classList.toggle('success', kind === 'success');
   };
   // server/holder.js checks these exact words.
+  const params = new URLSearchParams(location.search);
+  // Set when a computer's QR code opened this page: the computer collects the answer.
+  const pair = /^[a-f0-9]{32}$/.test(params.get('pair') || '') ? params.get('pair') : null;
   const words = (address, issued) => `Radar holder check\n\nThis only proves you own this wallet. It can't move funds.\n\nWallet: ${address}\nIssued: ${issued}`;
 
   const find = () => {
@@ -29,9 +32,69 @@
     return found;
   };
 
+  const usd = (n) => `$${Number(n).toFixed(2)}`;
+  const fmt = (n) => Number(n).toLocaleString('en-US', { maximumFractionDigits: 0 });
+  const holdings = (d) => `This wallet holds ${(d.coins || []).map((c) => `${fmt(c.balance)} $${c.symbol}, worth ${usd(c.value)}`).join(', and ') || 'neither coin'}. Holder features start at ${usd(d.minUsd || 10)}.`;
+
+  // A passing check, wherever it was signed.
+  function finish(d) {
+    // Signed on this phone for a computer: the token is the computer's to collect.
+    if (pair) { say(`You hold ${usd(d.value)} of $${d.symbol}. You're in. Go back to your computer. It picks this up by itself.`, 'success'); return; }
+    // The site's own pages read it from here. A wallet's browser on a phone may have no opener to hand it to.
+    try { localStorage.setItem('nr:radarHolder', JSON.stringify({ token: d.token, exp: d.exp })); } catch {}
+    if (params.get('next') === 'alerts') {
+      say(`You hold ${usd(d.value)} of $${d.symbol}. You're in.`, 'success');
+      setTimeout(() => location.replace('/alerts'), 900);
+      return;
+    }
+    if (window.opener) for (const origin of PANELS) { try { window.opener.postMessage({ type: 'radar:holder', token: d.token, exp: d.exp }, origin); } catch {} }
+    say(`You hold ${usd(d.value)} of $${d.symbol}. You're in.${window.opener ? ' This window closes in a moment.' : ''}`, 'success');
+    if (window.opener) setTimeout(() => window.close(), 2500);
+  }
+
+  // No wallet in this browser. A phone opens this page in its wallet app. A computer shows a QR code and waits for the phone.
+  let offered = false;
+  const POLL_MS = 4000;
+  const CODE_LIFE_MS = 5 * 60_000;
+  function offerNoWallet() {
+    if (offered) return;
+    offered = true;
+    button.hidden = true;
+    const el = $('wallet-open');
+    const opener = window.RadarWalletOpen;
+    if (!opener || !el) { say('Open this page in a Solana wallet such as Phantom or Solflare.', 'error'); return; }
+    const copy = {
+      phoneTitle: 'No wallet in this browser',
+      phoneText: 'Open this page in your wallet app. You sign the same message there, and it costs nothing.',
+      qrTitle: 'No wallet in this browser? Use your phone',
+      qrText: 'Scan this with your phone, open the page in your wallet app and sign. This page picks it up by itself.',
+    };
+    if (opener.isPhone()) { opener.mount(el, copy); return; }
+    let rounds = 0;
+    const round = () => {
+      rounds += 1;
+      const id = [...crypto.getRandomValues(new Uint8Array(16))].map((b) => b.toString(16).padStart(2, '0')).join('');
+      opener.mount(el, { ...copy, qrUrl: `https://tryradar.fun/holder?pair=${id}` });
+      const until = Date.now() + CODE_LIFE_MS;
+      const poll = async () => {
+        const r = await fetch(`${API}/holder/pair`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id }), signal: AbortSignal.timeout(8000) }).catch(() => null);
+        const d = r?.ok ? await r.json().catch(() => null) : null;
+        if (d?.ready) {
+          el.hidden = true;
+          if (d.holder) finish(d); else say(holdings(d), 'error');
+          return;
+        }
+        if (Date.now() < until) { setTimeout(poll, POLL_MS); return; }
+        if (rounds < 3) round(); else { el.hidden = true; say('That code ran out. Reload this page to get a new one.', 'error'); }
+      };
+      setTimeout(poll, POLL_MS);
+    };
+    round();
+  }
+
   button.addEventListener('click', async () => {
     const wallets = find();
-    if (!wallets.length) { say('Install a Solana browser wallet such as Phantom, Solflare or Backpack, then reload this page.', 'error'); return; }
+    if (!wallets.length) { offerNoWallet(); return; }
     const [label, provider] = wallets[Math.min(Number(choice.value || 0), wallets.length - 1)];
     button.disabled = true;
     try {
@@ -47,23 +110,12 @@
       const signature = signedResult?.signature || signedResult;
       const hex = [...new Uint8Array(signature)].map((b) => b.toString(16).padStart(2, '0')).join('');
       say('Checking your balance…');
-      const res = await fetch(`${API}/holder/verify`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ address, issued, signature: hex }), signal: AbortSignal.timeout(20000) });
+      const res = await fetch(`${API}/holder/verify`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ address, issued, signature: hex, ...(pair ? { pair } : {}) }), signal: AbortSignal.timeout(20000) });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(d.error || 'The check failed. Try again.');
       if (d.off) { say('Holder features are not on yet.', 'error'); return; }
-      const fmt = (n) => Number(n).toLocaleString('en-US', { maximumFractionDigits: 0 });
-      const usd = (n) => `$${Number(n).toFixed(2)}`;
-      if (!d.holder) { say(`This wallet holds ${(d.coins || []).map((c) => `${fmt(c.balance)} $${c.symbol}, worth ${usd(c.value)}`).join(', and ')}. Holder features start at ${usd(d.minUsd)} of either.`, 'error'); return; }
-      // The site's own pages read it from here. A wallet's browser on a phone may have no opener to hand it to.
-      try { localStorage.setItem('nr:radarHolder', JSON.stringify({ token: d.token, exp: d.exp })); } catch {}
-      if (new URLSearchParams(location.search).get('next') === 'alerts') {
-        say(`You hold ${usd(d.value)} of $${d.symbol}. You're in.`, 'success');
-        setTimeout(() => location.replace('/alerts'), 900);
-        return;
-      }
-      if (window.opener) for (const origin of PANELS) { try { window.opener.postMessage({ type: 'radar:holder', token: d.token, exp: d.exp }, origin); } catch {} }
-      say(`You hold ${usd(d.value)} of $${d.symbol}. You're in. This window closes in a moment.`, 'success');
-      setTimeout(() => window.close(), 2500);
+      if (!d.holder) { if (pair) { say(`${holdings(d)} Your computer will show this too.`, 'error'); return; } say(`This wallet holds ${(d.coins || []).map((c) => `${fmt(c.balance)} $${c.symbol}, worth ${usd(c.value)}`).join(', and ')}. Holder features start at ${usd(d.minUsd)} of either.`, 'error'); return; }
+      finish(d);
     } catch (e) {
       say(e?.code === 4001 || /reject|cancel|denied/i.test(e?.message || '') ? 'Cancelled in your wallet. Nothing was signed.' : e?.message || 'The check failed. Try again.', 'error');
     } finally {
@@ -73,5 +125,5 @@
 
   find();
   // Some wallets add themselves to the page a moment after it loads.
-  setTimeout(find, 700);
+  setTimeout(() => { if (!find().length) offerNoWallet(); }, 900);
 })();

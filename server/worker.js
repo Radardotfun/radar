@@ -5,6 +5,7 @@
 //   GET  /larpcheck?address=<CA>                     -> Larpcheck's verdict on the coin (see below)
 import { lcBoard, lcHolders, lcSettings, lcStart, lcPoll, lcAsk, lcHandle } from './lc.js';
 import { signalFeed } from './signals.js';
+import { savePair, takePair } from './holderpair.js';
 import { launchState, launchMeta, launchMetaFile, launchRecord, launchList, launchTaken } from './launch.js';
 import { engine, interpret, memeScore, judge, storyCheck, transcribe, watchVideo, sameImage, sameStory, samePicture, LOGO_HOST } from './narrative.js';
 import { holderOn, holderConfig, holderVerify, holderWho } from './holder.js';
@@ -360,6 +361,11 @@ export default {
     // route stays off for it; 1.7.18 on reads /holder/settings, whose wording comes from here.
     if (pathname === '/holder/config' && request.method === 'GET') return json(200, { on: false });
     if (pathname === '/holder/settings' && request.method === 'GET') return json(200, await holderConfig(env));
+    if (pathname === '/holder/pair' && request.method === 'POST') {
+      if (limited(`pair:${request.headers.get('cf-connecting-ip') || 'anon'}`, 300)) return json(429, { error: 'Too many checks, slow down a little' });
+      const r = await takePair(env.DB, (await request.json().catch(() => ({}))).id);
+      return json(r.status, r.body);
+    }
     if (pathname === '/signals' && request.method === 'POST') {
       if (limited(request.headers.get('cf-connecting-ip') || 'anon')) return json(429, { error: 'Too many checks, slow down a little' });
       const r = await signalFeed(await request.json().catch(() => ({})), env);
@@ -370,6 +376,8 @@ export default {
       if (limited(`holder:${request.headers.get('cf-connecting-ip') || 'anon'}`, 120)) return json(429, { error: 'Too many requests. Try again in a few minutes.' });
       const body = await request.json().catch(() => ({}));
       const r = pathname === '/holder/verify' ? await holderVerify(body, env, relayUrl(env)) : await holderWho(body, env, { limited });
+      // Signed on a phone for a computer that showed a QR code: it collects the answer from here.
+      if (pathname === '/holder/verify' && r.status === 200 && body.pair) await savePair(env.DB, body.pair, r.body).catch((e) => console.error('pair', e?.message));
       // Larpcheck's record of this account's posts, added to Radar's own for holders.
       if (pathname === '/holder/who' && r.status === 200 && r.body?.handle) r.body.lc = await lcHandle(r.body.handle, env, ctx).catch(() => null);
       return json(r.status, r.body);

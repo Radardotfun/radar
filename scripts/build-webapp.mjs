@@ -36,6 +36,20 @@ const alerts = await build({
 writeFileSync('web/alerts.js', `// Radar ${version} alerts page, built from webapp/alerts.js: https://github.com/Radardotfun/radar\n${alerts.outputFiles[0].text}`);
 console.log(`alerts.js ${version}: ${(alerts.outputFiles[0].text.length / 1024).toFixed(0)} KB`);
 
+// Opening a page in a wallet app, or on a phone by QR code, for browsers with no wallet.
+const walletOpen = await build({
+  entryPoints: ['webapp/wallet-open.js'],
+  bundle: true,
+  format: 'iife',
+  target: ['chrome110', 'firefox115', 'safari16'],
+  minify: true,
+  legalComments: 'none',
+  write: false,
+  logLevel: 'warning',
+});
+writeFileSync('web/wallet-open.js', `// Radar ${version}, built from webapp/wallet-open.js: https://github.com/Radardotfun/radar\n${walletOpen.outputFiles[0].text}`);
+console.log(`wallet-open.js ${version}: ${(walletOpen.outputFiles[0].text.length / 1024).toFixed(0)} KB`);
+
 // The launch page, with pump's SDK and Solana's web3.js. Minified for size; its source is webapp/launch.js.
 const launch = await build({
   entryPoints: ['webapp/launch.js'],

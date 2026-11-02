@@ -170,6 +170,8 @@
     });
     walletChoice.hidden = walletProviders.length < 2;
     if (!walletProviders.length) {
+      // Wallets can add themselves a moment after the page loads, so this looks again before offering the phone.
+      window.RadarWalletOpen?.watch({ el: document.getElementById('wallet-open'), hasWallet: () => !!(window.phantom?.solana || window.solflare || window.backpack?.solana || window.solana), phoneTitle: 'No wallet in this browser', phoneText: 'Open this page in your wallet app to buy with your own wallet.', qrTitle: 'No wallet in this browser? Use your phone', qrText: 'Scan this to open the same buy on your phone, then open it in your wallet app. The wallet still asks you to approve the buy.' });
       walletStatus.classList.add('wallet-get');
       walletStatus.innerHTML = 'No wallet found. Install <a href="https://phantom.com" target="_blank" rel="noopener">Phantom</a>, <a href="https://solflare.com" target="_blank" rel="noopener">Solflare</a> or <a href="https://backpack.app" target="_blank" rel="noopener">Backpack</a>, then reload.';
       connectButton.hidden = true;

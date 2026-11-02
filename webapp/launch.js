@@ -156,7 +156,7 @@ ui.connect.addEventListener('click', async () => {
   }
   findWallets();
   if (!providers.length) {
-    say('Install a Solana browser wallet such as Phantom, Solflare or Backpack, then reload this page.', 'error');
+    say('No wallet in this browser. Use the options above, or install a Solana wallet and reload this page.', 'error');
     return;
   }
   const [label, p] = providers[Math.min(Number(ui.choice.value || 0), providers.length - 1)];
@@ -366,6 +366,8 @@ if (!stillOpen && samePost(post)) fetch(`${API}/launch/taken?post=${encodeURICom
   showTaken(d.taken.mint);
 }).catch(() => {});
 findWallets();
+// Wallets can add themselves a moment after the page loads, so this looks again before offering the phone.
+window.RadarWalletOpen?.watch({ el: $('wallet-open'), hasWallet: () => { findWallets(); return providers.length > 0; }, phoneTitle: 'No wallet in this browser', phoneText: 'Open this page in your wallet app to launch with your own wallet.', qrTitle: 'No wallet in this browser? Use your phone', qrText: 'Scan this to open this page on your phone, then open it in your wallet app.' });
 reconnect();
 loadPost().finally(() => { if (stillOpen) resumeLaunch(stillOpen); });
 refresh();
