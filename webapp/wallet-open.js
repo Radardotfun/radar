@@ -32,6 +32,9 @@ const addStyle = () => {
 };
 
 const isPhone = () => /Android|iPhone|iPod|iPad/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent));
+// The QR code stays off until it's been tried on a real phone. ?qr=1 shows it.
+const qrOn = () => new URLSearchParams(location.search).get('qr') === '1';
+const available = () => isPhone() || qrOn();
 const links = (url) => APPS.map(([name, make]) => ({ name, href: make(url) }));
 const qrSvg = (text) => {
   const q = qrcode(0, 'M');
@@ -59,6 +62,7 @@ const getOne = () => {
 
 /** el: an empty element. phoneUrl: the page to open in the wallet's browser. qrUrl: the page the QR opens on a phone. The words come from the page. */
 function mount(el, { phoneUrl = location.href, qrUrl = location.href, phoneTitle, phoneText, qrTitle, qrText }) {
+  if (!available()) return;
   addStyle();
   el.classList.add('wo');
   el.hidden = false;
@@ -90,4 +94,4 @@ function watch({ el, hasWallet, ...words }) {
   }, 900);
 }
 
-window.RadarWalletOpen = { isPhone, links, mount, watch };
+window.RadarWalletOpen = { isPhone, available, links, mount, watch };

@@ -21,7 +21,7 @@ LAUNCH_STATE = "on"
 RADAR_MINT ="HyDSdtgiSa5mHqkTVoz8cTFTeVLFKdZ8amPvtNYfpump"
 # Sign in with Google for holders. A client id is public by design. Offered to everyone only when GOOGLE_LIVE is "1"; until then, with ?google=1 on /holder.
 GOOGLE_CLIENT_ID = "960012788157-tt36l1joo49n0j3n39lsesa5kfpd1dmr.apps.googleusercontent.com"
-GOOGLE_LIVE = "0"
+GOOGLE_LIVE = "1"
 LARPCHECK_MINT = "t9bnCGiZVUYsRKvx4d5dPcoDCSyuBM9C33ZNGNULARP"
 HOLDER_MIN_USD = "10"
 

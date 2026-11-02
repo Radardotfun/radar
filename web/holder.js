@@ -50,7 +50,10 @@
       if (d.linked && d.holder) { googleCredential = null; await finish(d); return; }
       if (d.linked) { say(holdings(d), 'error'); return; }
       $('google-note').textContent = 'Signed in with Google.';
-      say(find().length ? 'One step left. Connect and sign once, and this Google account remembers that wallet.' : 'One step left. Prove your wallet once using the options above, and this Google account remembers it.');
+      if (find().length) say('One step left. Connect and sign once, and this Google account remembers that wallet.');
+      else if (window.RadarWalletOpen?.available()) say('One step left. Prove your wallet once using the options above, and this Google account remembers it.');
+      // A computer with no wallet has nothing to sign with, so the link has to be made where the wallet is.
+      else say("One step left. This Google account isn't linked to a wallet yet. Open tryradar.fun/holder where your wallet is, on your phone or in a browser that has it, sign in with Google there and sign once. After that, Google works here too.");
       if (!find().length && window.RadarWalletOpen?.isPhone()) { offered = false; offerNoWallet(); }
     } catch { say("Couldn't check that. Try again.", 'error'); }
   }
@@ -87,7 +90,7 @@
     if (window.opener) setTimeout(() => window.close(), 2500);
   }
 
-  // No wallet in this browser. A phone opens this page in its wallet app. A computer shows a QR code and waits for the phone.
+  // No wallet in this browser. A phone opens this page in its wallet app. A computer says so, or with ?qr=1 shows a QR code and waits for the phone.
   let offered = false;
   const POLL_MS = 4000;
   const CODE_LIFE_MS = 5 * 60_000;
@@ -98,6 +101,7 @@
     const el = $('wallet-open');
     const opener = window.RadarWalletOpen;
     if (!opener || !el) { say('Open this page in a Solana wallet such as Phantom or Solflare.', 'error'); return; }
+    if (!opener.available()) { say('No wallet in this browser. Add Phantom or Solflare to it and reload this page.'); return; }
     const copy = {
       phoneTitle: 'No wallet in this browser',
       phoneText: 'Open this page in your wallet app. You sign the same message there, and it costs nothing.',
