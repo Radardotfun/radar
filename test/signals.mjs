@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import { signalItem } from '../extension/src/lib/alerts.js';
 import { signalFeed } from '../server/signals.js';
+import { makeToken } from '../server/holder.js';
 import { ACCOUNTS, READS_PER_DAY, AI_READS_PER_RUN, queries, searchUrl, postFrom, readable, isSignal, tick, recent, status } from '../bot/signals.js';
 
 const fakeD1 = () => {
@@ -164,4 +165,28 @@ const shut = await signalFeed({}, { DB: { prepare() { throw new Error('should no
 assert.equal(shut.status, 401);
 const forged = await signalFeed({ token: 'made.up' }, { DB: { prepare() { throw new Error('should not reach the table'); } }, HOLDER_SECRET: 'x' });
 assert.equal(forged.status, 401);
+// A real signed token on the real query: flagged posts only, newest first, nothing older than asked, none too old.
+const db6 = fakeD1();
+let fed = [tweet('600', 'I have this great idea for a drug called Regretamine'), tweet('601', 'Tesla deliveries were up this quarter')];
+const hand = async () => { const a = answer(fed); fed = []; return a; };
+await tick({ db: db6, x: hand, read, now, accounts });
+const env6 = { DB: db6, HOLDER_SECRET: 'test-secret' };
+const { token } = await makeToken(env6, 'So11111111111111111111111111111111111111112', now);
+const fedOut = await signalFeed({ token, since: now - 600_000 }, env6, { now });
+assert.equal(fedOut.status, 200);
+assert.deepEqual(fedOut.body.items.map((i) => i.id), ['600'], 'only the flagged post');
+const one = fedOut.body.items[0];
+assert.equal(one.author, 'elonmusk');
+assert.equal(one.name, 'Regretamine');
+assert.equal(one.why, 'A made up drug', 'the score is taken off the reason');
+assert.equal(one.url, 'https://x.com/elonmusk/status/600');
+assert.equal(one.at, now - 30_000);
+assert.equal((await signalFeed({ token, since: now }, env6, { now })).body.items.length, 0, 'nothing since the last look');
+assert.equal((await signalFeed({ token, since: 1 }, env6, { now: now + 7_200_000 })).status, 200);
+assert.equal((await signalFeed({ token, since: 1 }, env6, { now: now + 7_200_000 })).body.items.length, 0, 'an hour old is too old, whatever the since');
+assert.equal((await signalFeed({ token }, env6, { now: now + 90 * 86_400_000 })).status, 401, 'an expired token is refused');
+const alertFrom = signalItem(one);
+assert.equal(alertFrom.watch.author, 'elonmusk');
+assert.equal(alertFrom.text, 'A made up drug');
+console.log('PASS signals: a signed token on the real query');
 console.log('PASS signals: the alert, and holders only');
