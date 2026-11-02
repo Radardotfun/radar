@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Big account alerts · Radar</title>
+  <meta name="description" content="Radar watches big accounts on X and flags posts people may launch coins off. Holders get them live, with the top 3 coins." />
+  <meta name="theme-color" content="#07050f" />
+  <meta property="og:title" content="Big account alerts · Radar" />
+  <meta property="og:description" content="Radar watches big accounts on X and flags posts people may launch coins off." />
+  <meta property="og:image" content="https://tryradar.fun/icons/scan-card.png" />
+  <meta property="og:url" content="https://tryradar.fun/alerts" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <link rel="icon" href="/icons/icon32.png" sizes="32x32" />
+  <link rel="apple-touch-icon" href="/icons/icon512.png" />
+  <link rel="preconnect" href="https://narrative-radar.millenia-portfolio.workers.dev" crossorigin />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&family=Geist+Mono:wght@500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/app.css?v=1.7.58" />
+  <style>
+    .al-page { max-width: 720px; margin: 0 auto; padding: clamp(32px, 6vw, 64px) var(--gutter) clamp(48px, 7vw, 80px); }
+    .al-page h1 { margin-top: 14px; font-size: clamp(36px, 7vw, 58px); line-height: 1.02; letter-spacing: -0.035em; font-weight: 800; }
+    .al-bar { margin-top: 26px; display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 14px 16px; border: 1px solid var(--line-2); border-radius: 16px; background: var(--card); }
+    #al-status { flex: 1 1 220px; min-width: 0; font-size: 15px; color: var(--muted); }
+    #al-status.on { color: var(--ink); font-weight: 600; }
+    #al-status.on::before { content: ''; display: inline-block; width: 8px; height: 8px; margin-right: 9px; border-radius: 50%; background: #b79cff; vertical-align: 1px; }
+    .al-bar .btn { height: 42px; padding: 0 18px; font-size: 14px; flex: 0 1 auto; }
+    .al-bar [hidden] { display: none; }
+    .al-bar .btn:disabled { opacity: 0.6; cursor: default; }
+    #al-error, #al-empty { margin-top: 22px; color: var(--muted); font-size: 15px; }
+    #al-error[hidden], #al-empty[hidden] { display: none; }
+    #al-list { margin-top: 18px; display: grid; gap: 14px; }
+    .al-card { min-width: 0; padding: 20px; border: 1px solid var(--line-2); border-radius: 20px; background: var(--card); }
+    .al-top { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; font: 600 12px var(--mono); letter-spacing: 0.06em; }
+    .al-who { color: #b79cff; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .al-top time { color: var(--faint); flex: none; font-weight: 500; }
+    .al-card h2 { margin-top: 12px; font-size: clamp(24px, 5vw, 30px); line-height: 1.1; font-weight: 800; letter-spacing: -0.025em; overflow-wrap: anywhere; }
+    .al-why { margin-top: 8px; font-size: 15px; line-height: 1.45; color: #d9d3e8; overflow-wrap: anywhere; }
+    .al-card blockquote { margin: 12px 0 0; padding-left: 12px; border-left: 2px solid var(--line-2); font-size: 14px; line-height: 1.45; color: var(--muted); overflow-wrap: anywhere; }
+    .al-card .al-parent { color: var(--faint); margin-top: 8px; }
+    .al-coins { margin-top: 14px; display: grid; gap: 6px; }
+    .al-coin { all: unset; box-sizing: border-box; cursor: pointer; display: flex; align-items: center; gap: 9px; min-width: 0; min-height: 44px; padding: 0 12px; border-radius: 11px; background: rgba(255, 255, 255, 0.055); font: 600 13px var(--mono); color: var(--ink); }
+    .al-coin:hover { background: rgba(255, 255, 255, 0.1); }
+    .al-coin:focus-visible { outline: 2px solid var(--brand-lift); outline-offset: 2px; }
+    .al-coin i { font-style: normal; color: var(--faint); flex: none; }
+    .al-coin b { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .al-coin span { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-weight: 500; }
+    .al-coin u { text-decoration: none; flex: none; color: var(--muted); font-weight: 500; }
+    .al-coin em { font-style: normal; flex: none; color: #b79cff; }
+    .al-note { margin-top: 10px; font-size: 13px; color: var(--faint); }
+    .al-lock { display: block; margin-top: 14px; padding: 12px 14px; border: 1px dashed var(--line-2); border-radius: 12px; font-size: 14px; line-height: 1.4; color: var(--muted); text-decoration: none; }
+    .al-lock b { color: var(--ink); white-space: nowrap; }
+    .al-acts { margin-top: 14px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .al-acts .btn { height: 44px; padding: 0 12px; font-size: 14px; width: 100%; min-width: 0; }
+    .al-risk { margin-top: 26px; font-size: 13px; line-height: 1.5; color: var(--faint); }
+    @media (max-width: 420px) { .al-coin u { display: none; } .al-bar .btn { width: 100%; flex: 1 1 100%; } }
+  </style>
+</head>
+<body class="alerts-page">
+  <header class="nav">
+    <a class="logo" href="/" aria-label="Radar home">
+      <img class="wordmark" src="/icons/radar-wordmark.png" width="795" height="227" alt="radar" />
+    </a>
+    <a class="btn btn-ghost nav-cta" href="/scan">Scan a post</a>
+  </header>
+  <main class="al-page">
+    <p class="eyebrow">Beta</p>
+    <h1>Big account alerts</h1>
+    <p class="lede">Radar watches big accounts like Elon, Polymarket and Kalshi, and flags posts, replies and quotes people may launch coins off. It's a heads up, not a pick.</p>
+    <div class="al-bar">
+      <span id="al-status">Loading…</span>
+      <a id="al-unlock" class="btn btn-solid" href="/holder?next=alerts" hidden>Check my wallet</a>
+      <button id="al-notify" class="btn btn-ghost" type="button" hidden>Alert me while this page is open</button>
+    </div>
+    <p id="al-error" hidden>Couldn't load alerts. Radar will try again in a moment.</p>
+    <p id="al-empty" hidden>Nothing flagged in the last 24 hours. Most posts don't qualify, so it can stay quiet for a while.</p>
+    <div id="al-list"></div>
+    <p class="al-risk">Live alerts are for holders of $10 of Radar or Larpcheck. Radar scores posts with AI and finds coins by name, so it will sometimes be wrong. New coins are the riskiest there are. Not financial advice.</p>
+  </main>
+  <footer class="site-foot">
+    <span>Radar</span>
+    <span>Not financial advice. Memecoins are extremely risky.</span>
+    <span class="foot-links"><a href="https://github.com/Radardotfun/radar" target="_blank" rel="noopener">Source code</a> · <a href="/privacy">Privacy</a></span>
+  </footer>
+  <script src="/alerts.js?v=1.7.58"></script>
+</body>
+</html>

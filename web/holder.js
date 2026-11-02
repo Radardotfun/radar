@@ -54,6 +54,13 @@
       const fmt = (n) => Number(n).toLocaleString('en-US', { maximumFractionDigits: 0 });
       const usd = (n) => `$${Number(n).toFixed(2)}`;
       if (!d.holder) { say(`This wallet holds ${(d.coins || []).map((c) => `${fmt(c.balance)} $${c.symbol}, worth ${usd(c.value)}`).join(', and ')}. Holder features start at ${usd(d.minUsd)} of either.`, 'error'); return; }
+      // The site's own pages read it from here. A wallet's browser on a phone may have no opener to hand it to.
+      try { localStorage.setItem('nr:radarHolder', JSON.stringify({ token: d.token, exp: d.exp })); } catch {}
+      if (new URLSearchParams(location.search).get('next') === 'alerts') {
+        say(`You hold ${usd(d.value)} of $${d.symbol}. You're in.`, 'success');
+        setTimeout(() => location.replace('/alerts'), 900);
+        return;
+      }
       if (window.opener) for (const origin of PANELS) { try { window.opener.postMessage({ type: 'radar:holder', token: d.token, exp: d.exp }, origin); } catch {} }
       say(`You hold ${usd(d.value)} of $${d.symbol}. You're in. This window closes in a moment.`, 'success');
       setTimeout(() => window.close(), 2500);

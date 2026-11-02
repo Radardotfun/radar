@@ -211,5 +211,29 @@ assert.equal((await signalFeed({ token }, env6, { now: now + 90 * 86_400_000 }))
 const alertFrom = signalItem(one);
 assert.equal(alertFrom.watch.author, 'elonmusk');
 assert.equal(alertFrom.text, 'A made up drug');
+// The alerts page. No token and asking for the public list: the same posts 10 minutes late, with nothing to scan.
+const db8 = fakeD1();
+const env8 = { DB: db8, HOLDER_SECRET: 'test-secret' };
+let fed8 = [tweet('800', 'a drug called Delayed')];
+const hand8 = async () => { const a = answer(fed8); fed8 = []; return a; };
+await tick({ db: db8, x: hand8, read, now, accounts });
+const noCache = { cache: null };
+assert.equal((await signalFeed({ public: true }, env8, { now: now + 60_000, ...noCache })).body.items.length, 0, 'not yet, for 10 minutes');
+const late = await signalFeed({ public: true }, env8, { now: now + 660_000, ...noCache });
+assert.equal(late.status, 200);
+assert.equal(late.body.live, false);
+assert.deepEqual(late.body.items.map((i) => i.id), ['800'], 'then it shows');
+assert.equal(late.body.items[0].post, undefined, 'the public list has nothing to scan for coins');
+assert.equal((await signalFeed({ public: true }, env8, { now: now + 25 * 3_600_000, ...noCache })).body.items.length, 0, 'gone after a day');
+assert.equal((await signalFeed({}, env8, { now, ...noCache })).status, 401, 'asking for nothing gets nothing');
+assert.equal((await signalFeed({ token: 'made.up', public: true }, env8, { now, ...noCache })).status, 401, 'a bad token is refused, not handed the public list');
+// A holder asking for history sees the day's list straight away, ready to scan.
+const { token: t8 } = await makeToken(env8, 'So11111111111111111111111111111111111111112', now);
+const hist = await signalFeed({ token: t8, history: true }, env8, { now: now + 2 * 3_600_000, ...noCache });
+assert.equal(hist.body.live, true);
+assert.deepEqual(hist.body.items.map((i) => i.id), ['800']);
+assert.match(hist.body.items[0].post.text, /Delayed/);
+assert.equal((await signalFeed({ token: t8, since: 1 }, env8, { now: now + 2 * 3_600_000, ...noCache })).body.items.length, 0, 'the extension still only looks back an hour');
+console.log('PASS signals: the public list is late, the holder list is live');
 console.log('PASS signals: a signed token on the real query');
 console.log('PASS signals: the alert, and holders only');

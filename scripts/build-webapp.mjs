@@ -22,6 +22,20 @@ const code = `// Radar ${version} on the web: built from the extension source at
 writeFileSync('web/scan.js', code);
 console.log(`scan.js ${version}: ${(code.length / 1024).toFixed(0)} KB`);
 
+// The alerts page, readable like scan.js.
+const alerts = await build({
+  entryPoints: ['webapp/alerts.js'],
+  bundle: true,
+  format: 'iife',
+  target: ['chrome110', 'firefox115', 'safari16'],
+  minify: false,
+  legalComments: 'none',
+  write: false,
+  logLevel: 'warning',
+});
+writeFileSync('web/alerts.js', `// Radar ${version} alerts page, built from webapp/alerts.js: https://github.com/Radardotfun/radar\n${alerts.outputFiles[0].text}`);
+console.log(`alerts.js ${version}: ${(alerts.outputFiles[0].text.length / 1024).toFixed(0)} KB`);
+
 // The launch page, with pump's SDK and Solana's web3.js. Minified for size; its source is webapp/launch.js.
 const launch = await build({
   entryPoints: ['webapp/launch.js'],
