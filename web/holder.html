@@ -11,9 +11,15 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&family=Geist+Mono:wght@500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/trade.css?v=1.7.59" />
-  <script defer src="/wallet-open.js?v=1.7.59"></script>
-  <script defer src="/holder.js?v=1.7.59"></script>
+  <style>
+    .google-box { display: grid; justify-items: center; gap: 8px; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); text-align: center; }
+    .google-box[hidden] { display: none; }
+    .google-box p { margin: 0; color: var(--muted); font-size: 13px; }
+    #google-signin { min-height: 40px; }
+  </style>
+  <link rel="stylesheet" href="/trade.css?v=1.7.60" />
+  <script defer src="/wallet-open.js?v=1.7.60"></script>
+  <script defer src="/holder.js?v=1.7.60"></script>
 </head>
 <body class="insta">
   <header class="nav">
@@ -37,6 +43,10 @@
       </div>
       <button id="check-button" class="button primary" type="button">Connect and sign</button>
       <div id="wallet-open" hidden></div>
+      <div id="google-box" class="google-box" hidden>
+        <div id="google-signin"></div>
+        <p id="google-note">Already linked a wallet? Sign in with Google and skip this.</p>
+      </div>
       <p id="page-message" class="message" role="status" aria-live="polite"></p>
     </section>
     <p class="risk">Radar never asks for your seed phrase or private key. Not financial advice.</p>

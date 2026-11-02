@@ -36,10 +36,45 @@
   const fmt = (n) => Number(n).toLocaleString('en-US', { maximumFractionDigits: 0 });
   const holdings = (d) => `This wallet holds ${(d.coins || []).map((c) => `${fmt(c.balance)} $${c.symbol}, worth ${usd(c.value)}`).join(', and ') || 'neither coin'}. Holder features start at ${usd(d.minUsd || 10)}.`;
 
+  // Google can't say what a wallet holds, so a Google account is linked once to a wallet that signed. Off until the server has a client id.
+  // Not offered inside a wallet's browser, where Google refuses to sign anyone in.
+  let googleCredential = null;
+  const google = (extra) => fetch(`${API}/holder/google`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ credential: googleCredential, ...extra }), signal: AbortSignal.timeout(15000) }).then(async (r) => ({ ok: r.ok, d: await r.json().catch(() => ({})) }));
+  async function googleSignedIn(credential) {
+    googleCredential = credential;
+    say('Checking your Google account…');
+    try {
+      const { ok, d } = await google();
+      if (!ok) { say(d.error || "Couldn't check that. Try again.", 'error'); return; }
+      // Already linked, so there's nothing to link when it finishes.
+      if (d.linked && d.holder) { googleCredential = null; await finish(d); return; }
+      if (d.linked) { say(holdings(d), 'error'); return; }
+      $('google-note').textContent = 'Signed in with Google.';
+      say(find().length ? 'One step left. Connect and sign once, and this Google account remembers that wallet.' : 'One step left. Prove your wallet once using the options above, and this Google account remembers it.');
+      if (!find().length && window.RadarWalletOpen?.isPhone()) { offered = false; offerNoWallet(); }
+    } catch { say("Couldn't check that. Try again.", 'error'); }
+  }
+  async function offerGoogle() {
+    if (pair || (window.RadarWalletOpen?.isPhone() && find().length)) return;
+    const cfg = await fetch(`${API}/holder/settings`, { signal: AbortSignal.timeout(6000) }).then((r) => r.json()).catch(() => null);
+    if (!cfg?.googleClientId) return;
+    const s = document.createElement('script');
+    s.src = 'https://accounts.google.com/gsi/client';
+    s.async = true;
+    s.onload = () => {
+      window.google.accounts.id.initialize({ client_id: cfg.googleClientId, callback: (r) => googleSignedIn(r.credential) });
+      window.google.accounts.id.renderButton($('google-signin'), { theme: 'filled_black', size: 'large', shape: 'pill', text: 'continue_with' });
+      $('google-box').hidden = false;
+    };
+    document.head.append(s);
+  }
+
   // A passing check, wherever it was signed.
-  function finish(d) {
+  async function finish(d) {
+    // Signed in with Google and just proved a wallet: remember it. A failed link doesn't undo the check.
+    if (googleCredential && d.token) await google({ token: d.token }).catch(() => {});
     // Signed on this phone for a computer: the token is the computer's to collect.
-    if (pair) { say(`You hold ${usd(d.value)} of $${d.symbol}. You're in. Go back to your computer. It picks this up by itself.`, 'success'); return; }
+    if (pair) { say(`You hold ${usd(d.value)} of $${d.symbol}. You're in. Go back to the page that sent you here. It picks this up by itself.`, 'success'); return; }
     // The site's own pages read it from here. A wallet's browser on a phone may have no opener to hand it to.
     try { localStorage.setItem('nr:radarHolder', JSON.stringify({ token: d.token, exp: d.exp })); } catch {}
     if (params.get('next') === 'alerts') {
@@ -69,19 +104,21 @@
       qrTitle: 'No wallet in this browser? Use your phone',
       qrText: 'Scan this with your phone, open the page in your wallet app and sign. This page picks it up by itself.',
     };
-    if (opener.isPhone()) { opener.mount(el, copy); return; }
+    // On a phone the wallet's browser can't hand a Google link back unless this page is waiting for it, so only then does it use a code.
+    if (opener.isPhone() && !googleCredential) { opener.mount(el, copy); return; }
     let rounds = 0;
     const round = () => {
       rounds += 1;
       const id = [...crypto.getRandomValues(new Uint8Array(16))].map((b) => b.toString(16).padStart(2, '0')).join('');
-      opener.mount(el, { ...copy, qrUrl: `https://tryradar.fun/holder?pair=${id}` });
+      const target = `https://tryradar.fun/holder?pair=${id}`;
+      opener.mount(el, { ...copy, qrUrl: target, phoneUrl: target });
       const until = Date.now() + CODE_LIFE_MS;
       const poll = async () => {
         const r = await fetch(`${API}/holder/pair`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id }), signal: AbortSignal.timeout(8000) }).catch(() => null);
         const d = r?.ok ? await r.json().catch(() => null) : null;
         if (d?.ready) {
           el.hidden = true;
-          if (d.holder) finish(d); else say(holdings(d), 'error');
+          if (d.holder) await finish(d); else say(holdings(d), 'error');
           return;
         }
         if (Date.now() < until) { setTimeout(poll, POLL_MS); return; }
@@ -115,7 +152,7 @@
       if (!res.ok) throw new Error(d.error || 'The check failed. Try again.');
       if (d.off) { say('Holder features are not on yet.', 'error'); return; }
       if (!d.holder) { if (pair) { say(`${holdings(d)} Your computer will show this too.`, 'error'); return; } say(`This wallet holds ${(d.coins || []).map((c) => `${fmt(c.balance)} $${c.symbol}, worth ${usd(c.value)}`).join(', and ')}. Holder features start at ${usd(d.minUsd)} of either.`, 'error'); return; }
-      finish(d);
+      await finish(d);
     } catch (e) {
       say(e?.code === 4001 || /reject|cancel|denied/i.test(e?.message || '') ? 'Cancelled in your wallet. Nothing was signed.' : e?.message || 'The check failed. Try again.', 'error');
     } finally {
@@ -125,5 +162,5 @@
 
   find();
   // Some wallets add themselves to the page a moment after it loads.
-  setTimeout(() => { if (!find().length) offerNoWallet(); }, 900);
+  setTimeout(() => { if (!find().length) offerNoWallet(); offerGoogle().catch(() => {}); }, 900);
 })();

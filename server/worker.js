@@ -6,6 +6,7 @@
 import { lcBoard, lcHolders, lcSettings, lcStart, lcPoll, lcAsk, lcHandle } from './lc.js';
 import { signalFeed } from './signals.js';
 import { savePair, takePair } from './holderpair.js';
+import { holderGoogle } from './google.js';
 import { launchState, launchMeta, launchMetaFile, launchRecord, launchList, launchTaken } from './launch.js';
 import { engine, interpret, memeScore, judge, storyCheck, transcribe, watchVideo, sameImage, sameStory, samePicture, LOGO_HOST } from './narrative.js';
 import { holderOn, holderConfig, holderVerify, holderWho } from './holder.js';
@@ -361,6 +362,12 @@ export default {
     // route stays off for it; 1.7.18 on reads /holder/settings, whose wording comes from here.
     if (pathname === '/holder/config' && request.method === 'GET') return json(200, { on: false });
     if (pathname === '/holder/settings' && request.method === 'GET') return json(200, await holderConfig(env));
+    if (pathname === '/holder/google' && request.method === 'POST') {
+      if (!holderOn(env)) return json(200, { off: true });
+      if (limited(`holder:${request.headers.get('cf-connecting-ip') || 'anon'}`, 120)) return json(429, { error: 'Too many requests. Try again in a few minutes.' });
+      const r = await holderGoogle(await request.json().catch(() => ({})), env, relayUrl(env));
+      return json(r.status, r.body);
+    }
     if (pathname === '/holder/pair' && request.method === 'POST') {
       if (limited(`pair:${request.headers.get('cf-connecting-ip') || 'anon'}`, 300)) return json(429, { error: 'Too many checks, slow down a little' });
       const r = await takePair(env.DB, (await request.json().catch(() => ({}))).id);

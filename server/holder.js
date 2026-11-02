@@ -40,7 +40,8 @@ async function coinPrices(env) {
 export async function holderConfig(env) {
   const minUsd = holderMinUsd(env);
   if (!holderOn(env)) return { on: false, minUsd };
-  try { await coinPrices(env); return { on: true, minUsd, pitch: pitch(env) }; } catch { return { on: false, minUsd }; }
+  const google = env.GOOGLE_CLIENT_ID ? { googleClientId: env.GOOGLE_CLIENT_ID } : {};
+  try { await coinPrices(env); return { on: true, minUsd, pitch: pitch(env), ...google }; } catch { return { on: false, minUsd }; }
 }
 
 // What the wallet signs. web/holder.js writes the same words.
@@ -108,6 +109,11 @@ async function balanceOf(rpcUrl, mint, address) {
 export async function holderVerify(body, env, rpcUrl, now = Date.now()) {
   const address = String(body?.address || '');
   if (!SOL_ADDRESS.test(address) || !await validSignature({ address, issued: String(body?.issued || ''), signature: String(body?.signature || '') }, now)) return { status: 400, body: { error: 'That signature did not check out. Try again.' } };
+  return holderForWallet(address, env, rpcUrl, now);
+}
+
+// What this wallet holds now, and a token if it's enough. The wallet must already be proven: a signature above, or a link made with one.
+export async function holderForWallet(address, env, rpcUrl, now = Date.now()) {
   const busy = { status: 502, body: { error: "Couldn't read your balance right now. Try again in a moment." } };
   const prices = await coinPrices(env).catch(() => null);
   if (!prices) return busy;
