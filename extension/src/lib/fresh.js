@@ -28,6 +28,16 @@ const sameName = (a, b) => {
   return (sym && sym === norm(b.symbol || '')) || (name && name === norm(b.name || ''));
 };
 
+// Elon posting about a drug isn't a story about Elon: "elon" and "musk" there pull in every new coin with his name. The author's
+// name still counts when the post says it, or when there's nothing else to go on.
+export function storyWords(words, author, text = '') {
+  const who = norm(author || '');
+  const said = norm(text);
+  if (who.length < 3) return words;
+  const kept = words.filter((w) => { const k = norm(w); return k.length < 3 || !who.includes(k) || said.includes(k); });
+  return kept.length ? kept : words;
+}
+
 /**
  * tokens: live tokens from a search (older ones too, so a copy can be told from a first). words: what the story is called.
  * hot: only coins trading this hour. -> the new ones, each with copyOf when it's a copy, first-of-their-name first, then newest.

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Radar
 // @namespace    https://tryradar.fun
-// @version      1.7.53
+// @version      1.7.54
 // @description  See the coins behind any post on X and instantly reroute to the biggest match that passes available on-chain safety checks.
 // @homepageURL  https://tryradar.fun
 // @supportURL   https://tryradar.fun
@@ -31,7 +31,7 @@
 // @downloadURL  https://tryradar.fun/radar.user.js
 // ==/UserScript==
 
-// Radar 1.7.53: built from the extension source at https://tryradar.fun. Not financial advice.
+// Radar 1.7.54: built from the extension source at https://tryradar.fun. Not financial advice.
 (() => {
   var __defProp = Object.defineProperty;
   var __export = (target, all) => {
@@ -834,6 +834,16 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     const sym2 = norm(a.symbol || ""), name = norm(a.name || "");
     return sym2 && sym2 === norm(b.symbol || "") || name && name === norm(b.name || "");
   };
+  function storyWords(words, author, text = "") {
+    const who = norm(author || "");
+    const said = norm(text);
+    if (who.length < 3) return words;
+    const kept = words.filter((w) => {
+      const k = norm(w);
+      return k.length < 3 || !who.includes(k) || said.includes(k);
+    });
+    return kept.length ? kept : words;
+  }
   function freshPairs(tokens, words, { chains = null, now = Date.now(), maxAge = NEW_TAB_MS, hot = false } = {}) {
     const list = [...new Map((tokens || []).filter((t) => t?.address).map((t) => [t.address, t])).values()];
     return list.filter((t) => t.createdAt && now - t.createdAt <= maxAge && (!chains || chains.includes(t.chain)) && isMemecoin(t) && trading(t, hot) && tieOf(t, { anchors: words })).map((t) => {
@@ -1289,7 +1299,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
         const r = await read({ post });
         const found = await findCoins(judge ? { ...r, judge: true } : r, s.chains, { apiBase: API_BASE, cached });
         const words = [.../* @__PURE__ */ new Set([...found.anchors || [], ...found.terms || [], ...postWords(post?.text)])];
-        const newPairs = freshPairs([...found.pool || [], ...found.roleCandidates || [], ...found.others || [], ...found.mentioned || []], words, { chains: s.chains }).slice(0, 12);
+        const newPairs = freshPairs([...found.pool || [], ...found.roleCandidates || [], ...found.others || [], ...found.mentioned || []], storyWords(words, post?.author, post?.text), { chains: s.chains }).slice(0, 12);
         return { ...found, newPairs, words };
       }));
     }

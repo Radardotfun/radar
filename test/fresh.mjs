@@ -1,6 +1,11 @@
 // Offline: finding new pairs on a story, and following a word. node test/fresh.mjs
 import assert from 'node:assert/strict';
-import { freshPairs, postWords, BADGE_MS, NEW_TAB_MS } from '../extension/src/lib/fresh.js';
+import { freshPairs, postWords, storyWords, BADGE_MS, NEW_TAB_MS } from '../extension/src/lib/fresh.js';
+
+assert.deepEqual(storyWords(['regretamine', 'regret', 'elon', 'musk'], 'elonmusk', 'a drug called Regretamine'), ['regretamine', 'regret'], 'the author alone is not the story');
+assert.deepEqual(storyWords(['elon', 'mars'], 'elonmusk', 'Elon is going to Mars'), ['elon', 'mars'], 'unless the post says the name');
+assert.deepEqual(storyWords(['elon', 'musk'], 'elonmusk', 'look at this'), ['elon', 'musk'], 'nothing else to go on: keep them');
+assert.deepEqual(storyWords(['max', 'meta'], '', 'x'), ['max', 'meta'], 'no author: nothing changes');
 import { newFollow, checkWatch, FOLLOW_MS } from '../extension/src/lib/alerts.js';
 
 const now = 1_800_000_000_000;
