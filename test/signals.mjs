@@ -139,7 +139,7 @@ assert.equal(capped.capped, true);
 assert.equal(calls, 2, 'at the cap X is not asked at all');
 await tick({ db: db4, x: costly, read: quiet, now: now + 86_400_000, accounts, cap: 3 });
 assert.equal(calls, 3, 'a new day starts again');
-assert.equal(READS_PER_DAY, 1000, '$5 a day at $0.005 a post');
+assert.equal(READS_PER_DAY, 2000, '$10 a day at $0.005 a post');
 
 // X slowing us down or refusing stops that minute's asking, and loses nothing.
 const db5 = fakeD1();
