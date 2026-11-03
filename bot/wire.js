@@ -82,7 +82,9 @@ export function findStories(coins, now = Date.now()) {
   }
   return stories.map((s) => {
     const list = [...s.list.values()];
-    const first = list.reduce((a, c) => (c.t < a.t ? c : a), list[0]);
+    // The story may have started before the window: the earliest coin kept under its words is the real First.
+    const named = (c) => { const w = new Set([...wordsOf(c.n), ...wordsOf(c.s)]); return s.words.some((x) => w.has(x)); };
+    const first = coins.filter(named).reduce((a, c) => (c.t < a.t ? c : a), list.reduce((a, c) => (c.t < a.t ? c : a), list[0]));
     const big = [...list].sort((a, c) => c.m - a.m).filter((c) => c.a !== first.a).slice(0, MAX_LOOKUPS - 1);
     return {
       words: s.words.slice(0, 2),

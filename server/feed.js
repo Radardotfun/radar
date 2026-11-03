@@ -1,13 +1,13 @@
 // Breaking now: words many new coins are launching under, a sign a story is spawning coins. It reads the launches the bot already
 // saves each minute (wire_rows, bot/chat.js), so it costs one database read a minute. Names only: it says what launched, never why.
 // Holders see it live. Everyone else sees the same list as it stood 10 minutes ago, which the server decides, since the code is public.
-import { findStories, WINDOW_MS } from '../bot/wire.js';
+import { findStories, KEEP_MS } from '../bot/wire.js';
 import { readToken } from './holder.js';
 
 export const FEED_DELAY_MS = 10 * 60_000;
 
 async function readStories(env, asOf) {
-  const { results } = await env.DB.prepare('SELECT coins FROM wire_rows WHERE at >= ? AND at <= ?').bind(asOf - WINDOW_MS, asOf).all();
+  const { results } = await env.DB.prepare('SELECT coins FROM wire_rows WHERE at >= ? AND at <= ?').bind(asOf - KEEP_MS, asOf).all();
   return findStories((results || []).flatMap((row) => JSON.parse(row.coins)), asOf);
 }
 

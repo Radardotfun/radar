@@ -269,3 +269,15 @@ const quiet = async () => ({ score: 90, why: 'a dog', name: 'Biscuit' });
   assert.ok(shown.includes('PIC') && shown.includes('SNAP'), 'both coins with the post\'s picture');
   console.log('PASS bughunt: every coin with the post\'s picture is kept');
 }
+
+// 19. A story that began before the window knows its real First.
+{
+  const c = (i, ago, m = 3000) => ({ a: `c${i}`, s: 'ZORBLAX', n: 'Zorblax', m, d: `w${i}`, t: NOW - ago * 60_000 });
+  const fresh = Array.from({ length: 8 }, (_, i) => c(i, 5 + i, i ? 3000 : 40000));
+  const [story] = findStories([...fresh, c(99, 50)], NOW);
+  assert.equal(story.first.a, 'c99', 'the coin from 50 minutes ago');
+  assert.equal(story.startedAt, NOW - 50 * 60_000);
+  assert.equal(story.coins, 8, 'the busy count still only covers the window');
+  assert.equal(findStories(Array.from({ length: 3 }, (_, i) => c(i, 50, 90000)), NOW).length, 0, 'old coins alone are no story');
+  console.log('PASS bughunt: a story knows when it really began');
+}
