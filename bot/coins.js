@@ -234,7 +234,8 @@ export async function botCoins(res, post, { search, lookupCa, lookupBio = lookup
   const lead = named ? null : leadOf(story.filter((t) => t.mcapBacked && alive(t)));
   if (lead) story = story.filter((t) => t.address === lead.address || !sameCoin(t, lead) || (t.createdAt || 0) < (lead.createdAt || 0));
   // Other coins with the same picture under another name were made for this post too.
-  for (const t of pictured) if (!seen.has(t.address) && !sameCoin(t, named)) { seen.add(t.address); story.push({ ...t, relevance: 99 }); }
+  // Not by `seen`: that also holds coins the story filter just turned down, and a judge's low score is no reason to drop a coin with this very picture.
+  for (const t of pictured) if (!story.some((s) => s.address === t.address) && !sameCoin(t, named) && !(onlyChain && chains.includes(onlyChain) && t.chain !== onlyChain)) { seen.add(t.address); story.push({ ...t, relevance: 99 }); }
   // A second address in the post is a coin the post names too.
   for (const t of (res?.mentioned || []).slice(1)) if (chains.includes(t.chain) && !seen.has(t.address) && !sameCoin(t, named)) { seen.add(t.address); story.push({ ...t, relevance: 99 }); }
   if (named) story.push({ ...named, relevance: Math.max(100, ...story.map((t) => t.relevance || 0)) });

@@ -257,3 +257,15 @@ const quiet = async () => ({ score: 90, why: 'a dog', name: 'Biscuit' });
   assert.equal(ticker('...'), '?');
   console.log('PASS bughunt: an emoji ticker prints as itself');
 }
+
+// 20. A second coin launched with the post's very picture stays in the reply, even when the judge scored it low.
+{
+  const coin = (a, symbol, cap, relevance) => ({ address: a, chain: 'solana', symbol, name: symbol, image: `https://dd.dexscreener.com/ds-data/tokens/solana/${a}.png`, marketCap: cap, liquidity: cap / 5, mcapBacked: true, relevance, volume: { h24: cap }, txns: { h1: { buys: 5, sells: 2 } }, createdAt: NOW - 3_600_000, pairAddresses: [`p${a}`] });
+  const big = coin('Big1111111111111111111111111111111111111111', 'PIC', 80_000, 85);
+  const small = coin('Small111111111111111111111111111111111111111', 'SNAP', 20_000, 65);
+  const res = { mentioned: [], roleCandidates: [small, big], picks: [], others: [], pool: [small, big] };
+  const post = { text: 'look', images: ['https://pbs.twimg.com/media/x.jpg'], url: 'https://x.com/a/status/1' };
+  const shown = JSON.stringify(await botCoins(res, post, { search: async () => [], lookupCa: async () => null, capOf: async () => null, matchImages: async () => [0, 1], chains: ['solana'] }));
+  assert.ok(shown.includes('PIC') && shown.includes('SNAP'), 'both coins with the post\'s picture');
+  console.log('PASS bughunt: every coin with the post\'s picture is kept');
+}
