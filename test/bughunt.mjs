@@ -5,6 +5,7 @@ import { wordsOf, findStories } from '../bot/wire.js';
 import { aggregate, relevance } from '../extension/src/lib/market.js';
 import { extractKeywords } from '../extension/src/lib/keywords.js';
 import { coinCheck } from '../extension/src/ui/coincheck.js';
+import { tieOf } from '../extension/src/lib/alerts.js';
 import { txBlock } from '../webapp/launch-guard.js';
 import { makeHandlers, DEFAULTS } from '../extension/src/lib/handlers.js';
 import { worthRetry } from '../bot/trigger.js';
@@ -290,4 +291,12 @@ const quiet = async () => ({ score: 90, why: 'a dog', name: 'Biscuit' });
   assert.equal(ownCoin(t, { author: 'cashcatss' }), false, 'following missing');
   assert.equal(ownCoin(t, { author: 'cashcatss', followers: 900_000 }), false, 'a big account');
   console.log('PASS bughunt: an unread following never makes a coin the poster\'s own');
+}
+
+// 22. New pairs and word alerts take a two-character Chinese name, and still skip two Latin letters.
+{
+  assert.equal(tieOf({ name: '川普', symbol: '川普' }, { anchors: ['川普'] }), 'name');
+  assert.equal(tieOf({ name: 'AB Coin', symbol: 'AB' }, { anchors: ['ab'] }), null, 'two Latin letters is no word');
+  assert.equal(tieOf({ name: 'Doge Moon', symbol: 'DOGEM' }, { anchors: ['doge'] }), 'name');
+  console.log('PASS bughunt: a two-character Chinese name ties a coin to its story');
 }

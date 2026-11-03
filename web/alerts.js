@@ -1,4 +1,4 @@
-// Radar 1.7.78 alerts page, built from webapp/alerts.js: https://github.com/Radardotfun/radar
+// Radar 1.7.79 alerts page, built from webapp/alerts.js: https://github.com/Radardotfun/radar
 (() => {
   // extension/src/lib/keywords.js
   var STOP = new Set(`a about above after again against all almost also am an and any are aren as at be because been before
@@ -702,6 +702,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
   var WATCH_MS = 24 * 36e5;
   var EARLY_MS = 10 * 6e4;
   var FOLLOW_MS = 3 * 24 * 36e5;
+  var shortest = (k) => /^[\x00-\x7f]*$/.test(k) ? 3 : 2;
   function tieOf(t, watch) {
     if (watch.id && (t.links || []).some((l) => String(l).includes(`/status/${watch.id}`))) return "post";
     const name = norm(t.name || "");
@@ -709,7 +710,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     const words = new Set(`${t.name} ${t.symbol}`.split(/[^\p{L}\p{N}]+/u).map(norm).filter(Boolean));
     for (const a of watch.anchors || []) {
       const k = norm(String(a));
-      if (k.length < 3) continue;
+      if (k.length < shortest(k)) continue;
       if (sym2 === k || name === k || words.has(k) || k.length >= 5 && (name.includes(k) || sym2.includes(k))) return "name";
     }
     return null;
@@ -737,7 +738,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     const keep = /* @__PURE__ */ new Set([...firsts.slice(0, n2), ...copies]);
     return list.filter((t) => keep.has(t));
   }
-  var postWords = (text) => extractKeywords(String(text || ""), 3, { strongOnly: true }).filter((w) => norm(w).length >= 3);
+  var postWords = (text) => extractKeywords(String(text || ""), 3, { strongOnly: true }).filter((w) => norm(w).length >= shortest(norm(w)));
   var tradesIn = (t, w) => (t.txns?.[w]?.buys || 0) + (t.txns?.[w]?.sells || 0);
   var trading = (t, hot) => {
     if (t.marketCap > 0 && t.marketCap < MIN_CAP) return false;

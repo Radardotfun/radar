@@ -3,7 +3,7 @@
 // runs the checks.
 import { isMemecoin } from './market.js';
 import { extractKeywords, norm } from './keywords.js';
-import { tieOf } from './alerts.js';
+import { tieOf, shortest } from './alerts.js';
 
 export const BADGE_MS = 6 * 3_600_000;
 export const NEW_TAB_MS = 24 * 3_600_000;
@@ -25,7 +25,7 @@ export function keepBest(list, n = 12) {
 }
 
 /** The words of a post worth searching for: names and cashtags, never generic words. */
-export const postWords = (text) => extractKeywords(String(text || ''), 3, { strongOnly: true }).filter((w) => norm(w).length >= 3);
+export const postWords = (text) => extractKeywords(String(text || ''), 3, { strongOnly: true }).filter((w) => norm(w).length >= shortest(norm(w)));
 
 // Trading now, for the badge. The tab also keeps a coin that traded through the day and is quiet this hour.
 const tradesIn = (t, w) => (t.txns?.[w]?.buys || 0) + (t.txns?.[w]?.sells || 0);

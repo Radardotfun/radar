@@ -73,6 +73,9 @@ export function newFollow(word, now = Date.now()) {
   };
 }
 
+// The shortest word that means anything: 3 letters in Latin script, 2 characters in Chinese or Japanese (川普).
+export const shortest = (k) => (/^[\x00-\x7f]*$/.test(k) ? 3 : 2);
+
 // How a coin is tied to the watched post: it links the post, or its name or ticker carries one of the post's anchors.
 export function tieOf(t, watch) {
   if (watch.id && (t.links || []).some((l) => String(l).includes(`/status/${watch.id}`))) return 'post';
@@ -81,7 +84,7 @@ export function tieOf(t, watch) {
   const words = new Set(`${t.name} ${t.symbol}`.split(/[^\p{L}\p{N}]+/u).map(norm).filter(Boolean));
   for (const a of watch.anchors || []) {
     const k = norm(String(a));
-    if (k.length < 3) continue;
+    if (k.length < shortest(k)) continue;
     if (sym === k || name === k || words.has(k) || (k.length >= 5 && (name.includes(k) || sym.includes(k)))) return 'name';
   }
   return null;
