@@ -12,6 +12,7 @@ const TELEGRAM = 'https://api.telegram.org';
 const DAY_CAP = 200;
 const CHAT_CAP = 30;
 const MAX_TRIES = 4;
+const JOBS_PER_TICK = 5;
 const MAX_WATCHED = 10;
 export const DISCORD_PERMISSIONS = 84992; // View Channels, Send Messages, Embed Links, Read Message History
 
@@ -130,14 +131,27 @@ export function createChat(deps) {
       return { gaveUp: String(e.message || e).slice(0, 160) };
     }
   }
+  // Scans wait in the queue, one row each, and the minute's cron run starts them. A webhook only adds the row: work started
+  // from a webhook gets about 30 seconds after its answer, and a slow post (a busy DexScreener, a video) was cut off with
+  // no reply and no retry. A row of its own can't be lost to another write, as one shared list could.
+  // The key sorts by time, then by order within this run (two links in one message, the same millisecond).
+  let seq = 0;
+  const queue = (env, job) => env.DB.prepare('INSERT INTO bot_kv (k, v) VALUES (?, ?)')
+    .bind(`job:${String(Date.now()).padStart(15, '0')}:${String(seq++ % 1e6).padStart(6, '0')}:${Math.random().toString(36).slice(2, 10)}`, JSON.stringify({ ...job, tries: job.tries || 0 })).run();
+  // The next jobs, oldest first. Deleting is the claim: two runs that overlap can't start the same one.
+  async function takeJobs(env, n) {
+    const { results } = await env.DB.prepare("SELECT k FROM bot_kv WHERE k >= 'job:' AND k < 'job;' ORDER BY k LIMIT ?").bind(n).all();
+    const jobs = [];
+    for (const { k } of results || []) {
+      const row = await env.DB.prepare('DELETE FROM bot_kv WHERE k = ? RETURNING v').bind(k).first();
+      if (row) jobs.push(JSON.parse(row.v));
+    }
+    return jobs;
+  }
   async function dispatch(env, job) {
     const res = await deps.self.fetch('https://radar-bot/chat-job', { method: 'POST', headers: { 'content-type': 'application/json', 'x-bot-token': env.BOT_TOKEN }, body: JSON.stringify(job) })
       .then((r) => r.json()).catch((e) => ({ retry: true, error: String(e.message || e) }));
-    if (res.retry) {
-      const pending = await getKv(env, 'pending', []);
-      pending.push({ ...job, tries: (job.tries || 0) + 1 });
-      await setKv(env, 'pending', pending.slice(-30));
-    }
+    if (res.retry) await queue(env, { ...job, tries: (job.tries || 0) + 1 });
     return res;
   }
 
@@ -172,8 +186,13 @@ export function createChat(deps) {
     const url = postLinks(text)[0];
     if (!url) return note('That has no link to a post on X.');
     if (!await allowed(env, i.guild_id || i.channel_id)) return note('Radar has hit its limit for now. Try again later.');
-    const job = { via: 'discord-interaction', token: i.token, url };
-    ctx.waitUntil(dispatch(env, job));
+    // "Radar is thinking…" shows until the next minute's run answers; the token is good for 15 minutes.
+    try {
+      await queue(env, { via: 'discord-interaction', token: i.token, url });
+    } catch (e) {
+      console.log('discord queue failed', e.message);
+      return note(BUSY);
+    }
     return reply({ type: 5 });
   }
 
@@ -190,12 +209,15 @@ export function createChat(deps) {
       if (/^\/(start|help|scan)\b/i.test(m.text || '')) ctx.waitUntil(telegram(env, 'sendMessage', { chat_id: m.chat.id, text: HELP, link_preview_options: { is_disabled: true } }).catch(() => {}));
       return new Response('ok');
     }
-    ctx.waitUntil((async () => {
+    // Queued before answering, and answered ok even if that failed: Telegram sends an update again after an error.
+    try {
       for (const url of urls) {
-        if (!await allowed(env, `tg${m.chat.id}`)) return;
-        await dispatch(env, { via: 'telegram', chat: m.chat.id, message: m.message_id, url });
+        if (!await allowed(env, `tg${m.chat.id}`)) break;
+        await queue(env, { via: 'telegram', chat: m.chat.id, message: m.message_id, url });
       }
-    })().catch((e) => console.log('telegram failed', e.message)));
+    } catch (e) {
+      console.log('telegram failed', e.message);
+    }
     return new Response('ok');
   }
 
@@ -217,7 +239,7 @@ export function createChat(deps) {
       }
     }
     if (changed) await setKv(env, 'watch', watch);
-    for (const job of jobs.slice(0, 5)) if (await allowed(env, job.guild)) await dispatch(env, job);
+    for (const job of jobs.slice(0, 5)) if (await allowed(env, job.guild)) await queue(env, job);
   }
 
   // A minute of launches goes in one row, so the wire costs one database write a minute.
@@ -246,13 +268,15 @@ export function createChat(deps) {
 
   async function tick(env) {
     const steps = [wireTick(env).catch((e) => console.log('wire failed', e.message))];
-    if (env.DISCORD_BOT_TOKEN) steps.push(readChannels(env).catch((e) => console.log('channels failed', e.message)));
+    // Watched channels first, so a link posted there this minute starts this minute.
+    if (env.DISCORD_BOT_TOKEN) await readChannels(env).catch((e) => console.log('channels failed', e.message));
+    // Retries saved as one list before the queue had rows of their own go back in line.
     const pending = await getKv(env, 'pending', []);
     if (pending.length) {
       await setKv(env, 'pending', []);
-      for (const job of pending.slice(0, 5)) steps.push(dispatch(env, job).catch(() => {}));
-      if (pending.length > 5) await setKv(env, 'pending', pending.slice(5));
+      for (const job of pending) await queue(env, job);
     }
+    for (const job of await takeJobs(env, JOBS_PER_TICK)) steps.push(dispatch(env, job).catch(() => {}));
     await Promise.all(steps);
   }
 
@@ -274,7 +298,7 @@ export function createChat(deps) {
     return out;
   }
 
-  const status = async (env) => ({ discord: !!(env.DISCORD_BOT_TOKEN && env.DISCORD_PUBLIC_KEY && env.DISCORD_APP_ID), telegram: !!(env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_SECRET), watching: Object.keys(await getKv(env, 'watch', {})).length, wire: !!(await getKv(env, 'wire', {})).channel, pending: (await getKv(env, 'pending', [])).length });
+  const status = async (env) => ({ discord: !!(env.DISCORD_BOT_TOKEN && env.DISCORD_PUBLIC_KEY && env.DISCORD_APP_ID), telegram: !!(env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_SECRET), watching: Object.keys(await getKv(env, 'watch', {})).length, wire: !!(await getKv(env, 'wire', {})).channel, pending: (await env.DB.prepare("SELECT COUNT(*) AS n FROM bot_kv WHERE k >= 'job:' AND k < 'job;'").first())?.n ?? 0 });
 
   return { interaction, telegramUpdate, runJob, tick, setup, status, wireBursts };
 }
