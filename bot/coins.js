@@ -29,6 +29,11 @@ export function cashtags(text) {
     const t = m[1].toUpperCase();
     if (!MAJORS.has(t) && !out.includes(t)) out.push(t);
   }
+  // A ticker with the $ at the end ("GTA$"): the coin's own symbol keeps it.
+  for (const m of String(text || '').matchAll(/(?:^|[^\w$])([A-Za-z][A-Za-z0-9]{1,11}\$)(?![\w$])/g)) {
+    const t = m[1].toUpperCase();
+    if (!MAJORS.has(t.slice(0, -1)) && !out.includes(t)) out.push(t);
+  }
   return out.slice(0, 3);
 }
 
@@ -59,7 +64,8 @@ function sameCoin(t, n) {
 // Crew" through for a tiger in a box marked "free kitten").
 export const ON_STORY = 80;
 
-const SOL_CA = /\b[1-9A-HJ-NP-Za-km-z]{32,44}\b/g;
+// Not \b: a link like gmgn.ai/sol/token/lu5EtQcb_<address> joins the address to an underscore, a word character.
+const SOL_CA = /(?<![1-9A-HJ-NP-Za-km-z])[1-9A-HJ-NP-Za-km-z]{32,44}(?![1-9A-HJ-NP-Za-km-z])/g;
 const EVM_CA = /\b0x[a-fA-F0-9]{40}\b/;
 const EVM_CAS = /\b0x[a-fA-F0-9]{40}\b/g;
 

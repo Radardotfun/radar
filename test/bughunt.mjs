@@ -321,3 +321,21 @@ const quiet = async () => ({ score: 90, why: 'a dog', name: 'Biscuit' });
   }
   console.log('PASS bughunt: a chunked body is cut off at the size its route allows');
 }
+
+// 24. Bad bot answers on real posts (3 Nov): an old namesake as OG, an address inside a GMGN link, a "GTA$" ticker.
+{
+  const { botReply } = await import('../bot/reply.js');
+  const { cashtags } = await import('../bot/coins.js');
+  const postAt = Date.parse('2026-11-02T19:00:00Z');
+  const tok = (symbol, address, daysBefore) => ({ symbol, address, marketCap: 20_000, createdAt: postAt - daysBefore * 864e5, volume: { h24: 9_000 } });
+  const r = botReply({ picks: [{ role: 'top', token: tok('PEPPER', 'TopPepper11111111111111111111111111111pump', 0.1) }, { role: 'og', token: tok('Pepper', 'HXHZoldraccoon111111111111111111111111pump', 24) }], postAt }, 'https://x.com/i/status/1', postAt + 3600e3);
+  assert.doesNotMatch(r, /OG: Pepper/, 'a coin from 24 days before the post is not its OG');
+  assert.match(r, /Same name, older coin/);
+  assert.ok(cashtags('GTA$ is the primary in-game currency?').includes('GTA$'));
+  assert.deepEqual(cashtags('it was US$100 and $FROGGY'), ['FROGGY'], 'a price is no ticker');
+  const seen = [];
+  const addr = '5BgUXqWm8n3a9WkTpump2hJ4cV7xYz1bQ6rS8dE9fG2hKpump'.slice(0, 44);
+  await botCoins({ mentioned: [] }, { text: `new gem https://gmgn.ai/sol/token/lu5EtQcb_${addr}` }, { search: async () => [], lookupCa: async (ca) => { seen.push(ca); return null; }, capOf: async () => null, matchImages: async () => [], chains: ['solana'] });
+  assert.ok(seen.includes(addr), 'the address inside a GMGN link is looked up');
+  console.log('PASS bughunt: no old OG, GMGN link addresses, and GTA$ tickers');
+}

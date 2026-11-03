@@ -61,7 +61,9 @@ export function replyEntries(result, now = Date.now()) {
     if (!t || t.address === named?.address) continue;
     const also = won(t.address).filter((r) => !label.endsWith(r));
     // A coin alone holds whichever role it landed on (OG or Mover too, when its market cap isn't backed) and beat nobody for it.
-    entries.push({ label: [result?.alone || (role === 'top' && noTop) ? (older(t) ? '🔁 Same name, older coin' : '🎯 On this story') : label, ...also].join(', '), t, stat: stat(t, role === 'top' ? usd(t.marketCap)
+    // OG means the first coin on this story: one launched over a week before the post just shares the name (a 24-day-old raccoon
+    // "Pepper" was the OG on a dog called Pepper).
+    entries.push({ label: [result?.alone || (role === 'top' && noTop) ? (older(t) ? '🔁 Same name, older coin' : '🎯 On this story') : role === 'og' && older(t) ? '🔁 Same name, older coin' : label, ...also].join(', '), t, stat: stat(t, role === 'top' ? usd(t.marketCap)
       : role === 'og' ? (ago(t.createdAt, now) ? `launched ${ago(t.createdAt, now)} ago` : usd(t.marketCap))
         : usd(t.volume?.h24) ? `${usd(t.volume.h24)} vol 24h` : usd(t.marketCap)) });
   }
