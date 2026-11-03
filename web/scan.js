@@ -1,4 +1,4 @@
-// Radar 1.7.81 on the web: built from the extension source at https://tryradar.fun. Not financial advice.
+// Radar 1.7.82 on the web: built from the extension source at https://tryradar.fun. Not financial advice.
 (() => {
   // extension/src/lib/keywords.js
   var STOP = new Set(`a about above after again against all almost also am an and any are aren as at be because been before
@@ -3405,7 +3405,8 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       const st = s.story;
       if (st?.larpcheck?.checked) lines.push(`Larpcheck: ${st.larpcheck.verdict}${st.larpcheck.score != null ? ` ${st.larpcheck.score}` : ""} ${st.larpcheck.url || ""}`.trim());
       else if (st?.word) lines.push(`Larp check: ${st.word} ${st.score}`);
-      lines.push("Found with Radar \xB7 tryradar.fun");
+      const url2 = this.lastPost?.url;
+      lines.push(url2 && isPostLink(url2) ? `Full scan with Radar: https://tryradar.fun/scan?url=${encodeURIComponent(url2)}` : "Found with Radar \xB7 tryradar.fun");
       return lines.join("\n");
     }
     // Only once this post's coins are in. While the next post loads, or after its scan failed, the picks are the last post's.

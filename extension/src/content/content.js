@@ -335,7 +335,7 @@
       const group = groups[groups.length - 1];
       if (!group) continue;
       article.dataset.nr = '1';
-      const btn = makeBtn('', 'Open Radar for this post', () => launch(postPayload(article)),
+      const btn = makeBtn('', 'Open Radar for this post (Alt+R)', () => launch(postPayload(article)),
         () => getRadar().then((r) => r.prefetch(postPayload(article).post)).catch(() => {}));
       const rerouteBtn = makeRerouteBtn(() => reroute(postPayload(article)),
         () => getRadar().then((r) => r.prefetch(postPayload(article).post)).catch(() => {}));
@@ -389,12 +389,38 @@
     r.open({ trends: sidebarTrends() });
   }
 
+  // The post Alt+R scans: the one X's own j/k keys moved to (it holds the focus), else the topmost post that's mostly in view
+  // under X's bar. X leaves the focus on a status page's main post, so the focus only counts after j or k, until a scroll of
+  // another kind.
+  let keyNav = false;
+  let keyNavAt = 0;
+  document.addEventListener('keydown', (e) => {
+    if (/^[jk]$/i.test(e.key) && !e.altKey && !e.ctrlKey && !e.metaKey) { keyNav = true; keyNavAt = Date.now(); }
+  }, true);
+  addEventListener('scroll', () => { if (Date.now() - keyNavAt > 800) keyNav = false; }, { passive: true });
+  function postInView() {
+    const focused = document.activeElement?.closest?.('article[data-testid="tweet"]');
+    if (keyNav && focused) return focused;
+    for (const a of document.querySelectorAll('article[data-testid="tweet"]')) {
+      const r = a.getBoundingClientRect();
+      const seen = Math.min(r.bottom, innerHeight) - Math.max(r.top, 60);
+      if (seen >= Math.min(r.height * 0.6, 250)) return a;
+    }
+    return null;
+  }
+  // Alt+R closes Radar when it's open, opens a story page's coins, and otherwise scans the post you're looking at.
+  async function altR() {
+    const r = await getRadar();
+    const article = !r.isOpen && !fab.dataset.story ? postInView() : null;
+    if (article) return launch(postPayload(article));
+    toggle();
+  }
   document.addEventListener('keydown', (e) => {
     if (e.altKey && !e.ctrlKey && !e.metaKey && e.code === 'KeyR') {
       const t = e.target;
       if (t?.isContentEditable || /INPUT|TEXTAREA/.test(t?.tagName)) return;
       e.preventDefault();
-      toggle();
+      altR();
     }
   });
 

@@ -1720,7 +1720,9 @@ class Radar {
     const st = s.story;
     if (st?.larpcheck?.checked) lines.push(`Larpcheck: ${st.larpcheck.verdict}${st.larpcheck.score != null ? ` ${st.larpcheck.score}` : ''} ${st.larpcheck.url || ''}`.trim());
     else if (st?.word) lines.push(`Larp check: ${st.word} ${st.score}`);
-    lines.push('Found with Radar · tryradar.fun');
+    // A link to the same scan, so whoever it's pasted to can open it (tryradar.fun/scan runs it from the link).
+    const url = this.lastPost?.url;
+    lines.push(url && isPostLink(url) ? `Full scan with Radar: https://tryradar.fun/scan?url=${encodeURIComponent(url)}` : 'Found with Radar · tryradar.fun');
     return lines.join('\n');
   }
 

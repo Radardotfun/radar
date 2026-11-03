@@ -67,6 +67,7 @@ const radar = await ui.mountInline(new El(), 'dark');
   assert.ok(radar.shareable());
   assert.match(radar.shareText(), /@bob's post[\s\S]*\$BBB/);
   assert.doesNotMatch(radar.shareText(), /\$AAA/);
+  assert.match(radar.shareText(), /Full scan with Radar: https:\/\/tryradar\.fun\/scan\?url=https%3A%2F%2Fx\.com%2Fbob%2Fstatus%2F1850000000000000001$/, 'the summary links to the same scan');
   console.log("PASS panel: the copied summary never pairs a post with the last post's coins");
 }
 {

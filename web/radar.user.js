@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Radar
 // @namespace    https://tryradar.fun
-// @version      1.7.81
+// @version      1.7.82
 // @description  See the coins behind any post on X and instantly reroute to the biggest match that passes available on-chain safety checks.
 // @homepageURL  https://tryradar.fun
 // @supportURL   https://tryradar.fun
@@ -31,7 +31,7 @@
 // @downloadURL  https://tryradar.fun/radar.user.js
 // ==/UserScript==
 
-// Radar 1.7.81: built from the extension source at https://tryradar.fun. Not financial advice.
+// Radar 1.7.82: built from the extension source at https://tryradar.fun. Not financial advice.
 (() => {
   var __defProp = Object.defineProperty;
   var __export = (target, all) => {
@@ -3514,7 +3514,8 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       const st = s.story;
       if (st?.larpcheck?.checked) lines.push(`Larpcheck: ${st.larpcheck.verdict}${st.larpcheck.score != null ? ` ${st.larpcheck.score}` : ""} ${st.larpcheck.url || ""}`.trim());
       else if (st?.word) lines.push(`Larp check: ${st.word} ${st.score}`);
-      lines.push("Found with Radar \xB7 tryradar.fun");
+      const url = this.lastPost?.url;
+      lines.push(url && isPostLink(url) ? `Full scan with Radar: https://tryradar.fun/scan?url=${encodeURIComponent(url)}` : "Found with Radar \xB7 tryradar.fun");
       return lines.join("\n");
     }
     // Only once this post's coins are in. While the next post loads, or after its scan failed, the picks are the last post's.
@@ -5268,7 +5269,7 @@ svg { display: block; }\r
         article.dataset.nr = "1";
         const btn = makeBtn(
           "",
-          "Open Radar for this post",
+          "Open Radar for this post (Alt+R)",
           () => launch(postPayload(article)),
           () => getRadar().then((r) => r.prefetch(postPayload(article).post)).catch(() => {
           })
@@ -5323,12 +5324,39 @@ svg { display: block; }\r
       if (fab.dataset.story) return launch({ post: { text: `X news story: ${fab.dataset.story}` }, source: { kind: "Story", label: fab.dataset.story } });
       r.open({ trends: sidebarTrends() });
     }
+    let keyNav = false;
+    let keyNavAt = 0;
+    document.addEventListener("keydown", (e) => {
+      if (/^[jk]$/i.test(e.key) && !e.altKey && !e.ctrlKey && !e.metaKey) {
+        keyNav = true;
+        keyNavAt = Date.now();
+      }
+    }, true);
+    addEventListener("scroll", () => {
+      if (Date.now() - keyNavAt > 800) keyNav = false;
+    }, { passive: true });
+    function postInView() {
+      const focused = document.activeElement?.closest?.('article[data-testid="tweet"]');
+      if (keyNav && focused) return focused;
+      for (const a of document.querySelectorAll('article[data-testid="tweet"]')) {
+        const r = a.getBoundingClientRect();
+        const seen = Math.min(r.bottom, innerHeight) - Math.max(r.top, 60);
+        if (seen >= Math.min(r.height * 0.6, 250)) return a;
+      }
+      return null;
+    }
+    async function altR() {
+      const r = await getRadar();
+      const article = !r.isOpen && !fab.dataset.story ? postInView() : null;
+      if (article) return launch(postPayload(article));
+      toggle();
+    }
     document.addEventListener("keydown", (e) => {
       if (e.altKey && !e.ctrlKey && !e.metaKey && e.code === "KeyR") {
         const t = e.target;
         if (t?.isContentEditable || /INPUT|TEXTAREA/.test(t?.tagName)) return;
         e.preventDefault();
-        toggle();
+        altR();
       }
     });
     let queued = false;
