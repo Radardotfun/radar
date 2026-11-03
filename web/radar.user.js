@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Radar
 // @namespace    https://tryradar.fun
-// @version      1.7.79
+// @version      1.7.80
 // @description  See the coins behind any post on X and instantly reroute to the biggest match that passes available on-chain safety checks.
 // @homepageURL  https://tryradar.fun
 // @supportURL   https://tryradar.fun
@@ -31,7 +31,7 @@
 // @downloadURL  https://tryradar.fun/radar.user.js
 // ==/UserScript==
 
-// Radar 1.7.79: built from the extension source at https://tryradar.fun. Not financial advice.
+// Radar 1.7.80: built from the extension source at https://tryradar.fun. Not financial advice.
 (() => {
   var __defProp = Object.defineProperty;
   var __export = (target, all) => {
@@ -633,7 +633,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     }));
     return out;
   }
-  var fmtUsd = (n2) => n2 >= 1e9 ? `$${(n2 / 1e9).toFixed(1)}B` : n2 >= 1e6 ? `$${(n2 / 1e6).toFixed(1)}M` : n2 >= 1e3 ? `$${(n2 / 1e3).toFixed(0)}K` : `$${Math.round(n2)}`;
+  var fmtUsd = (n2) => n2 >= 99995e4 ? `$${(n2 / 1e9).toFixed(1)}B` : n2 >= 999500 ? `$${(n2 / 1e6).toFixed(1)}M` : n2 >= 1e3 ? `$${(n2 / 1e3).toFixed(0)}K` : `$${Math.round(n2)}`;
   var fmtAge = (ms) => {
     if (!ms) return "?";
     const h = (Date.now() - ms) / 36e5;
@@ -1338,12 +1338,15 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     }
     async function forgetCoins({ post }) {
       const s = await host.settings();
-      const k = postKey(post, s.chains);
-      const r = await memo.get(`rd:${k}`)?.p.catch(() => null);
-      if (r?.engineError) memo.delete(`rd:${k}`);
-      for (const t of r?.terms || []) memo.delete(`q:${t.toLowerCase()}`);
-      memo.delete(`co:${k}`);
-      memo.delete(`co:j:${k}`);
+      const { quickRead, ...withSpeech } = post || {};
+      for (const p of quickRead ? [post, withSpeech] : [post]) {
+        const k = postKey(p, s.chains);
+        const r = await memo.get(`rd:${k}`)?.p.catch(() => null);
+        if (r?.engineError) memo.delete(`rd:${k}`);
+        for (const t of r?.terms || []) memo.delete(`q:${t.toLowerCase()}`);
+        memo.delete(`co:${k}`);
+        memo.delete(`co:j:${k}`);
+      }
     }
     async function story({ post, narrative, coin }) {
       return cached(`st:${post.url || post.text}:${coin?.address || ""}`, 6e5, async () => {
@@ -1836,9 +1839,9 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     if (n2 == null || !Number.isFinite(n2)) return "\u2014";
     const a = Math.abs(n2);
     if (!compact || a < 1e3) return `$${a < 10 ? n2.toFixed(2) : Math.round(n2).toLocaleString("en-US")}`;
-    const [d, s] = a >= 1e9 ? [1e9, "B"] : a >= 1e6 ? [1e6, "M"] : [1e3, "K"];
+    const [d, s] = a >= 9995e5 ? [1e9, "B"] : a >= 999500 ? [1e6, "M"] : [1e3, "K"];
     const v = n2 / d;
-    return `$${v >= 100 ? v.toFixed(0) : v >= 10 ? v.toFixed(1) : v.toFixed(2)}${s}`;
+    return `$${Math.abs(v) >= 99.95 ? v.toFixed(0) : Math.abs(v) >= 9.995 ? v.toFixed(1) : v.toFixed(2)}${s}`;
   }
   function price(p) {
     if (!p) return "\u2014";
@@ -1852,7 +1855,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
   var pct2 = (n2, digits = 1) => n2 == null || !Number.isFinite(+n2) ? "\u2014" : `${+n2 > 0 ? "+" : ""}${(+n2).toFixed(Math.abs(n2) >= 1e3 ? 0 : digits)}%`;
   var soldPct = (bought, held) => bought > 0 ? Math.max(0, Math.min(100, (1 - held / bought) * 100)) : 0;
   var pctPlain = (n2, d = 1) => n2 == null || !Number.isFinite(+n2) ? "\u2014" : `${(+n2).toFixed(d)}%`;
-  var num = (n2) => n2 == null ? "\u2014" : n2 >= 1e6 ? `${(n2 / 1e6).toFixed(2)}M` : n2 >= 1e4 ? `${(n2 / 1e3).toFixed(1)}K` : Math.round(n2).toLocaleString("en-US");
+  var num = (n2) => n2 == null ? "\u2014" : n2 >= 999950 ? `${(n2 / 1e6).toFixed(2)}M` : n2 >= 1e4 ? `${(n2 / 1e3).toFixed(1)}K` : Math.round(n2).toLocaleString("en-US");
   var GECKO_NETWORK = { solana: "solana", robinhood: "robinhood", base: "base", bsc: "bsc", ethereum: "eth" };
   function chartEmbed(t, theme = "dark") {
     const network = GECKO_NETWORK[t?.chain];
@@ -2511,7 +2514,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
         <button class="icon-btn feed-head${this.view === "feed" ? " on" : ""}" data-act="feed" title="Breaking now">${I.bolt}</button>
         <button class="icon-btn star-head${this.stars?.length ? " has" : ""}${this.view === "stars" ? " on" : ""}" data-act="stars" title="Watchlist">${I.star}</button>
         ${this.inline && canSettings() ? `<button class="icon-btn" data-act="settings" title="Settings">${I.gear}</button>` : ""}
-        ${this.state.ts && this.state.picks?.length ? `<button class="icon-btn" data-act="share" title="Copy a summary to share">${I.share}</button>` : ""}
+        ${this.shareable() ? `<button class="icon-btn" data-act="share" title="Copy a summary to share">${I.share}</button>` : ""}
         ${this.state.ts ? `<button class="icon-btn" data-act="rescan" title="Rescan">${I.refresh}</button>` : ""}
         ${this.inline ? "" : `<button class="icon-btn" data-act="close" title="Close (Esc)">${I.x}</button>`}
       </div>
@@ -2686,14 +2689,22 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       this.renderHead();
     }
     async loadStory(post, narrative, res, id) {
+      const run = this.storyRun = (this.storyRun || 0) + 1;
+      const gone = () => id !== this.scanId || run !== this.storyRun;
       if (this.state.source?.kind === "Search" || !post?.text && !post?.images?.length) return;
       const t = res.mentioned[0] || res.bioCoins?.[0] || res.picks[0]?.token || null;
-      if (!t) return;
+      if (!t) {
+        if (this.state.story) {
+          this.state = { ...this.state, story: null };
+          this.renderHead();
+        }
+        return;
+      }
       const coin = t ? { name: t.name, symbol: t.symbol, address: t.address, createdAt: t.createdAt, socials: t.socials, websites: t.websites, fromPost: !!t.fromPost, mentioned: res.mentioned.includes(t) } : null;
       this.state = { ...this.state, story: { loading: true } };
       this.renderHead();
       const lc = t ? await this.larpFor(t) : null;
-      if (id !== this.scanId) return;
+      if (gone()) return;
       if (lc?.checked) {
         this.state = { ...this.state, story: { larpcheck: lc, coin: t.symbol } };
         this.renderHead();
@@ -2701,10 +2712,10 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       }
       try {
         const s = await send("story", { post, narrative, coin });
-        if (id !== this.scanId) return;
+        if (gone()) return;
         this.state = { ...this.state, story: { ...s, coin: t?.symbol || null, lcPage: lc?.page || null, lcAddress: t?.address || null } };
       } catch (e) {
-        if (id !== this.scanId) return;
+        if (gone()) return;
         this.state = { ...this.state, story: { error: e.message } };
       }
       this.renderHead();
@@ -3506,7 +3517,12 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       lines.push("Found with Radar \xB7 tryradar.fun");
       return lines.join("\n");
     }
+    // Only once this post's coins are in. While the next post loads, or after its scan failed, the picks are the last post's.
+    shareable() {
+      return !!(this.state.ts && this.state.picks?.length && !this.state.loading && !this.state.error);
+    }
     async share() {
+      if (!this.shareable()) return;
       try {
         await this.copyText(this.shareText());
         this.toast("Summary copied \xB7 paste it anywhere", 2200);
@@ -4982,7 +4998,7 @@ svg { display: block; }\r
     document.documentElement.appendChild(css);
     const textOf = (el) => (el?.innerText || "").trim();
     const send2 = (msg) => host.send(msg).then((r) => r?.ok ? r.data : Promise.reject(new Error(r?.error || "No response")));
-    const usd2 = (n2) => !Number.isFinite(n2) ? "" : n2 >= 1e9 ? `$${(n2 / 1e9).toFixed(2)}B` : n2 >= 1e6 ? `$${(n2 / 1e6).toFixed(2)}M` : n2 >= 1e3 ? `$${(n2 / 1e3).toFixed(1)}K` : `$${Math.round(n2)}`;
+    const usd2 = (n2) => !Number.isFinite(n2) ? "" : n2 >= 999995e3 ? `$${(n2 / 1e9).toFixed(2)}B` : n2 >= 999950 ? `$${(n2 / 1e6).toFixed(2)}M` : n2 >= 1e3 ? `$${(n2 / 1e3).toFixed(1)}K` : `$${Math.round(n2)}`;
     const ageOf = (ms) => {
       if (!ms) return "";
       const m = (Date.now() - ms) / 6e4;

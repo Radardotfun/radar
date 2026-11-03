@@ -114,6 +114,12 @@ if (process.argv.includes('--live')) {
   assert.equal(g.mayAutoStart({ auto: true, vouched: true, sol: 1 }), true);
   assert.equal(g.mayAutoStart({ auto: true, vouched: true, sol: 1.01 }), false, 'over the cap waits');
   assert.equal(g.mayAutoStart({ auto: true, vouched: true, sol: NaN }), false);
+  // Signing with no popup: a buy that started by itself (Auto-Confirm read off at first) never signs silently.
+  assert.equal(g.mayAutoSign({ silent: false, tapped: false, vouched: false, sol: 25 }), true, 'the popup asks');
+  assert.equal(g.mayAutoSign({ silent: true, tapped: false, vouched: false, sol: 0.1 }), false, 'a link nobody tapped waits');
+  assert.equal(g.mayAutoSign({ silent: true, tapped: true, vouched: false, sol: 25 }), true, 'a tap on Buy signs');
+  assert.equal(g.mayAutoSign({ silent: true, tapped: false, vouched: true, sol: 1 }), true, "the panel's own buy");
+  assert.equal(g.mayAutoSign({ silent: true, tapped: false, vouched: true, sol: 1.5 }), false, 'over the cap waits');
   assert.equal(g.vouches(go(), opener, 'MINT', 0.1), true);
   assert.equal(g.vouches(go({ origin: 'https://evil.example' }), opener, 'MINT', 0.1), false, 'another site cannot vouch');
   assert.equal(g.vouches(go({ source: {} }), opener, 'MINT', 0.1), false, 'only the window that opened this one');

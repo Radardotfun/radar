@@ -51,9 +51,10 @@ export function usd(n, { compact = true } = {}) {
   if (n == null || !Number.isFinite(n)) return '—';
   const a = Math.abs(n);
   if (!compact || a < 1000) return `$${a < 10 ? n.toFixed(2) : Math.round(n).toLocaleString('en-US')}`;
-  const [d, s] = a >= 1e9 ? [1e9, 'B'] : a >= 1e6 ? [1e6, 'M'] : [1e3, 'K'];
+  // The unit and the decimals are picked on the rounded number: 999,600 is $1.00M, not $1000K.
+  const [d, s] = a >= 999.5e6 ? [1e9, 'B'] : a >= 999.5e3 ? [1e6, 'M'] : [1e3, 'K'];
   const v = n / d;
-  return `$${v >= 100 ? v.toFixed(0) : v >= 10 ? v.toFixed(1) : v.toFixed(2)}${s}`;
+  return `$${Math.abs(v) >= 99.95 ? v.toFixed(0) : Math.abs(v) >= 9.995 ? v.toFixed(1) : v.toFixed(2)}${s}`;
 }
 // GMGN-style subscript zeros: $0.0₅1234
 export function price(p) {
@@ -68,7 +69,7 @@ export function price(p) {
 const pct = (n, digits = 1) => (n == null || !Number.isFinite(+n) ? '—' : `${+n > 0 ? '+' : ''}${(+n).toFixed(Math.abs(n) >= 1000 ? 0 : digits)}%`);
 const soldPct = (bought, held) => (bought > 0 ? Math.max(0, Math.min(100, (1 - held / bought) * 100)) : 0);
 const pctPlain = (n, d = 1) => (n == null || !Number.isFinite(+n) ? '—' : `${(+n).toFixed(d)}%`);
-const num = (n) => (n == null ? '—' : n >= 1e6 ? `${(n / 1e6).toFixed(2)}M` : n >= 1e4 ? `${(n / 1e3).toFixed(1)}K` : Math.round(n).toLocaleString('en-US'));
+const num = (n) => (n == null ? '—' : n >= 999.95e3 ? `${(n / 1e6).toFixed(2)}M` : n >= 1e4 ? `${(n / 1e3).toFixed(1)}K` : Math.round(n).toLocaleString('en-US'));
 // GeckoTerminal's embed of a coin's chart, with no trades list or info column. DexScreener's own embed sits behind a
 // Cloudflare check that a frame can't pass (31 Oct 2026). It charts a pool, so a coin needs a known pair.
 const GECKO_NETWORK = { solana: 'solana', robinhood: 'robinhood', base: 'base', bsc: 'bsc', ethereum: 'eth' };
@@ -707,7 +708,7 @@ class Radar {
         <button class="icon-btn feed-head${this.view === 'feed' ? ' on' : ''}" data-act="feed" title="Breaking now">${I.bolt}</button>
         <button class="icon-btn star-head${this.stars?.length ? ' has' : ''}${this.view === 'stars' ? ' on' : ''}" data-act="stars" title="Watchlist">${I.star}</button>
         ${this.inline && canSettings() ? `<button class="icon-btn" data-act="settings" title="Settings">${I.gear}</button>` : ''}
-        ${this.state.ts && this.state.picks?.length ? `<button class="icon-btn" data-act="share" title="Copy a summary to share">${I.share}</button>` : ''}
+        ${this.shareable() ? `<button class="icon-btn" data-act="share" title="Copy a summary to share">${I.share}</button>` : ''}
         ${this.state.ts ? `<button class="icon-btn" data-act="rescan" title="Rescan">${I.refresh}</button>` : ''}
         ${this.inline ? '' : `<button class="icon-btn" data-act="close" title="Close (Esc)">${I.x}</button>`}
       </div>
@@ -879,16 +880,22 @@ class Radar {
   }
 
   async loadStory(post, narrative, res, id) {
+    // A video's speech can start a second check for another coin before the first answers: only the newest one shows.
+    const run = this.storyRun = (this.storyRun || 0) + 1;
+    const gone = () => id !== this.scanId || run !== this.storyRun;
     if (this.state.source?.kind === 'Search' || (!post?.text && !post?.images?.length)) return;
     const t = res.mentioned[0] || res.bioCoins?.[0] || res.picks[0]?.token || null;
-    // No coin on the post's story: nothing to check, and no AI spent on it.
-    if (!t) return;
+    // No coin on the post's story: nothing to check, and no AI spent on it. An earlier coin's check doesn't stay up.
+    if (!t) {
+      if (this.state.story) { this.state = { ...this.state, story: null }; this.renderHead(); }
+      return;
+    }
     const coin = t ? { name: t.name, symbol: t.symbol, address: t.address, createdAt: t.createdAt, socials: t.socials, websites: t.websites, fromPost: !!t.fromPost, mentioned: res.mentioned.includes(t) } : null;
     this.state = { ...this.state, story: { loading: true } };
     this.renderHead();
     // Larpcheck first: when they've checked the coin, their verdict is the larp check and ours isn't run.
     const lc = t ? await this.larpFor(t) : null;
-    if (id !== this.scanId) return;
+    if (gone()) return;
     if (lc?.checked) {
       this.state = { ...this.state, story: { larpcheck: lc, coin: t.symbol } };
       this.renderHead();
@@ -896,10 +903,10 @@ class Radar {
     }
     try {
       const s = await send('story', { post, narrative, coin });
-      if (id !== this.scanId) return;
+      if (gone()) return;
       this.state = { ...this.state, story: { ...s, coin: t?.symbol || null, lcPage: lc?.page || null, lcAddress: t?.address || null } };
     } catch (e) {
-      if (id !== this.scanId) return;
+      if (gone()) return;
       this.state = { ...this.state, story: { error: e.message } };
     }
     this.renderHead();
@@ -1717,7 +1724,13 @@ class Radar {
     return lines.join('\n');
   }
 
+  // Only once this post's coins are in. While the next post loads, or after its scan failed, the picks are the last post's.
+  shareable() {
+    return !!(this.state.ts && this.state.picks?.length && !this.state.loading && !this.state.error);
+  }
+
   async share() {
+    if (!this.shareable()) return;
     try {
       await this.copyText(this.shareText());
       this.toast('Summary copied · paste it anywhere', 2200);

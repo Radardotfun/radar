@@ -30,7 +30,7 @@ const ago = (at) => {
   if (s < 3600) return `${Math.floor(s / 60)}m ago`;
   return `${Math.floor(s / 3600)}h ago`;
 };
-const usd = (n) => (!(n > 0) ? '' : n >= 1e6 ? `$${(n / 1e6).toFixed(2)}M` : n >= 1e3 ? `$${(n / 1e3).toFixed(1)}K` : `$${Math.round(n)}`);
+const usd = (n) => (!(n > 0) ? '' : n >= 999.95e3 ? `$${(n / 1e6).toFixed(2)}M` : n >= 1e3 ? `$${(n / 1e3).toFixed(1)}K` : `$${Math.round(n)}`);
 const KIND = { reply: 'replied', quote: 'quoted', post: 'posted' };
 
 let live = false;

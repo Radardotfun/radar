@@ -1,4 +1,4 @@
-// Radar 1.7.79 alerts page, built from webapp/alerts.js: https://github.com/Radardotfun/radar
+// Radar 1.7.80 alerts page, built from webapp/alerts.js: https://github.com/Radardotfun/radar
 (() => {
   // extension/src/lib/keywords.js
   var STOP = new Set(`a about above after again against all almost also am an and any are aren as at be because been before
@@ -523,7 +523,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     }));
     return out;
   }
-  var fmtUsd = (n2) => n2 >= 1e9 ? `$${(n2 / 1e9).toFixed(1)}B` : n2 >= 1e6 ? `$${(n2 / 1e6).toFixed(1)}M` : n2 >= 1e3 ? `$${(n2 / 1e3).toFixed(0)}K` : `$${Math.round(n2)}`;
+  var fmtUsd = (n2) => n2 >= 99995e4 ? `$${(n2 / 1e9).toFixed(1)}B` : n2 >= 999500 ? `$${(n2 / 1e6).toFixed(1)}M` : n2 >= 1e3 ? `$${(n2 / 1e3).toFixed(0)}K` : `$${Math.round(n2)}`;
   var fmtAge = (ms) => {
     if (!ms) return "?";
     const h = (Date.now() - ms) / 36e5;
@@ -1216,12 +1216,15 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     }
     async function forgetCoins({ post }) {
       const s = await host.settings();
-      const k = postKey(post, s.chains);
-      const r = await memo.get(`rd:${k}`)?.p.catch(() => null);
-      if (r?.engineError) memo.delete(`rd:${k}`);
-      for (const t of r?.terms || []) memo.delete(`q:${t.toLowerCase()}`);
-      memo.delete(`co:${k}`);
-      memo.delete(`co:j:${k}`);
+      const { quickRead, ...withSpeech } = post || {};
+      for (const p of quickRead ? [post, withSpeech] : [post]) {
+        const k = postKey(p, s.chains);
+        const r = await memo.get(`rd:${k}`)?.p.catch(() => null);
+        if (r?.engineError) memo.delete(`rd:${k}`);
+        for (const t of r?.terms || []) memo.delete(`q:${t.toLowerCase()}`);
+        memo.delete(`co:${k}`);
+        memo.delete(`co:j:${k}`);
+      }
     }
     async function story({ post, narrative, coin }) {
       return cached(`st:${post.url || post.text}:${coin?.address || ""}`, 6e5, async () => {
@@ -1561,7 +1564,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     if (s < 3600) return `${Math.floor(s / 60)}m ago`;
     return `${Math.floor(s / 3600)}h ago`;
   };
-  var usd = (n2) => !(n2 > 0) ? "" : n2 >= 1e6 ? `$${(n2 / 1e6).toFixed(2)}M` : n2 >= 1e3 ? `$${(n2 / 1e3).toFixed(1)}K` : `$${Math.round(n2)}`;
+  var usd = (n2) => !(n2 > 0) ? "" : n2 >= 999950 ? `$${(n2 / 1e6).toFixed(2)}M` : n2 >= 1e3 ? `$${(n2 / 1e3).toFixed(1)}K` : `$${Math.round(n2)}`;
   var KIND = { reply: "replied", quote: "quoted", post: "posted" };
   var live = false;
   var items = [];

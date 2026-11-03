@@ -94,12 +94,16 @@ export function makeHandlers(host) {
   // Rescan: look for coins again, keeping the AI's read of the post.
   async function forgetCoins({ post }) {
     const s = await host.settings();
-    const k = postKey(post, s.chains);
-    const r = await memo.get(`rd:${k}`)?.p.catch(() => null);
-    if (r?.engineError) memo.delete(`rd:${k}`);
-    for (const t of r?.terms || []) memo.delete(`q:${t.toLowerCase()}`);
-    memo.delete(`co:${k}`);
-    memo.delete(`co:j:${k}`);
+    // A video post is read twice: from its frames first, then with its speech (the same post without quickRead).
+    const { quickRead, ...withSpeech } = post || {};
+    for (const p of quickRead ? [post, withSpeech] : [post]) {
+      const k = postKey(p, s.chains);
+      const r = await memo.get(`rd:${k}`)?.p.catch(() => null);
+      if (r?.engineError) memo.delete(`rd:${k}`);
+      for (const t of r?.terms || []) memo.delete(`q:${t.toLowerCase()}`);
+      memo.delete(`co:${k}`);
+      memo.delete(`co:j:${k}`);
+    }
   }
 
   // Story check: is the post's story real, and is the coin tied to it? Read on our server (it looks

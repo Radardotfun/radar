@@ -63,6 +63,13 @@
     if (!auto) return true; // the wallet's own popup still asks
     return vouched === true && Number.isFinite(sol) && sol > 0 && sol <= AUTO_MAX_SOL;
   }
+  // May this buy be signed with no popup? Only after a tap on the page, or when the panel vouched for it, up to the cap.
+  // A buy that started by itself while Auto-Confirm read off (or couldn't be read) must not sign silently.
+  function mayAutoSign({ silent, tapped, vouched, sol }) {
+    if (!silent) return true; // the wallet's own popup still asks
+    if (tapped === true) return true;
+    return vouched === true && Number.isFinite(sol) && sol > 0 && sol <= AUTO_MAX_SOL;
+  }
   // Is this message Radar's panel vouching for this buy?
   function vouches(event, opener, mint, sol) {
     return !!event && !!opener && event.source === opener && AUTO_OPENERS.has(event.origin)
@@ -123,5 +130,5 @@
     return `Quick Buy can't buy this coin yet. It trades on ${where}, and PumpPortal, which builds Radar's buys, only covers pump.fun, PumpSwap and Raydium. Open it on a terminal below. Nothing was signed.`;
   }
 
-  root.RadarQuickBuyGuard = { quoteRoute, AUTO_MAX_SOL, AUTO_OPENERS, SOLANA_MAINNET, autoIsOn, mintBlock, mayAutoStart, vouches, PROGRAMS, QUICK_MARKETS, txBlock, spendBlock, simulationWhy, coinFromPairs, quickBuyable, marketWhy };
+  root.RadarQuickBuyGuard = { quoteRoute, AUTO_MAX_SOL, AUTO_OPENERS, SOLANA_MAINNET, autoIsOn, mintBlock, mayAutoStart, mayAutoSign, vouches, PROGRAMS, QUICK_MARKETS, txBlock, spendBlock, simulationWhy, coinFromPairs, quickBuyable, marketWhy };
 })(typeof window !== 'undefined' ? window : globalThis);

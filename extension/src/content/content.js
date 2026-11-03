@@ -82,7 +82,7 @@
 
   const textOf = (el) => (el?.innerText || '').trim();
   const send = (msg) => host.send(msg).then((r) => (r?.ok ? r.data : Promise.reject(new Error(r?.error || 'No response'))));
-  const usd = (n) => (!Number.isFinite(n) ? '' : n >= 1e9 ? `$${(n / 1e9).toFixed(2)}B` : n >= 1e6 ? `$${(n / 1e6).toFixed(2)}M` : n >= 1e3 ? `$${(n / 1e3).toFixed(1)}K` : `$${Math.round(n)}`);
+  const usd = (n) => (!Number.isFinite(n) ? '' : n >= 999.995e6 ? `$${(n / 1e9).toFixed(2)}B` : n >= 999.95e3 ? `$${(n / 1e6).toFixed(2)}M` : n >= 1e3 ? `$${(n / 1e3).toFixed(1)}K` : `$${Math.round(n)}`);
   const ageOf = (ms) => {
     if (!ms) return '';
     const m = (Date.now() - ms) / 60_000;

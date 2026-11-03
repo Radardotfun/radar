@@ -2,7 +2,7 @@
 (async () => {
   const API = 'https://narrative-radar.millenia-portfolio.workers.dev';
   const box = document.getElementById('launched-list');
-  const money = (n) => (n >= 1e6 ? `$${(n / 1e6).toFixed(2)}M` : n >= 1e3 ? `$${(n / 1e3).toFixed(1)}K` : n ? `$${Math.round(n)}` : 'no market yet');
+  const money = (n) => (n >= 999.95e3 ? `$${(n / 1e6).toFixed(2)}M` : n >= 1e3 ? `$${(n / 1e3).toFixed(1)}K` : n ? `$${Math.round(n)}` : 'no market yet');
   const ago = (ms) => {
     const m = (Date.now() - ms) / 60000;
     if (m < 60) return `${Math.max(1, Math.round(m))}m ago`;

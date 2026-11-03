@@ -94,6 +94,8 @@ const SCHEMA = [
   'CREATE TABLE IF NOT EXISTS signals (id TEXT PRIMARY KEY, author TEXT, at INTEGER, kind TEXT, post TEXT, state TEXT, signal INTEGER, narrative TEXT, terms TEXT, read_at INTEGER)',
   'CREATE INDEX IF NOT EXISTS signals_state ON signals (state, at)',
   'CREATE INDEX IF NOT EXISTS signals_signal ON signals (signal, at)',
+  // Holders' alerts (server/signals.js) are read by when they were judged, once a minute per holder.
+  'CREATE INDEX IF NOT EXISTS signals_read ON signals (signal, read_at)',
   'CREATE TABLE IF NOT EXISTS signal_meta (k TEXT PRIMARY KEY, v TEXT)',
 ];
 const dayOf = (now) => new Date(now).toISOString().slice(0, 10);

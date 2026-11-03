@@ -95,7 +95,7 @@
   setLinks(null);
 
   // The coin, looked up from its contract. A link can name any coin; the page only shows what the chain data says.
-  const money = (n) => (n >= 1e9 ? `$${(n / 1e9).toFixed(2)}B` : n >= 1e6 ? `$${(n / 1e6).toFixed(2)}M` : n >= 1e3 ? `$${(n / 1e3).toFixed(1)}K` : `$${Math.round(n)}`);
+  const money = (n) => (n >= 999.995e6 ? `$${(n / 1e9).toFixed(2)}B` : n >= 999.95e3 ? `$${(n / 1e6).toFixed(2)}M` : n >= 1e3 ? `$${(n / 1e3).toFixed(1)}K` : `$${Math.round(n)}`);
   // A coin on a market PumpPortal can't build buys on: say so, keep Buy off, and point to the terminals.
   let unbuyable = '';
   let routeQuote = null;
@@ -309,6 +309,9 @@
   const autoAgree = $('auto-agree');
   const autoToggle = $('auto-toggle');
   let autoOn = false;
+  // Phantom may sign with no popup but its setting can't be read: its status call failed, or Phantom is connected through
+  // another entry (window.solana). Buys are then held to the same rules as with Auto-Confirm on.
+  let autoMaybe = false;
   const phantomApp = () => (window.phantom?.solana && connectedProvider === window.phantom.solana ? window.phantom.app : null);
   const showAuto = () => {
     const app = phantomApp();
@@ -329,11 +332,12 @@
   const readAuto = async () => {
     const app = phantomApp();
     autoOn = false;
+    autoMaybe = !app && !!connectedProvider?.isPhantom;
     if (app) {
-      try { autoOn = guard.autoIsOn(await app.request({ method: 'phantom_auto_confirm_status', params: {} })); } catch { autoOn = false; }
+      try { autoOn = guard.autoIsOn(await app.request({ method: 'phantom_auto_confirm_status', params: {} })); } catch { autoOn = false; autoMaybe = true; }
     }
     showAuto();
-    return autoOn;
+    return autoOn || autoMaybe;
   };
   autoAgree.addEventListener('change', showAuto);
   autoToggle.addEventListener('click', async () => {
@@ -373,13 +377,14 @@
   });
   // Insta Buy's start: with Auto-Confirm on, a buy starts by itself only when the panel vouches for it, up to the cap.
   const startInsta = async () => {
-    await readAuto();
-    const vouched = autoOn ? await askPanel() : false;
+    const silent = await readAuto();
+    const vouched = silent ? await askPanel() : false;
     const sol = Number(amountInput.value);
-    if (guard.mayAutoStart({ auto: autoOn, vouched, sol })) { runBuy(); return; }
+    if (guard.mayAutoStart({ auto: silent, vouched, sol })) { runBuy({ vouched }); return; }
+    const on = autoOn ? 'Auto-Confirm is on' : 'Phantom may sign with no popup';
     setMessage(sol > guard.AUTO_MAX_SOL && vouched
-      ? `Auto-Confirm is on and this is over ${guard.AUTO_MAX_SOL} SOL, so it waits for you. Check it, then tap Buy.`
-      : 'Auto-Confirm is on, and this buy did not come from your Radar panel. Check the coin and amount, then tap Buy.');
+      ? `${on} and this is over ${guard.AUTO_MAX_SOL} SOL, so it waits for you. Check it, then tap Buy.`
+      : `${on}, and this buy did not come from your Radar panel. Check the coin and amount, then tap Buy.`);
   };
 
   // Insta Buy, after Solana confirms: tell the card (only public facts: the coin and the signature), then close
@@ -444,7 +449,8 @@
     return new Uint8Array(await response.arrayBuffer());
   };
 
-  const runBuy = async () => {
+  // tapped: the Buy button. vouched: Radar's panel vouched for this exact buy (Insta Buy).
+  const runBuy = async ({ tapped = false, vouched = false } = {}) => {
     if (busy || !connectedProvider || !connectedAddress) return;
     if (unbuyable) { setMessage(unbuyable, 'error'); return; }
     const solAmount = Number(amountInput.value);
@@ -480,10 +486,15 @@
       // 3. The wallet shows it and signs it. If it adds its own guard, the signed one is checked again.
       const noPopup = await readAuto();
       if (noPopup) {
+        // Auto-Confirm can turn on (or become readable) after the buy started: a buy nobody tapped or vouched for stops here.
+        if (!guard.mayAutoSign({ silent: true, tapped, vouched, sol: solAmount })) {
+          setMessage(`${autoOn ? 'Auto-Confirm is on' : 'Phantom may sign with no popup'}. Check the coin and amount, then tap Buy.`);
+          return;
+        }
         const named = guard.mintBlock(transaction, mint);
         if (named) throw new Error(named);
       }
-      setMessage(noPopup ? 'Auto-Confirm is on. Signing with no popup…' : 'Review the token, amount and fees in your wallet. Approve only if it looks right.');
+      setMessage(noPopup ? `${autoOn ? 'Auto-Confirm is on' : 'Phantom may sign with no popup'}. Signing…` : 'Review the token, amount and fees in your wallet. Approve only if it looks right.');
       const signed = await connectedProvider.signTransaction(transaction);
       if (!signed || typeof signed.serialize !== 'function') throw new Error('The wallet did not return a signed transaction.');
       const after = guard.txBlock(signed, connectedAddress);
@@ -535,7 +546,7 @@
       setBusy(false);
     }
   };
-  buyButton.addEventListener('click', runBuy);
+  buyButton.addEventListener('click', () => runBuy({ tapped: true }));
 
   // Insta Buy start: the wallet used last time (or the first one found), connected silently if it already trusts
   // tryradar.fun. Otherwise one Connect tap, and the buy starts right after it.

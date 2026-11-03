@@ -21,11 +21,54 @@ const CORS = {
 const json = (status, body, extra = {}) =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json', ...CORS, ...extra } });
 
-// Who a limit counts. An IPv6 caller holds a whole /64, so that block counts as one.
-const ipOf = (request) => { const a = request.headers.get('cf-connecting-ip') || 'anon'; return a.includes(':') ? a.split(':').slice(0, 4).join(':') : a; };
+// Who a limit counts. An IPv6 caller holds a whole /64, so that block counts as one, written out in full first: 2001:db8::1
+// and 2001:db8:0:0::2 are the same /64. Cloudflare sets cf-connecting-ip on every call from the internet; a call without it
+// is Radar's own bot over its service binding, whose tags and account watcher would otherwise all share one bucket. The
+// AI's daily cap bounds those instead.
+export const INSIDE = 'inside';
+export function ipOf(request) {
+  const a = String(request.headers.get('cf-connecting-ip') || '').trim().toLowerCase();
+  if (!a) return INSIDE;
+  if (!a.includes(':')) return a;
+  const v4 = a.match(/(\d{1,3}(?:\.\d{1,3}){3})$/);
+  if (v4) return v4[1];
+  const [head, tail] = a.split('::');
+  const left = head ? head.split(':') : [];
+  const right = tail ? tail.split(':') : [];
+  const groups = a.includes('::') ? [...left, ...Array(Math.max(0, 8 - left.length - right.length)).fill('0'), ...right] : left;
+  return groups.slice(0, 4).map((g) => g.replace(/^0+(?=.)/, '')).join(':');
+}
+// A body is read only up to its route's size. content-length can be left off (a chunked upload), so the bytes are
+// counted as they arrive and the read stops once there are too many, before the Worker holds it all.
+export class TooBig extends Error {}
+export async function bodyText(request, max, too = 'Request too large') {
+  if (Number(request.headers.get('content-length') || 0) > max) throw new TooBig(too);
+  if (!request.body) return '';
+  const reader = request.body.getReader();
+  const parts = [];
+  let n = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    n += value.byteLength;
+    if (n > max) { reader.cancel().catch(() => {}); throw new TooBig(too); }
+    parts.push(value);
+  }
+  const all = new Uint8Array(n);
+  let at = 0;
+  for (const part of parts) { all.set(part, at); at += part.byteLength; }
+  return new TextDecoder().decode(all);
+}
+// A JSON body, or {} when it isn't JSON. Too big throws, and the Worker answers 413.
+const SMALL_BODY = 64_000;
+export const jsonOf = async (request, max = SMALL_BODY, too) => { const text = await bodyText(request, max, too); try { return JSON.parse(text) ?? {}; } catch { return {}; } };
+// Scans carry up to 3 pasted pictures of 1.5 MB each, plus the logos to compare.
+const ROUTE_MAX = 6_000_000;
+
 // Best-effort per-isolate limiter; the edge cache below absorbs repeat scans of the same post.
 const hits = new Map();
 function limited(ip, limit = 80, windowMs = 10 * 60_000) {
+  if (ip === INSIDE || ip.endsWith(`:${INSIDE}`)) return false;
   const now = Date.now();
   const list = (hits.get(ip) || []).filter((t) => now - t < windowMs);
   // A refused ask doesn't count, or a busy caller would keep itself locked out for as long as it kept asking.
@@ -95,7 +138,7 @@ async function cachedJson(ctx, key, ttl, fn, debug) {
 async function route(kind, request, env, ctx) {
   if (limited(ipOf(request))) return json(429, { error: 'Too many scans, slow down a little' });
   let body;
-  try { body = await request.json(); } catch { return json(400, { error: 'Bad JSON' }); }
+  try { body = JSON.parse(await bodyText(request, ROUTE_MAX)); } catch (e) { return e instanceof TooBig ? json(413, { error: e.message }) : json(400, { error: 'Bad JSON' }); }
   if (!body || typeof body !== 'object') return json(400, { error: 'Bad JSON' });
   const debug = !!env.DEBUG_TOKEN && body.debug === env.DEBUG_TOKEN;
   const freeModels = debug && Array.isArray(body.models) ? body.models.filter((m) => /^@cf\//.test(m)) : undefined;
@@ -301,9 +344,7 @@ async function rpcRelay(request, env) {
   const target = relayUrl(env);
   if (!target) return json(503, { error: 'No relay configured' });
   if (limited(`rpc:${ipOf(request)}`, 1500)) return json(429, { error: 'Too many RPC calls' });
-  if (Number(request.headers.get('content-length') || 0) > RPC_MAX) return json(413, { error: 'Request too large' });
-  const text = await request.text();
-  if (text.length > RPC_MAX) return json(413, { error: 'Request too large' });
+  const text = await bodyText(request, RPC_MAX);
   let body;
   try { body = JSON.parse(text); } catch { return json(400, { error: 'Bad JSON' }); }
   if (Array.isArray(body) || !RPC_METHODS.has(body?.method)) return json(400, { error: 'Method not allowed' });
@@ -336,8 +377,7 @@ const app = {
       const launcher = ipOf(request);
       // Separate limits: retrying a listing must never block the next launch. The day's limit keeps one address from using up the shared cap.
       if (pathname === '/launch/meta' ? limited(`launch-meta:${launcher}`, 10) || limited(`launch-day:${launcher}`, 30, 86_400_000) : limited(`launch-record:${launcher}`, 40)) return json(429, { error: 'Too many tries. Wait a few minutes.' });
-      if (Number(request.headers.get('content-length') || 0) > 500_000) return json(413, { error: 'That picture is too big.' });
-      const body = await request.json().catch(() => ({}));
+      const body = await jsonOf(request, 500_000, 'That picture is too big.');
       const origin = new URL(request.url).origin;
       const launchAi = () => engine({ apiKey: env.ANTHROPIC_API_KEY, binding: env.AI, env });
       const r = pathname === '/launch/meta' ? await launchMeta(body, env, origin, { readPost: readStatus, sameStory: (story, others) => sameStory(launchAi(), story, others), samePicture: (picture, others) => samePicture(launchAi(), picture, others) }) : await launchRecord(body, env, relayUrl(env) || 'https://api.mainnet-beta.solana.com', origin);
@@ -374,8 +414,8 @@ const app = {
       const out = pathname === '/lc/board' && request.method === 'GET' ? await lcBoard(q.get('sort'), env, ctx)
         : pathname === '/lc/holders' && request.method === 'GET' ? await lcHolders(q.get('address'), q.get('chain'), env, ctx)
           : pathname === '/lc/check' && request.method === 'GET' ? ((await lcSettings(env, ctx)).plan ? await lcPoll(q.get('id'), env) : { status: 404, data: { error: 'Not found' } })
-            : pathname === '/lc/check' && request.method === 'POST' ? await lcStart(await request.json().catch(() => ({})), env)
-              : pathname === '/lc/ask' && request.method === 'POST' ? await lcAsk(await request.json().catch(() => ({})), env)
+            : pathname === '/lc/check' && request.method === 'POST' ? await lcStart(await jsonOf(request), env)
+              : pathname === '/lc/ask' && request.method === 'POST' ? await lcAsk(await jsonOf(request), env)
                 : { status: 404, data: { error: 'Not found' } };
       return json(out.status, out.data);
     }
@@ -383,30 +423,30 @@ const app = {
     // route stays off for it; 1.7.18 on reads /holder/settings, whose wording comes from here.
     if (pathname === '/narratives' && request.method === 'POST') {
       if (limited(`feed:${ipOf(request)}`, 120)) return json(429, { error: 'Too many requests. Try again in a few minutes.' });
-      return json(200, await feed(await request.json().catch(() => ({})), env));
+      return json(200, await feed(await jsonOf(request), env));
     }
     if (pathname === '/holder/config' && request.method === 'GET') return json(200, { on: false });
     if (pathname === '/holder/settings' && request.method === 'GET') return json(200, await holderConfig(env));
     if (pathname === '/holder/google' && request.method === 'POST') {
       if (!holderOn(env)) return json(200, { off: true });
       if (limited(`holder:${ipOf(request)}`, 120)) return json(429, { error: 'Too many requests. Try again in a few minutes.' });
-      const r = await holderGoogle(await request.json().catch(() => ({})), env, relayUrl(env));
+      const r = await holderGoogle(await jsonOf(request), env, relayUrl(env));
       return json(r.status, r.body);
     }
     if (pathname === '/holder/pair' && request.method === 'POST') {
       if (limited(`pair:${ipOf(request)}`, 300)) return json(429, { error: 'Too many checks, slow down a little' });
-      const r = await takePair(env.DB, (await request.json().catch(() => ({})))?.id);
+      const r = await takePair(env.DB, (await jsonOf(request))?.id);
       return json(r.status, r.body);
     }
     if (pathname === '/signals' && request.method === 'POST') {
       if (limited(`signals:${ipOf(request)}`, 120)) return json(429, { error: 'Too many checks, slow down a little' });
-      const r = await signalFeed(await request.json().catch(() => ({})), env);
+      const r = await signalFeed(await jsonOf(request), env);
       return json(r.status, r.body);
     }
     if ((pathname === '/holder/verify' || pathname === '/holder/who') && request.method === 'POST') {
       if (!holderOn(env)) return json(200, { off: true });
       if (limited(`holder:${ipOf(request)}`, 120)) return json(429, { error: 'Too many requests. Try again in a few minutes.' });
-      const body = await request.json().catch(() => ({}));
+      const body = await jsonOf(request);
       const r = pathname === '/holder/verify' ? await holderVerify(body, env, relayUrl(env)) : await holderWho(body, env, { limited });
       // Signed on a phone for a computer that showed a QR code: it collects the answer from here.
       if (pathname === '/holder/verify' && r.status === 200 && body.pair) await savePair(env.DB, body.pair, r.body).catch((e) => console.error('pair', e?.message));
@@ -445,6 +485,7 @@ export default {
     try {
       return await app.fetch(request, env, ctx);
     } catch (e) {
+      if (e instanceof TooBig) return json(413, { error: e.message });
       console.error(new URL(request.url).pathname, e?.message);
       return json(503, { error: 'Radar is busy. Try again in a moment.' });
     }

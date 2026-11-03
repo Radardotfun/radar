@@ -379,12 +379,15 @@ async function handle(env, { mention, target, live, scores: known = null, tries 
       posted = await post(sent);
     }
   } catch (e) {
-    // X took too long to answer, so it may have posted. A retry could answer the same tag twice, and the time in the text would get past X's duplicate check.
-    if (e.name === 'TimeoutError') return { ...out, unsure: String(e.message || e).slice(0, 200) };
+    // X took too long, failed on its side (5xx) or the connection dropped: it may have posted. A retry could answer the same
+    // tag twice, and the time in the text would get past X's duplicate check. A 4xx (a 429 included) means it didn't post.
+    if (mayHavePosted(e)) return { ...out, unsure: String(e.message || e).slice(0, 200) };
     throw e;
   }
   return { ...out, text: sent, chars: xLength(sent), form: sent === short ? 'short' : sent === links ? 'links' : 'full', reply: posted.data?.id };
 }
+
+export const mayHavePosted = (e) => e?.name === 'TimeoutError' || e?.status >= 500 || (!e?.status && /network|connection|fetch failed|socket|reset/i.test(String(e?.message || '')));
 
 const authorized = (req, env) => {
   const u = new URL(req.url);

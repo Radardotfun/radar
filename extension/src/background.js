@@ -210,7 +210,7 @@ async function alertHolders(coin) {
   return { ok: !why, holders: report.holders ?? null, text: why ? `Holder check: ${why}` : `Real holders · ${Number(report.holders).toLocaleString('en-US')}` };
 }
 
-const usdShort = (n) => (!(n > 0) ? '' : n >= 1e6 ? `$${(n / 1e6).toFixed(2)}M` : n >= 1e3 ? `$${(n / 1e3).toFixed(1)}K` : `$${Math.round(n)}`);
+const usdShort = (n) => (!(n > 0) ? '' : n >= 999.95e3 ? `$${(n / 1e6).toFixed(2)}M` : n >= 1e3 ? `$${(n / 1e3).toFixed(1)}K` : `$${Math.round(n)}`);
 const CHAIN_NAME = { solana: 'Solana', robinhood: 'Robinhood Chain', base: 'Base', bsc: 'BNB Chain' };
 async function notify(item) {
   if (!ext.notifications || !(await canNotify())) return;

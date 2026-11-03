@@ -12,6 +12,7 @@ import { worthRetry } from '../bot/trigger.js';
 import { botCoins, ownCoin } from '../bot/coins.js';
 import { ticker } from '../bot/reply.js';
 import { coinKey, plainClash, launchFields } from '../server/launch.js';
+import engineWorker, { bodyText, TooBig } from '../server/worker.js';
 
 // A small stand-in for D1, enough for tick's queries.
 function fakeDb({ failInsert = false } = {}) {
@@ -299,4 +300,24 @@ const quiet = async () => ({ score: 90, why: 'a dog', name: 'Biscuit' });
   assert.equal(tieOf({ name: 'AB Coin', symbol: 'AB' }, { anchors: ['ab'] }), null, 'two Latin letters is no word');
   assert.equal(tieOf({ name: 'Doge Moon', symbol: 'DOGEM' }, { anchors: ['doge'] }), 'name');
   console.log('PASS bughunt: a two-character Chinese name ties a coin to its story');
+}
+
+// 23. A body sent without content-length (chunked) is still cut off at its route's size, before the Worker holds it all.
+{
+  const chunked = (bytes, path = '/holder/pair') => {
+    let left = bytes;
+    const body = new ReadableStream({ pull(c) { if (left <= 0) return c.close(); const n = Math.min(16_384, left); left -= n; c.enqueue(new Uint8Array(n).fill(32)); } });
+    return new Request(`https://engine.test${path}`, { method: 'POST', body, duplex: 'half', headers: { 'content-type': 'application/json', 'cf-connecting-ip': `10.9.${bytes % 250}.1` } });
+  };
+  assert.equal(chunked(10).headers.get('content-length'), null, 'no length header on a stream');
+  await assert.rejects(bodyText(chunked(70_000), 64_000), TooBig);
+  assert.equal(await bodyText(new Request('https://engine.test/x', { method: 'POST', body: '{"id":"a"}' }), 64_000), '{"id":"a"}');
+  const env = { DB: null };
+  for (const [path, bytes, words] of [['/holder/pair', 200_000, 'Request too large'], ['/launch/meta', 900_000, 'That picture is too big.'], ['/rpc', 9_000, 'Request too large'], ['/story', 7_000_000, 'Request too large']]) {
+    const res = await engineWorker.fetch(chunked(bytes, path), { ...env, SOLANA_RPC_URL: 'https://rpc.test' }, { waitUntil() {} });
+    assert.equal(res.status, 413, path);
+    assert.equal((await res.json()).error, words, path);
+    assert.equal(res.headers.get('access-control-allow-origin'), '*', path);
+  }
+  console.log('PASS bughunt: a chunked body is cut off at the size its route allows');
 }

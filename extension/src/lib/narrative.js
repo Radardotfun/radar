@@ -32,7 +32,7 @@ async function inBatches(items, size, fn) {
   return out;
 }
 
-const fmtUsd = (n) => (n >= 1e9 ? `$${(n / 1e9).toFixed(1)}B` : n >= 1e6 ? `$${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `$${(n / 1e3).toFixed(0)}K` : `$${Math.round(n)}`);
+const fmtUsd = (n) => (n >= 999.95e6 ? `$${(n / 1e9).toFixed(1)}B` : n >= 999.5e3 ? `$${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `$${(n / 1e3).toFixed(0)}K` : `$${Math.round(n)}`);
 const fmtAge = (ms) => {
   if (!ms) return '?';
   const h = (Date.now() - ms) / 3.6e6;

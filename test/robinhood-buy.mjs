@@ -62,6 +62,61 @@ assert.equal(coin.name, 'Hmmb');
 assert.equal(G.coinFromPairs([], COIN), null);
 console.log('PASS robinhood: pools and the coin\'s name');
 
+// A wallet that already holds the coin, or WETH, is checked on what this buy changes, on a fake v3 pool
+// (1e6 raw tokens per raw wei, 1% fee, taxes set per test).
+{
+  const POOL = '0x9999999999999999999999999999999999999999';
+  const RATE = 1_000_000n;
+  const word = (v) => BigInt(v).toString(16).padStart(64, '0');
+  const args = (h) => h.replace(/^0x/, '').slice(8).match(/.{64}/g) || [];
+  const chain = ({ sellTax = 0, tokens0 = 0n, weth0 = 0n }) => ({ fetchImpl: async (_url, init) => {
+    const { method, params } = JSON.parse(init.body);
+    let result;
+    if (method === 'eth_call') {
+      const { to, data } = params[0];
+      if (to === POOL && data === '0xddca3f43') result = `0x${word(10000)}`;
+      else if (to === POOL && data === '0x0dfe1681') result = `0x${G.WETH.slice(2).toLowerCase().padStart(64, '0')}`;
+      else if (to === POOL && data === '0x3850c7bd') result = `0x${word((1n << 96n) * 1000n)}`;
+      else throw new Error(`unexpected eth_call ${to} ${data.slice(0, 10)}`);
+    } else if (method === 'eth_simulateV1') {
+      const st = { token: tokens0, weth: weth0 };
+      result = [{ calls: params[0].blockStateCalls[0].calls.map((c) => {
+        const to = c.to.toLowerCase();
+        const d = c.data.toLowerCase();
+        if (to === G.SWAP_ROUTER && c.value) {
+          const out = BigInt(c.value) * RATE * 99n / 100n;
+          if (out < BigInt(`0x${args(d)[5]}`)) return { status: '0x0', returnData: '0x' };
+          st.token += out; return { status: '0x1', returnData: '0x' };
+        }
+        if (to === G.SWAP_ROUTER) {
+          const amt = BigInt(`0x${args(d)[4]}`);
+          if (amt > st.token) return { status: '0x0', returnData: '0x' };
+          st.token -= amt; st.weth += amt / RATE * 99n / 100n * BigInt(Math.round((1 - sellTax) * 1000)) / 1000n;
+          return { status: '0x1', returnData: '0x' };
+        }
+        if (to === COIN && d.startsWith('0x70a08231')) return { status: '0x1', returnData: `0x${word(st.token)}` };
+        if (to === G.WETH.toLowerCase() && d.startsWith('0x70a08231')) return { status: '0x1', returnData: `0x${word(st.weth)}` };
+        return { status: '0x1', returnData: `0x${word(0)}` };
+      }) }];
+    } else throw new Error(`unexpected ${method}`);
+    return { ok: true, status: 200, json: async () => ({ jsonrpc: '2.0', id: 1, result }) };
+  } });
+  const pools = [{ chainId: 'robinhood', dexId: 'uniswap', labels: ['v3'], liquidity: { usd: 50000 }, baseToken: { address: COIN }, quoteToken: { address: G.WETH }, pairAddress: POOL }];
+  const amountWei = G.toWei(0.01);
+  const plan = (opts) => G.planBuy({ token: COIN, pairs: pools, amountWei, wallet: ME, slippagePct: 10, lookupPairs: async () => [], opts });
+  for (const weth0 of [0n, 5n * 10n ** 18n]) {
+    const p = await plan(chain({ sellTax: 0.9, weth0 }));
+    assert.match(String(p.block), /heavy tax/, `a 90% sell tax is stopped with ${weth0} WETH already held`);
+  }
+  const gets = amountWei * RATE * 99n / 100n;
+  const p = await plan(chain({ tokens0: gets * 10n }));
+  assert.ok(!p.block, p.block);
+  assert.equal(p.tokens, gets, 'what this buy gets, not the whole balance');
+  assert.ok(Math.abs(p.cost - 0.01) < 0.001, `cost ${p.cost}`);
+  assert.equal(BigInt(`0x${args(p.tx.data)[5]}`), gets * 9000n / 10000n, 'the minimum out is 10% under what the buy gets');
+  console.log('PASS robinhood: coins and WETH already in the wallet don\'t count as bought or sold');
+}
+
 if (process.argv.includes('--live')) {
   const lookupPairs = async (a) => (await fetch(`https://api.dexscreener.com/tokens/v1/robinhood/${a}`)).json();
   const plan = await G.planBuy({ token: COIN, pairs: await lookupPairs(COIN), amountWei: amount, slippagePct: 10, lookupPairs });

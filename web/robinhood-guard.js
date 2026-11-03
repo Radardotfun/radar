@@ -222,17 +222,18 @@
     const before = { to: MULTICALL, data: `${SEL.getEthBalance}${addr(who)}` };
     const buy = buyCall(route, token, who, amount, 0n, deadline);
     const held = { to: token, data: balanceOf(who) };
-    const bought = await simulate([buy, held], who, opts);
-    if (!ok(bought[0])) return null;
-    const tokens = num(bought[1].returnData);
+    // Balances are read before and after: coins the wallet already holds aren't what this buy gets, and WETH it already
+    // holds isn't what the sale brings back.
+    const bought = await simulate([held, buy, held], who, opts);
+    if (!ok(bought[1])) return null;
+    const tokens = num(bought[2].returnData) - num(bought[0].returnData);
     if (tokens <= 0n) return null;
     const cost = 1 - Number(tokens) / (Number(amount) * route.rate);
     const sell = sellCalls(route, token, who, tokens, deadline);
-    const back = route.kind === 'v3' ? { to: WETH, data: balanceOf(who) } : before;
-    const trip = await simulate([before, buy, ...sell, back], who, opts);
+    const proceeds = route.kind === 'v3' ? { to: WETH, data: balanceOf(who) } : before;
+    const trip = await simulate([proceeds, buy, ...sell, proceeds], who, opts);
     const sold = ok(trip[trip.length - 2]);
-    const start = route.kind === 'v3' ? 0n : num(trip[0].returnData);
-    const returned = route.kind === 'v3' ? num(trip[trip.length - 1].returnData) : num(trip[trip.length - 1].returnData) - start + amount;
+    const returned = num(trip[trip.length - 1].returnData) - num(trip[0].returnData) + (route.kind === 'v3' ? 0n : amount);
     return { tokens, cost, sellOk: sold, roundTrip: sold ? Number(returned) / Number(amount) : 0 };
   }
 

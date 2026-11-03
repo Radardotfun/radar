@@ -65,7 +65,7 @@
   $('link-uniswap').href = `https://app.uniswap.org/swap?chain=robinhood&outputCurrency=${encodeURIComponent(token)}`;
   $('link-chart').href = `https://dexscreener.com/robinhood/${encodeURIComponent(token)}`;
 
-  const money = (n) => (n >= 1e9 ? `$${(n / 1e9).toFixed(2)}B` : n >= 1e6 ? `$${(n / 1e6).toFixed(2)}M` : n >= 1e3 ? `$${(n / 1e3).toFixed(1)}K` : `$${Math.round(n)}`);
+  const money = (n) => (n >= 999.995e6 ? `$${(n / 1e9).toFixed(2)}B` : n >= 999.95e3 ? `$${(n / 1e6).toFixed(2)}M` : n >= 1e3 ? `$${(n / 1e3).toFixed(1)}K` : `$${Math.round(n)}`);
   const lookupPairs = async (a) => {
     const r = await fetch(`https://api.dexscreener.com/tokens/v1/robinhood/${encodeURIComponent(a)}`, { cache: 'no-store', signal: AbortSignal.timeout(10000) });
     if (!r.ok) throw new Error(`DexScreener ${r.status}`);
