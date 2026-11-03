@@ -1,0 +1,86 @@
+{
+ "found": "2026-11-03T19:00:54.273Z",
+ "rule": "top-20 holder of a $1M+ Solana runner launched in the last 120 days, bought with SOL in its first hour after its first 10 seconds, still holding",
+ "wallets": [
+  {
+   "wallet": "8B3KyNP6QWnvbuHAz4CCMLQmWhcXJ3KvcX2GHCEs6yNS",
+   "symbol": "FLOAT",
+   "mint": "Bv1a7cEj5aRnJQhMw4kRQqAFesMSd5LwcDnUzq52BMmr",
+   "boughtAfterS": 2984,
+   "solIn": 25.25,
+   "capNow": 2359625
+  },
+  {
+   "wallet": "BHREKFkPQgAtDs8Vb1UfLkUpjG6ScidTjHaCWFuG2AtX",
+   "symbol": "FLOAT",
+   "mint": "Bv1a7cEj5aRnJQhMw4kRQqAFesMSd5LwcDnUzq52BMmr",
+   "boughtAfterS": 22,
+   "solIn": 5,
+   "capNow": 2359625
+  },
+  {
+   "wallet": "G3gZWqrYkNmYFKYCyfRCNtGuxdyuE2wiYKkZpiZn4WSS",
+   "symbol": "FLOAT",
+   "mint": "Bv1a7cEj5aRnJQhMw4kRQqAFesMSd5LwcDnUzq52BMmr",
+   "boughtAfterS": 1770,
+   "solIn": 4.52,
+   "capNow": 2359625
+  },
+  {
+   "wallet": "7fimoPenLHmLzhZKN5ZY3yV1BvaLw1rYEvURLx7PiQVv",
+   "symbol": "FLOAT",
+   "mint": "Bv1a7cEj5aRnJQhMw4kRQqAFesMSd5LwcDnUzq52BMmr",
+   "boughtAfterS": 25,
+   "solIn": 0.35,
+   "capNow": 2359625
+  },
+  {
+   "wallet": "36MapNxcGW21SK24aMG6yTiFzJDuSvYV6L3uKEHVDPf1",
+   "symbol": "baton",
+   "mint": "Hg5Ja55T5wESq4vyFoiVCMeHXtGyVA69X2UHq8hgpump",
+   "boughtAfterS": 858,
+   "solIn": 10,
+   "capNow": 4345788
+  },
+  {
+   "wallet": "CtQBxUiPoTbYTRMwuECjUm39weaJgTSZdyswzpzSR4nY",
+   "symbol": "swordcat",
+   "mint": "5tCju6YNxHq5zrA6tGndr6F7TK42mpUFmeE31cSFpump",
+   "boughtAfterS": 522,
+   "solIn": 2.68,
+   "capNow": 1286362
+  },
+  {
+   "wallet": "Cb6DNhpNsJWJwGq6F78bS2JHobBvdnhLtQijSNVva4da",
+   "symbol": "swordcat",
+   "mint": "5tCju6YNxHq5zrA6tGndr6F7TK42mpUFmeE31cSFpump",
+   "boughtAfterS": 520,
+   "solIn": 0.96,
+   "capNow": 1286362
+  },
+  {
+   "wallet": "CkZnuSEKfSYG3ns8RUG72QRkUFu24o6UfH6pDrkM6KtH",
+   "symbol": "swordcat",
+   "mint": "5tCju6YNxHq5zrA6tGndr6F7TK42mpUFmeE31cSFpump",
+   "boughtAfterS": 1992,
+   "solIn": 1,
+   "capNow": 1286362
+  },
+  {
+   "wallet": "8gYj3Jk1Ck9LJg9HQanrdzsmjL1ooM8cTqMe7TtgXfe",
+   "symbol": "Kimchi",
+   "mint": "CSocnzcRpgSCr1naKcNTieWZUxb6rABe45j844m7pump",
+   "boughtAfterS": 2134,
+   "solIn": 5,
+   "capNow": 2989936
+  },
+  {
+   "wallet": "GsFuckhv58RHEQgBt5zLqwSH4jmUG4UcpZFZKiMvvWxk",
+   "symbol": "Kimchi",
+   "mint": "CSocnzcRpgSCr1naKcNTieWZUxb6rABe45j844m7pump",
+   "boughtAfterS": 1810,
+   "solIn": 299.25,
+   "capNow": 2989936
+  }
+ ]
+}
