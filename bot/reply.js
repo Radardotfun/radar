@@ -26,7 +26,8 @@ function ago(ms, now) {
 
 // A ticker as the bot may print it: letters and digits only, so a coin named "@someone" or "site.com" can't make the
 // bot tag people or post links.
-export const ticker = (s) => String(s || '').replace(/^\$+/, '').replace(/[^\p{L}\p{N}_]/gu, '').slice(0, 14) || '?';
+// Emoji stay: a coin can be just one, and it printed as "$?". Nothing here can become a mention or a link.
+export const ticker = (s) => [...String(s || '').replace(/^\$+/, '').replace(/[^\p{L}\p{N}_\p{Extended_Pictographic}‍️]/gu, '')].slice(0, 14).join('') || '?';
 export const shortCa = (a) => (a && a.length > 10 ? `${a.slice(0, 4)}…${a.slice(-4)}` : a || '');
 // A contract address as printed: base58 (or 0x hex) characters only, nothing that could become a mention or a link.
 export const contract = (a) => String(a || '').replace(/[^1-9A-HJ-NP-Za-km-z0x]/g, '').slice(0, 64);

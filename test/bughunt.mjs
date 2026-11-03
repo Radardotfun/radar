@@ -9,6 +9,7 @@ import { txBlock } from '../webapp/launch-guard.js';
 import { makeHandlers, DEFAULTS } from '../extension/src/lib/handlers.js';
 import { worthRetry } from '../bot/trigger.js';
 import { botCoins } from '../bot/coins.js';
+import { ticker } from '../bot/reply.js';
 import { coinKey, plainClash, launchFields } from '../server/launch.js';
 
 // A small stand-in for D1, enough for tick's queries.
@@ -246,4 +247,13 @@ const quiet = async () => ({ score: 90, why: 'a dog', name: 'Biscuit' });
   globalThis.fetch = real;
   assert.ok(asked > afterRead, 'Rescan asks again');
   console.log('PASS bughunt: one tap asks a downed AI once, Rescan asks again');
+}
+
+// 18. An emoji ticker prints as itself.
+{
+  assert.equal(ticker('🐶'), '🐶');
+  assert.equal(ticker('$WIF'), 'WIF');
+  assert.equal(ticker('@evil.com'), 'evilcom', 'still no mention or link');
+  assert.equal(ticker('...'), '?');
+  console.log('PASS bughunt: an emoji ticker prints as itself');
 }
