@@ -42,12 +42,19 @@ export function cashtags(text) {
 // whole words outside cashtags: in "$DACITY $DACITYCOIN" the second is another ticker, and it made a $4.5K coin named
 // "DacityCoin" beat the $7.6M Dacity Coin. The ticker RADAR only ever means the real mint.
 const plain = (s) => ` ${lower(s).replace(/\$[\p{L}\p{N}_]+/gu, ' ').replace(/[^\p{L}\p{N}]+/gu, ' ').trim()} `;
+const closeEarlier = (a, b) => {
+  const [x, y] = [a.marketCap || 0, b.marketCap || 0];
+  if (!x || !y || Math.max(x, y) > 2 * Math.min(x, y) || !a.createdAt || !b.createdAt) return 0;
+  return a.createdAt - b.createdAt;
+};
 export function pickNamed(tk, tokens, text) {
   const words = plain(text);
   // A name that is only the ticker ("GTA$" for GTA$) earns nothing: every copy has it.
   const named = (t) => { const n = plain(t.name).trim(); return n.length >= 3 && n !== lower(tk) && n !== plain(tk).trim() && words.includes(` ${n} `); };
   return tokens.filter((t) => t?.address && sym(t) === tk && (tk !== 'RADAR' || t.address === RADAR_MINT) && live(t) && (t.mcapBacked || alive(t)))
-    .sort((a, b) => Number(named(b)) - Number(named(a)) || Number(!!b.mcapBacked) - Number(!!a.mcapBacked) || (b.marketCap || 0) - (a.marketCap || 0))[0] || null;
+    // Close in size (within 2x), the earlier coin is the one made for the post: a copy launched 39 hours later at $35K on its
+    // curve had beaten the $30K BingBingBing launched 34 seconds after the post.
+    .sort((a, b) => Number(named(b)) - Number(named(a)) || Number(!!b.mcapBacked) - Number(!!a.mcapBacked) || closeEarlier(a, b) || (b.marketCap || 0) - (a.marketCap || 0))[0] || null;
 }
 
 // A copycat of the named coin: its ticker (alone or with a number after it, "SI276" for SI) or its name, or a name or

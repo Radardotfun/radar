@@ -356,3 +356,16 @@ const quiet = async () => ({ score: 90, why: 'a dog', name: 'Biscuit' });
   assert.equal(pick?.address, 'J9298r');
   console.log('PASS bughunt: a ticker-only name gives no edge, the bigger coin is named');
 }
+
+// 27. Two coins with the typed ticker and close in size: the earlier one, made for the post, is named, not a later copy.
+{
+  const { pickNamed } = await import('../bot/coins.js');
+  const base = { symbol: 'BingBingBing', name: 'Bing Bing Bing', mcapBacked: true, liquidity: 12_000, volume: { h24: 100_000 }, txns: { h1: { buys: 9, sells: 9 }, h24: { buys: 90, sells: 90 } } };
+  const now = Date.now();
+  const first = { ...base, address: 'FqmuG', chain: 'solana', marketCap: 30_000, createdAt: now - 48 * 3600e3 };
+  const copy = { ...base, address: '4DXt', chain: 'solana', marketCap: 35_100, createdAt: now - 9 * 3600e3 };
+  assert.equal(pickNamed('BINGBINGBING', [copy, first], 'Ticker should be BingBingBing?')?.address, 'FqmuG');
+  const big = { ...copy, marketCap: 300_000 };
+  assert.equal(pickNamed('BINGBINGBING', [big, first], 'Ticker should be BingBingBing?')?.address, '4DXt', 'a far bigger coin still wins');
+  console.log('PASS bughunt: close in size, the earlier coin is the one named');
+}
