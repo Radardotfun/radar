@@ -22,28 +22,34 @@ export function boughtMints(tx, wallet) {
 }
 
 /**
- * One look at one wallet. last: the newest signature seen before (null on the first look, which only notes it).
- * -> { last, buys: [{ sig, at, mint, symbol, launched }] } where each buy is of a coin launched in the last 6 hours.
+ * One look at one wallet. last: the newest signature already looked at; null before the first look, which only notes the
+ * wallet's place ('' for a wallet with no history yet). -> { last, buys: [{ sig, at, mint, symbol, launched }] }, each buy
+ * of a coin launched in the last 6 hours. New transactions are taken oldest first, at most 4 a look, and `last` only moves
+ * past one that was fully read: a failed read throws, so the caller keeps the old place and the next look tries again.
  */
 export async function lookAt(wallet, last, { rpc, launchOf, now = Date.now() }) {
   const sigs = await rpc('getSignaturesForAddress', [wallet, { limit: 10 }]);
-  const top = sigs[0]?.signature || last || null;
-  if (!last) return { last: top, buys: [] };
-  const i = sigs.findIndex((s) => s.signature === last);
-  const news = (i < 0 ? sigs : sigs.slice(0, i)).filter((s) => !s.err).slice(0, TX_PER_WALLET);
+  if (last == null) return { last: sigs[0]?.signature || '', buys: [] };
+  const i = last ? sigs.findIndex((s) => s.signature === last) : -1;
+  const news = (i < 0 ? sigs : sigs.slice(0, i)).reverse().slice(0, TX_PER_WALLET);
   const buys = [];
+  let done = last;
   for (const s of news) {
-    const tx = await rpc('getTransaction', [s.signature, { encoding: 'jsonParsed', maxSupportedTransactionVersion: 1 }]).catch(() => null);
-    for (const mint of boughtMints(tx, wallet)) {
-      const coin = await launchOf(mint).catch(() => null);
-      if (coin && now - coin.launched <= NEW_MS) buys.push({ sig: s.signature, at: (s.blockTime || now / 1000) * 1000, mint, symbol: String(coin.symbol || '').replace(/^\$/, '').slice(0, 20) || 'NEW', launched: coin.launched, marketCap: coin.marketCap || 0 });
+    if (!s.err) {
+      const tx = await rpc('getTransaction', [s.signature, { encoding: 'jsonParsed', maxSupportedTransactionVersion: 1 }]);
+      for (const mint of boughtMints(tx, wallet)) {
+        const coin = await launchOf(mint);
+        if (coin && now - coin.launched <= NEW_MS) buys.push({ sig: s.signature, at: (s.blockTime || now / 1000) * 1000, mint, symbol: String(coin.symbol || '').replace(/^\$/, '').slice(0, 20) || 'NEW', launched: coin.launched, marketCap: coin.marketCap || 0 });
+      }
     }
+    done = s.signature;
   }
-  return { last: top, buys };
+  return { last: done, buys };
 }
 
 // When a coin launched: its first pair on DexScreener.
 export const launchFromPairs = (pairs) => {
-  const times = (pairs || []).map((p) => p.pairCreatedAt).filter(Boolean);
+  if (!Array.isArray(pairs)) throw new Error('DexScreener gave no pairs');
+  const times = pairs.map((p) => p.pairCreatedAt).filter(Boolean);
   return times.length ? { launched: Math.min(...times), symbol: pairs[0]?.baseToken?.symbol, marketCap: pairs[0]?.marketCap || pairs[0]?.fdv || 0 } : null;
 };

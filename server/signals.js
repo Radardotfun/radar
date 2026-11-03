@@ -10,7 +10,8 @@ const HISTORY_ROWS = 20;
 export const SIGNAL_DELAY_MS = 10 * 60_000;
 
 // Diamond Hand rows (bot/diamond.js) are for holders only, so the public list leaves them out.
-const read = async (env, since, until, limit, live = true) => (await env.DB.prepare(`SELECT id, author, read_at, kind, post, narrative, terms FROM signals WHERE signal = 1 AND read_at > ? AND read_at <= ?${live ? '' : " AND kind != 'diamond'"} ORDER BY read_at DESC LIMIT ?`).bind(since, until, limit).all()).results || [];
+// A holder's minute look pages forward from `since`, oldest first, so a burst of more than a page is never skipped.
+const read = async (env, since, until, limit, live = true, forward = false) => (await env.DB.prepare(`SELECT id, author, read_at, kind, post, narrative, terms FROM signals WHERE signal = 1 AND read_at > ? AND read_at <= ?${live ? '' : " AND kind != 'diamond'"} ORDER BY read_at ${forward ? 'ASC' : 'DESC'} LIMIT ?`).bind(since, until, limit).all()).results || [];
 
 const view = (r, live) => {
   const post = JSON.parse(r.post || '{}');
@@ -37,7 +38,7 @@ export async function signalFeed(body, env, { now = Date.now(), cache = typeof c
   const holder = !!(body?.token && env.HOLDER_SECRET && await readToken(env, body.token, now));
   if (holder) {
     const since = body.history ? now - HISTORY_MS : Math.max(Number(body.since) || 0, now - MAX_AGE_MS);
-    return { status: 200, body: { live: true, items: (await read(env, since, now, body.history ? HISTORY_ROWS : MAX_ROWS)).map((r) => view(r, true)) } };
+    return { status: 200, body: { live: true, items: (await read(env, since, now, body.history ? HISTORY_ROWS : MAX_ROWS, true, !body.history)).map((r) => view(r, true)) } };
   }
   if (body?.token || body?.public !== true) return { status: 401, body: { error: 'For $RADAR and $LARPCHECK holders' } };
   // One database read a minute, however many people have the page open.

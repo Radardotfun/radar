@@ -467,7 +467,14 @@ export default {
         if (!j || j.error) throw new Error(`${method} ${j?.error?.code || r.status}`);
         return j.result;
       };
-      const launchOf = async (mint) => launchFromPairs(await (await fetch(`https://api.dexscreener.com/tokens/v1/solana/${mint}`)).json());
+      const launchOf = async (mint) => {
+        const r = await fetch(`https://api.dexscreener.com/tokens/v1/solana/${mint}`);
+        if (!r.ok) throw new Error(`DexScreener ${r.status}`);
+        return launchFromPairs(await r.json());
+      };
+      // Its own DexScreener budget each run: it was never reset here, so after 34 lookups every coin read failed.
+      dexBudget = DEX_BUDGET;
+      dexLastStatus.clear();
       const out = await diamondTick({ db: env.DB, rpc, launchOf }).catch((e) => ({ error: String(e.message || e).slice(0, 200) }));
       if (out.error || out.errors?.length || out.alerts) console.log('diamond', JSON.stringify(out));
       return json(200, out);

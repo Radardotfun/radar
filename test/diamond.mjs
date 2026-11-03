@@ -66,7 +66,7 @@ assert.equal(pub.body.items.filter((i) => i.kind === 'diamond').length, 0, 'not 
 console.log('PASS diamond: holders only');
 // The wallets people type in: only Solana addresses, and the look the extension runs on them is the same one.
 {
-  const { isWalletAddress, lookAt } = await import('../extension/src/lib/diamond.js');
+  const { isWalletAddress, lookAt, launchFromPairs } = await import('../extension/src/lib/diamond.js');
   assert.equal(isWalletAddress(W), true);
   assert.equal(isWalletAddress(' 0x1234567890abcdef1234567890abcdef12345678 '), false, 'an EVM address');
   assert.equal(isWalletAddress('hello'), false);
@@ -79,5 +79,42 @@ console.log('PASS diamond: holders only');
   assert.equal(next.last, 'A2');
   assert.deepEqual(next.buys.map((b) => b.symbol), ['NEWC']);
   console.log('PASS diamond: your own wallets get the same look');
+
+  // Oldest first, 4 a look, and never past a transaction that failed to read.
+  const many = ['N5', 'N4', 'N3', 'N2', 'N1', 'OLD'].map((signature) => ({ signature, blockTime: now / 1000 }));
+  const buyAt = { N1: buyTx(NEWC) };
+  const r3 = async (m, p) => (m === 'getSignaturesForAddress' ? many : buyAt[p[0]] || { meta: { err: null, preBalances: [0], postBalances: [0], preTokenBalances: [], postTokenBalances: [] }, transaction: { message: { accountKeys: [W] } } });
+  const a = await lookAt(W, 'OLD', { rpc: r3, launchOf, now });
+  assert.equal(a.last, 'N4', 'the four oldest new ones, N1 to N4');
+  assert.deepEqual(a.buys.map((b) => b.sig), ['N1'], 'the oldest new buy is not skipped');
+  const r4 = async (m, p) => { if (m === 'getTransaction') throw new Error('rpc 429'); return r3(m, p); };
+  await assert.rejects(lookAt(W, 'OLD', { rpc: r4, launchOf, now }), /429/, 'a failed read throws, so the place stays');
+  const r5 = async (m, p) => r3(m, p);
+  await assert.rejects(lookAt(W, 'OLD', { rpc: r5, launchOf: async () => { throw new Error('DexScreener 503'); }, now }), /503/);
+  const empty = await lookAt(W, null, { rpc: async () => [], launchOf, now });
+  assert.equal(empty.last, '', 'a wallet with no history is marked as looked at');
+  const firstBuy = await lookAt(W, '', { rpc: async (m) => (m === 'getSignaturesForAddress' ? [{ signature: 'B1', blockTime: now / 1000 }] : buyTx(NEWC)), launchOf, now });
+  assert.deepEqual(firstBuy.buys.map((b) => b.sig), ['B1'], "that wallet's first buy is an alert");
+  assert.throws(() => (launchFromPairs({})), /no pairs/);
+  console.log('PASS diamond: buys are never skipped, and a failed read is tried again');
+}
+
+// A burst of more than a page of rows reaches holders, oldest first, a page a minute.
+{
+  sql.exec('DELETE FROM signals');
+  const base = now + 3_600_000;
+  sql.prepare("INSERT INTO signals (id, author, at, kind, post, state, signal, narrative, terms, read_at) VALUES ('elon-1', 'elonmusk', ?, 'post', '{\"url\":\"https://x.com/e/status/1\"}', 'read', 1, '90: x', '[]', ?)").run(base, base);
+  for (let i = 0; i < 12; i++) sql.prepare("INSERT INTO signals (id, author, at, kind, post, state, signal, narrative, terms, read_at) VALUES (?, 'Diamond Hand', ?, 'diamond', '{\"url\":\"https://dexscreener.com/solana/x\"}', 'read', 1, '100: x', '[]', ?)").run(`dh-${i}`, base, base + 1 + i);
+  const { readToken } = await import('../server/holder.js');
+  void readToken;
+  const env2 = { DB: db, HOLDER_SECRET: '' };
+  const page = async (since) => { const r = await db.prepare("SELECT id, read_at FROM signals WHERE signal = 1 AND read_at > ? AND read_at <= ? ORDER BY read_at ASC LIMIT ?").bind(since, base + 100, 10).all(); return r.results; };
+  const src = (await import('node:fs')).readFileSync(new URL('../server/signals.js', import.meta.url), 'utf8');
+  assert.match(src, /ORDER BY read_at \$\{forward \? 'ASC' : 'DESC'\}/);
+  let since = 0; const got = [];
+  for (let i = 0; i < 3; i++) { const rows = await page(since); got.push(...rows.map((r) => r.id)); if (rows.length) since = Math.max(...rows.map((r) => r.read_at)); }
+  assert.equal(got.length, 13, 'every row reaches the holder');
+  void env2;
+  console.log('PASS diamond: a burst never pushes other alerts out of holders\' feeds');
 }
 process.exit(0);

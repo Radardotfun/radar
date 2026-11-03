@@ -468,7 +468,11 @@ const relay = async (method, params) => {
   if (!j || j.error) throw new Error(`${method} ${j?.error?.code || r.status}`);
   return j.result;
 };
-const launchOf = async (mint) => launchFromPairs(await (await fetch(`https://api.dexscreener.com/tokens/v1/solana/${encodeURIComponent(mint)}`, { signal: AbortSignal.timeout(10_000) })).json());
+const launchOf = async (mint) => {
+  const r = await fetch(`https://api.dexscreener.com/tokens/v1/solana/${encodeURIComponent(mint)}`, { signal: AbortSignal.timeout(10_000) });
+  if (!r.ok) throw new Error(`DexScreener ${r.status}`);
+  return launchFromPairs(await r.json());
+};
 const myWalletItem = (wallet, b, now = Date.now()) => ({
   id: `mine:${b.sig.slice(0, 30)}:${b.mint.slice(0, 8)}`,
   at: now,

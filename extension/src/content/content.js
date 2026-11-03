@@ -417,7 +417,8 @@
   }
   document.addEventListener('keydown', (e) => {
     if (e.altKey && !e.ctrlKey && !e.metaKey && e.code === 'KeyR') {
-      const t = e.target;
+      // The panel's own boxes sit in a shadow root, where e.target is only the host: the real target is the first in the path.
+      const t = e.composedPath?.()[0] || e.target;
       if (t?.isContentEditable || /INPUT|TEXTAREA/.test(t?.tagName)) return;
       e.preventDefault();
       altR();
