@@ -76,4 +76,29 @@ const { default: engine, ipOf, INSIDE } = await import('../server/worker.js');
   assert.match(fs.readFileSync(new URL('../server/signals.js', import.meta.url), 'utf8'), /WHERE signal = 1 AND read_at > \? AND read_at <= \? ORDER BY read_at DESC/);
   console.log('PASS engine: holder alerts have their index');
 }
+// 4. Videos are watched again: the 2.5 models answer 404 now, so the list is current models only, and when one fails the
+// next one answers; a failure says which models were tried and how.
+{
+  const { watchVideo } = await import('../server/narrative.js');
+  const src = fs.readFileSync(new URL('../server/narrative.js', import.meta.url), 'utf8');
+  assert.doesNotMatch(src.match(/const WATCH_MODELS = \[[^\]]*\]/)[0], /2\.5/, 'no retired model left');
+  const realFetch = globalThis.fetch;
+  const asked = [];
+  globalThis.fetch = async (url) => {
+    const u = String(url);
+    if (u.startsWith('https://video.test/')) return new Response(new Uint8Array(1000), { status: 200, headers: { 'content-length': '1000' } });
+    const model = u.match(/models\/([^:]+):/)?.[1];
+    asked.push(model);
+    if (model === 'gemini-flash-lite-latest') return new Response('{}', { status: 503 });
+    return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: 'A man argues with an AI avatar named Julia.' }] } }] }), { status: 200 });
+  };
+  const out = await watchVideo({ GEMINI_API_KEY: 'k' }, 'https://video.test/a.mp4');
+  assert.equal(out.model, 'gemini-flash-latest');
+  assert.match(out.text, /Julia/);
+  assert.deepEqual(asked, ['gemini-flash-lite-latest', 'gemini-flash-latest']);
+  globalThis.fetch = async (url) => (String(url).startsWith('https://video.test/') ? new Response(new Uint8Array(10), { status: 200 }) : new Response('{}', { status: 404 }));
+  await assert.rejects(watchVideo({ GEMINI_API_KEY: 'k' }, 'https://video.test/b.mp4'), /Could not watch the video \(gemini-flash-lite-latest 404, gemini-flash-latest 404\)/);
+  globalThis.fetch = realFetch;
+  console.log('PASS engine: videos are watched again, by a model that still answers');
+}
 process.exit(0);

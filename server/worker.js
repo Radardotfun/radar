@@ -469,6 +469,8 @@ const app = {
         console.error(pathname, e?.status, e?.message);
         if (/busy right now/.test(String(e?.message))) return json(503, { error: 'The AI is busy right now. Try again in a few seconds.' });
         if (/ 429$/.test(String(e?.message))) return json(429, { error: 'Every AI key is at its limit right now. Add more keys or try again later.', quota: true });
+        // A video that couldn't be watched says why (which model, which status), so a dead model name shows up at once.
+        if (pathname === '/watch' && /^(Could not watch the video|video \d)/.test(String(e?.message))) return json(502, { error: 'Could not watch the video', detail: String(e.message).slice(0, 200) });
         if (/daily free allocation|4006/.test(String(e?.message))) {
           return json(429, { error: 'Free AI limit reached for today. It resets at 00:00 UTC.', quota: true });
         }
