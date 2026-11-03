@@ -20,6 +20,7 @@ import { oauthHeader } from './oauth.js';
 import { wantsCoins, worthRetry, mergeState } from './trigger.js';
 import { createChat } from './chat.js';
 import { tick as signalsTick, recent as signalsRecent, status as signalsStatus } from './signals.js';
+import { tick as diamondTick } from './diamond.js';
 
 const X = 'https://api.x.com/2';
 
@@ -456,6 +457,24 @@ export default {
       try { return json(200, await handle(env, await request.json())); } catch (e) { return json(200, { error: String(e.message || e).slice(0, 200) }); }
     }
     // The account watcher: one minute's work in a run of its own, and what it has seen.
+    // Diamond Hand: this minute's look at the watched wallets (bot/diamond.js), on the chain through the engine's relay.
+    if (u.pathname === '/diamond-tick' && request.method === 'POST') {
+      if (env.DIAMOND === '0') return json(200, { off: true });
+      const rpc = async (method, params) => {
+        const r = await fetch(`${API_BASE}/rpc`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }) });
+        const j = await r.json().catch(() => null);
+        if (!j || j.error) throw new Error(`${method} ${j?.error?.code || r.status}`);
+        return j.result;
+      };
+      const launchOf = async (mint) => {
+        const pairs = await (await fetch(`https://api.dexscreener.com/tokens/v1/solana/${mint}`)).json();
+        const times = (pairs || []).map((p) => p.pairCreatedAt).filter(Boolean);
+        return times.length ? { launched: Math.min(...times), symbol: pairs[0]?.baseToken?.symbol } : null;
+      };
+      const out = await diamondTick({ db: env.DB, rpc, launchOf }).catch((e) => ({ error: String(e.message || e).slice(0, 200) }));
+      if (out.error || out.errors?.length || out.alerts) console.log('diamond', JSON.stringify(out));
+      return json(200, out);
+    }
     if (u.pathname === '/signals-tick' && request.method === 'POST') {
       if (env.SIGNALS !== '1') return json(200, { off: true });
       const read = async (post) => {
@@ -480,5 +499,6 @@ export default {
     ctx.waitUntil(poll(env).catch((e) => console.log('poll failed', e.message)));
     ctx.waitUntil(chatFor(env).tick(env).catch((e) => console.log('chat failed', e.message)));
     if (env.SIGNALS === '1') ctx.waitUntil(env.SELF.fetch(new Request('https://radar-bot/signals-tick', { method: 'POST', headers: { 'x-bot-token': env.BOT_TOKEN } })).catch((e) => console.log('signals failed', e.message)));
+    if (env.DIAMOND !== '0') ctx.waitUntil(env.SELF.fetch(new Request('https://radar-bot/diamond-tick', { method: 'POST', headers: { 'x-bot-token': env.BOT_TOKEN } })).catch((e) => console.log('diamond failed', e.message)));
   },
 };

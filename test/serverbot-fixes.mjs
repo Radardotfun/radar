@@ -73,7 +73,7 @@ const { default: engine, ipOf, INSIDE } = await import('../server/worker.js');
 {
   const src = fs.readFileSync(new URL('../bot/signals.js', import.meta.url), 'utf8');
   assert.match(src, /CREATE INDEX IF NOT EXISTS signals_read ON signals \(signal, read_at\)/);
-  assert.match(fs.readFileSync(new URL('../server/signals.js', import.meta.url), 'utf8'), /WHERE signal = 1 AND read_at > \? AND read_at <= \? ORDER BY read_at DESC/);
+  assert.match(fs.readFileSync(new URL('../server/signals.js', import.meta.url), 'utf8'), /WHERE signal = 1 AND read_at > \? AND read_at <= \?/);
   console.log('PASS engine: holder alerts have their index');
 }
 // 4. Videos are watched again: the 2.5 models answer 404 now, so the list is current models only, and when one fails the

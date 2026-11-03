@@ -9,7 +9,8 @@ const MAX_ROWS = 10;
 const HISTORY_ROWS = 20;
 export const SIGNAL_DELAY_MS = 10 * 60_000;
 
-const read = async (env, since, until, limit) => (await env.DB.prepare('SELECT id, author, read_at, kind, post, narrative, terms FROM signals WHERE signal = 1 AND read_at > ? AND read_at <= ? ORDER BY read_at DESC LIMIT ?').bind(since, until, limit).all()).results || [];
+// Diamond Hand rows (bot/diamond.js) are for holders only, so the public list leaves them out.
+const read = async (env, since, until, limit, live = true) => (await env.DB.prepare(`SELECT id, author, read_at, kind, post, narrative, terms FROM signals WHERE signal = 1 AND read_at > ? AND read_at <= ?${live ? '' : " AND kind != 'diamond'"} ORDER BY read_at DESC LIMIT ?`).bind(since, until, limit).all()).results || [];
 
 const view = (r, live) => {
   const post = JSON.parse(r.post || '{}');
@@ -44,7 +45,7 @@ export async function signalFeed(body, env, { now = Date.now(), cache = typeof c
   const key = new Request(`https://cache.narrative-radar/signals1/${minute}`);
   const hit = cache && await cache.match(key);
   if (hit) return { status: 200, body: await hit.json() };
-  const out = { live: false, delay: SIGNAL_DELAY_MS, items: (await read(env, now - HISTORY_MS, minute - SIGNAL_DELAY_MS, HISTORY_ROWS)).map((r) => view(r, false)) };
+  const out = { live: false, delay: SIGNAL_DELAY_MS, items: (await read(env, now - HISTORY_MS, minute - SIGNAL_DELAY_MS, HISTORY_ROWS, false)).map((r) => view(r, false)) };
   if (cache) await cache.put(key, new Response(JSON.stringify(out), { headers: { 'content-type': 'application/json', 'cache-control': 'public, max-age=70' } }));
   return { status: 200, body: out };
 }
