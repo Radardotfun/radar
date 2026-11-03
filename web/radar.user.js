@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Radar
 // @namespace    https://tryradar.fun
-// @version      1.7.73
+// @version      1.7.74
 // @description  See the coins behind any post on X and instantly reroute to the biggest match that passes available on-chain safety checks.
 // @homepageURL  https://tryradar.fun
 // @supportURL   https://tryradar.fun
@@ -31,7 +31,7 @@
 // @downloadURL  https://tryradar.fun/radar.user.js
 // ==/UserScript==
 
-// Radar 1.7.73: built from the extension source at https://tryradar.fun. Not financial advice.
+// Radar 1.7.74: built from the extension source at https://tryradar.fun. Not financial advice.
 (() => {
   var __defProp = Object.defineProperty;
   var __export = (target, all) => {
@@ -1294,7 +1294,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     const memo = /* @__PURE__ */ new Map();
     function cached(key2, ttl, fn) {
       const hit = memo.get(key2);
-      if (hit && Date.now() - hit.t < ttl) return hit.p;
+      if (hit && Date.now() - hit.t < (hit.ttl ?? ttl)) return hit.p;
       const p = fn();
       memo.set(key2, { t: Date.now(), p });
       p.catch(() => memo.delete(key2));
@@ -1304,7 +1304,11 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     const postKey = (p, chains) => JSON.stringify([p, chains]);
     async function forgetIfFailed(key2, p) {
       const res = await p;
-      if (res?.engineError) memo.delete(key2);
+      const hit = memo.get(key2);
+      if (res?.engineError && hit) {
+        hit.t = Date.now();
+        hit.ttl = 1e4;
+      }
       return res;
     }
     async function read({ post }) {
@@ -1335,6 +1339,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       const s = await host.settings();
       const k = postKey(post, s.chains);
       const r = await memo.get(`rd:${k}`)?.p.catch(() => null);
+      if (r?.engineError) memo.delete(`rd:${k}`);
       for (const t of r?.terms || []) memo.delete(`q:${t.toLowerCase()}`);
       memo.delete(`co:${k}`);
       memo.delete(`co:j:${k}`);

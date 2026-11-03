@@ -39,7 +39,7 @@ export function makeHandlers(host) {
   const memo = new Map();
   function cached(key, ttl, fn) {
     const hit = memo.get(key);
-    if (hit && Date.now() - hit.t < ttl) return hit.p;
+    if (hit && Date.now() - hit.t < (hit.ttl ?? ttl)) return hit.p;
     const p = fn();
     memo.set(key, { t: Date.now(), p });
     p.catch(() => memo.delete(key));
@@ -50,11 +50,12 @@ export function makeHandlers(host) {
   // Two stages so the panel can show the narrative while the coins are still being found.
   const postKey = (p, chains) => JSON.stringify([p, chains]);
 
-  // A failed read is not an answer: it is dropped from the cache so the next tap tries again
-  // instead of showing "no coins" for minutes.
+  // A failed read is not an answer: it leaves the cache in a few seconds, so the next tap tries again instead of showing
+  // "no coins" for minutes. Not at once: one tap reads and then finds coins, and that would ask the AI twice while it's down.
   async function forgetIfFailed(key, p) {
     const res = await p;
-    if (res?.engineError) memo.delete(key);
+    const hit = memo.get(key);
+    if (res?.engineError && hit) { hit.t = Date.now(); hit.ttl = 10_000; }
     return res;
   }
 
@@ -95,6 +96,7 @@ export function makeHandlers(host) {
     const s = await host.settings();
     const k = postKey(post, s.chains);
     const r = await memo.get(`rd:${k}`)?.p.catch(() => null);
+    if (r?.engineError) memo.delete(`rd:${k}`);
     for (const t of r?.terms || []) memo.delete(`q:${t.toLowerCase()}`);
     memo.delete(`co:${k}`);
     memo.delete(`co:j:${k}`);

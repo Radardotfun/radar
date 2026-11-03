@@ -222,3 +222,28 @@ const quiet = async () => ({ score: 90, why: 'a dog', name: 'Biscuit' });
   globalThis.fetch = real;
   console.log('PASS bughunt: Open best match goes to the coin in the bio');
 }
+
+// 17. One tap asks the AI once while it's down, and Rescan still tries again.
+{
+  const real = globalThis.fetch;
+  let asked = 0;
+  globalThis.fetch = async (u) => {
+    if (String(u).includes('/interpret')) { asked += 1; return new Response(JSON.stringify({ error: 'busy' }), { status: 503 }); }
+    // DexScreener knows the coin in the post, so the read gives it with no AI rather than failing outright.
+    const pair = { chainId: 'solana', dexId: 'pumpswap', pairAddress: 'pool1', baseToken: { address: 'HyDSdtgiSa5mHqkTVoz8cTFTeVLFKdZ8amPvtNYfpump', symbol: 'RADAR', name: 'Radar' }, quoteToken: { address: 'So11111111111111111111111111111111111111112' }, priceUsd: '1', priceNative: '1', liquidity: { usd: 9000, quote: 4500 }, marketCap: 10000 };
+    const body = String(u).includes('/latest/dex/search') ? { pairs: [pair] } : /token-pairs|tokens\/v1/.test(String(u)) ? [pair] : {};
+    return new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } });
+  };
+  const h = makeHandlers({ settings: async () => ({ ...DEFAULTS, chains: ['solana'] }), store: { get: async () => null, set: async () => {} }, openWindow: () => {}, rpcUrl: async () => null, ready: Promise.resolve(), inlineImages: false });
+  const post = { text: 'look at this dog on a skateboard HyDSdtgiSa5mHqkTVoz8cTFTeVLFKdZ8amPvtNYfpump' };
+  const read = await h.read({ post });
+  assert.ok(read.engineError, 'the AI is down in this test');
+  const afterRead = asked;
+  await h.coins({ post });
+  assert.equal(asked, afterRead, 'finding coins right after the read asks the AI no more');
+  await h.forgetCoins({ post });
+  await h.read({ post });
+  globalThis.fetch = real;
+  assert.ok(asked > afterRead, 'Rescan asks again');
+  console.log('PASS bughunt: one tap asks a downed AI once, Rescan asks again');
+}

@@ -1,4 +1,4 @@
-// Radar 1.7.73 alerts page, built from webapp/alerts.js: https://github.com/Radardotfun/radar
+// Radar 1.7.74 alerts page, built from webapp/alerts.js: https://github.com/Radardotfun/radar
 (() => {
   // extension/src/lib/keywords.js
   var STOP = new Set(`a about above after again against all almost also am an and any are aren as at be because been before
@@ -1172,7 +1172,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     const memo = /* @__PURE__ */ new Map();
     function cached(key2, ttl, fn) {
       const hit = memo.get(key2);
-      if (hit && Date.now() - hit.t < ttl) return hit.p;
+      if (hit && Date.now() - hit.t < (hit.ttl ?? ttl)) return hit.p;
       const p = fn();
       memo.set(key2, { t: Date.now(), p });
       p.catch(() => memo.delete(key2));
@@ -1182,7 +1182,11 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     const postKey = (p, chains) => JSON.stringify([p, chains]);
     async function forgetIfFailed(key2, p) {
       const res = await p;
-      if (res?.engineError) memo.delete(key2);
+      const hit = memo.get(key2);
+      if (res?.engineError && hit) {
+        hit.t = Date.now();
+        hit.ttl = 1e4;
+      }
       return res;
     }
     async function read({ post }) {
@@ -1213,6 +1217,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       const s = await host.settings();
       const k = postKey(post, s.chains);
       const r = await memo.get(`rd:${k}`)?.p.catch(() => null);
+      if (r?.engineError) memo.delete(`rd:${k}`);
       for (const t of r?.terms || []) memo.delete(`q:${t.toLowerCase()}`);
       memo.delete(`co:${k}`);
       memo.delete(`co:j:${k}`);
