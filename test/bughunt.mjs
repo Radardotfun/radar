@@ -339,3 +339,11 @@ const quiet = async () => ({ score: 90, why: 'a dog', name: 'Biscuit' });
   assert.ok(seen.includes(addr), 'the address inside a GMGN link is looked up');
   console.log('PASS bughunt: no old OG, GMGN link addresses, and GTA$ tickers');
 }
+
+// 25. Highest MC isn't claimed when a bigger namesake lives on another chain the bot scans.
+{
+  const src = (await import('node:fs')).readFileSync(new URL('../bot/coins.js', import.meta.url), 'utf8');
+  assert.match(src, /sym\(t\) === sym\(top\) && chains\.includes\(t\.chain\) && t\.mcapBacked/);
+  assert.doesNotMatch(src, /t\.chain === top\.chain/);
+  console.log('PASS bughunt: Highest MC is checked against namesakes on every scanned chain');
+}

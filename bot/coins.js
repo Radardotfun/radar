@@ -254,9 +254,10 @@ export async function botCoins(res, post, { search, lookupCa, lookupBio = lookup
   const postsOwn = named || story.some(isOwn);
   story = story.map((t) => { const twin = olderTwinOf(t, twins); return { ...t, olderTwin: postsOwn ? !!twin : twin }; });
   const { picks } = story.length ? pickThree(story, { cuts: [0.85, 0.7], allowFallback: false }) : { picks: [] };
-  // A same-named coin on the same chain the judge left out can be far bigger: the top pick doesn't claim the title over it.
+  // A same-named coin the judge left out can be far bigger, on this chain or another the bot scans: the top pick doesn't
+  // claim the title over it (a $664K Base Dacity was Highest MC beside a $6.8M Solana one).
   const top = picks.find((p) => p.role === 'top')?.token;
-  const outranked = !!top && [...scanned, ...(res?.pool || [])].some((t) => t?.address !== top.address && sym(t) === sym(top) && t.chain === top.chain && t.mcapBacked && alive(t) && (t.marketCap || 0) > (top.marketCap || 0));
+  const outranked = !!top && [...scanned, ...(res?.pool || [])].some((t) => t?.address !== top.address && sym(t) === sym(top) && chains.includes(t.chain) && t.mcapBacked && alive(t) && (t.marketCap || 0) > (top.marketCap || 0));
   // A post's id carries its time.
   const id = String(post?.url || '').match(/status\/(\d+)/)?.[1];
   const postAt = id ? Number((BigInt(id) >> 22n) + 1288834974657n) : null;
