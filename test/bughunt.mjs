@@ -8,7 +8,7 @@ import { coinCheck } from '../extension/src/ui/coincheck.js';
 import { txBlock } from '../webapp/launch-guard.js';
 import { makeHandlers, DEFAULTS } from '../extension/src/lib/handlers.js';
 import { worthRetry } from '../bot/trigger.js';
-import { botCoins } from '../bot/coins.js';
+import { botCoins, ownCoin } from '../bot/coins.js';
 import { ticker } from '../bot/reply.js';
 import { coinKey, plainClash, launchFields } from '../server/launch.js';
 
@@ -280,4 +280,14 @@ const quiet = async () => ({ score: 90, why: 'a dog', name: 'Biscuit' });
   assert.equal(story.coins, 8, 'the busy count still only covers the window');
   assert.equal(findStories(Array.from({ length: 3 }, (_, i) => c(i, 50, 90000)), NOW).length, 0, 'old coins alone are no story');
   console.log('PASS bughunt: a story knows when it really began');
+}
+
+// 21. An account whose following can't be read is no small project: a coin under its name isn't "its own".
+{
+  const t = { symbol: 'CASHCAT', name: 'Cash Cat' };
+  assert.equal(ownCoin(t, { author: 'cashcatss', followers: 1200 }), true, 'a small account and its coin');
+  assert.equal(ownCoin(t, { author: 'cashcatss', followers: null }), false, 'following unknown');
+  assert.equal(ownCoin(t, { author: 'cashcatss' }), false, 'following missing');
+  assert.equal(ownCoin(t, { author: 'cashcatss', followers: 900_000 }), false, 'a big account');
+  console.log('PASS bughunt: an unread following never makes a coin the poster\'s own');
 }

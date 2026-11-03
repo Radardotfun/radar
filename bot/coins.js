@@ -109,7 +109,8 @@ const OWN_MAX_FOLLOWERS = 250_000;
 export function ownCoin(t, post) {
   const handle = key(post?.author);
   const core = handleCore(post);
-  if (!core || !(post?.followers < OWN_MAX_FOLLOWERS)) return false;
+  // A null following reads as 0 to "<", so it must be a real number first.
+  if (!core || !(Number.isFinite(post?.followers) && post.followers < OWN_MAX_FOLLOWERS)) return false;
   return [key(t?.symbol), key(t?.name)].some((k) => k.length >= 4 && handle.includes(k) && k.length / core.length >= 0.7);
 }
 
