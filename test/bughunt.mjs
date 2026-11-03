@@ -347,3 +347,12 @@ const quiet = async () => ({ score: 90, why: 'a dog', name: 'Biscuit' });
   assert.doesNotMatch(src, /t\.chain === top\.chain/);
   console.log('PASS bughunt: Highest MC is checked against namesakes on every scanned chain');
 }
+
+// 26. A coin named just its ticker gets no "named in the post" credit: the bigger GTA$ wins, not a small one with a pool.
+{
+  const { pickNamed } = await import('../bot/coins.js');
+  const mk = (address, chain, marketCap) => ({ address, chain, symbol: 'GTA$', name: 'GTA$', marketCap, mcapBacked: true, liquidity: 20_000, volume: { h24: 50_000 }, txns: { h1: { buys: 9, sells: 9 }, h24: { buys: 90, sells: 90 } }, createdAt: Date.now() - 86_400_000 });
+  const pick = pickNamed('GTA$', [mk('Rh111', 'robinhood', 6_400), mk('J9298r', 'solana', 35_000)], 'GTA$ is the primary in-game currency?');
+  assert.equal(pick?.address, 'J9298r');
+  console.log('PASS bughunt: a ticker-only name gives no edge, the bigger coin is named');
+}

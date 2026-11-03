@@ -44,7 +44,8 @@ export function cashtags(text) {
 const plain = (s) => ` ${lower(s).replace(/\$[\p{L}\p{N}_]+/gu, ' ').replace(/[^\p{L}\p{N}]+/gu, ' ').trim()} `;
 export function pickNamed(tk, tokens, text) {
   const words = plain(text);
-  const named = (t) => { const n = plain(t.name).trim(); return n.length >= 3 && n !== lower(tk) && words.includes(` ${n} `); };
+  // A name that is only the ticker ("GTA$" for GTA$) earns nothing: every copy has it.
+  const named = (t) => { const n = plain(t.name).trim(); return n.length >= 3 && n !== lower(tk) && n !== plain(tk).trim() && words.includes(` ${n} `); };
   return tokens.filter((t) => t?.address && sym(t) === tk && (tk !== 'RADAR' || t.address === RADAR_MINT) && live(t) && (t.mcapBacked || alive(t)))
     .sort((a, b) => Number(named(b)) - Number(named(a)) || Number(!!b.mcapBacked) - Number(!!a.mcapBacked) || (b.marketCap || 0) - (a.marketCap || 0))[0] || null;
 }
