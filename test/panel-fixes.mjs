@@ -86,6 +86,20 @@ const radar = await ui.mountInline(new El(), 'dark');
   assert.equal(radar.state.story, null, 'no main coin: no check left up');
   console.log('PASS panel: the larp check shows the coin on the cards, not an earlier one');
 }
+// 5. Diamond Hand in Settings: what it is, its switch, the holder's own wallets and the box to add one.
+{
+  radar.alerts = { watches: [], feed: [{ id: 'mine:x', at: Date.now(), kind: 'signal', text: 'Your wallet 7xKq…f9Qa just bought $NEWC, launched 4m ago.', watch: { url: 'https://dexscreener.com/solana/x', author: 'Diamond Hand', label: '$NEWC' }, coin: { name: '$NEWC' } }],
+    unread: 0, notifications: true, freshBadges: true, bigAccounts: true, diamond: false, myWallets: ['7xKqAbCdEfGhJkLmNoPqRsTuVwXyZ12345f9Qa'], holder: true };
+  const html = radar.alertsHtml();
+  assert.match(html, /<h3>Diamond Hand<\/h3><span class="verdict ok">OFF<\/span>/);
+  assert.match(html, /data-act="diamond-toggle">Diamond Hand alerts: Off</);
+  assert.match(html, /data-act="dh-remove" data-address="7xKqAbCdEfGhJkLmNoPqRsTuVwXyZ12345f9Qa"/);
+  assert.match(html, /data-dh-wallet placeholder="Solana wallet address"/);
+  assert.match(html, /<b>Diamond Hand<\/b>/, 'the alert list names Diamond Hand, not @Diamond Hand');
+  radar.alerts = { ...radar.alerts, holder: false, diamond: true };
+  assert.match(radar.alertsHtml(), /verdict neutral">HOLDERS</);
+  console.log('PASS panel: Diamond Hand has its place in Settings, with its switch and your wallets');
+}
 radar.stopTimers(); clearInterval(radar.agoTimer);
 
 // 4. Rescan on a video post searches again for the speech read as well as the quick read.

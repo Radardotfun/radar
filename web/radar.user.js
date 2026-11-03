@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Radar
 // @namespace    https://tryradar.fun
-// @version      1.7.84
+// @version      1.7.85
 // @description  See the coins behind any post on X and instantly reroute to the biggest match that passes available on-chain safety checks.
 // @homepageURL  https://tryradar.fun
 // @supportURL   https://tryradar.fun
@@ -31,7 +31,7 @@
 // @downloadURL  https://tryradar.fun/radar.user.js
 // ==/UserScript==
 
-// Radar 1.7.84: built from the extension source at https://tryradar.fun. Not financial advice.
+// Radar 1.7.85: built from the extension source at https://tryradar.fun. Not financial advice.
 (() => {
   var __defProp = Object.defineProperty;
   var __export = (target, all) => {
@@ -3406,7 +3406,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       const watches = a.watches.map((w) => `<div class="al-w"><div><b>${w.word ? `\u201C${esc2(w.word)}\u201D` : w.author ? `@${esc2(w.author)}` : "Post"}</b><span>${esc2(w.label)}</span></div>
       <em>${left(w)}</em><button type="button" data-act="unwatch" data-id="${esc2(w.id)}">Stop</button></div>`).join("");
       const hits = a.feed.slice(0, 5).map((f) => {
-        if (f.kind === "signal") return `<a class="al-hit" href="${esc2(f.watch.url)}" target="_blank" rel="noopener noreferrer"><b>@${esc2(f.watch.author)}</b><span>${esc2([f.coin.name, age(f.at)].filter(Boolean).join(" \xB7 "))}</span><em>${esc2(f.text)}</em></a>`;
+        if (f.kind === "signal") return `<a class="al-hit" href="${esc2(f.watch.url)}" target="_blank" rel="noopener noreferrer"><b>${f.watch.author === "Diamond Hand" ? "Diamond Hand" : `@${esc2(f.watch.author)}`}</b><span>${esc2([f.coin.name, age(f.at)].filter(Boolean).join(" \xB7 "))}</span><em>${esc2(f.text)}</em></a>`;
         const c = f.coin;
         const larp = f.kind === "guard" ? esc2(f.text) : f.larp ? `${f.larp.by === "Larpcheck" ? "Larpcheck" : "Larp check"} ${esc2(f.larp.word)}${f.larp.score != null ? ` ${esc2(f.larp.score)}` : ""}` : "";
         const link = f.buy || f.chart;
@@ -3422,7 +3422,49 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       <button class="fr-btn ghost" data-act="fresh-toggle">New-pair badges on X: ${a.freshBadges === false ? "Off" : "On"}</button>
       <p>Radar also watches big accounts like Elon, Polymarket and Kalshi, and alerts $RADAR and $LARPCHECK holders when one posts something people may launch coins off. It's a heads up, not a pick.</p>
       <button class="fr-btn ghost" data-act="big-toggle">Big account alerts: ${a.bigAccounts === false ? "Off" : "On"}</button>
+    </section>${this.diamondHtml()}`;
+    }
+    // Diamond Hand: Radar's proven early holders, the holder's own wallets, and the switch for both.
+    diamondHtml() {
+      const a = this.alerts;
+      const mine = (a.myWallets || []).map((w) => `<div class="al-w"><div><b>${esc2(w.slice(0, 4))}\u2026${esc2(w.slice(-4))}</b><span>Your wallet</span></div><em></em><button type="button" data-act="dh-remove" data-address="${esc2(w)}">Remove</button></div>`).join("");
+      return `<section class="settings">
+      <div class="set-head"><h3>Diamond Hand</h3><span class="verdict ${a.holder ? "ok" : "neutral"}">${a.holder ? a.diamond === false ? "OFF" : "ON" : "HOLDERS"}</span></div>
+      <p>Radar watches wallets that bought recent runners in their first hour and still hold. When one buys a coin launched in the last 6 hours, you get an alert here and on X. For $RADAR and $LARPCHECK holders with $10 or more.</p>
+      <button class="fr-btn ghost" data-act="diamond-toggle">Diamond Hand alerts: ${a.diamond === false ? "Off" : "On"}</button>
+      <div class="section-label"><span>Your wallets</span></div>
+      <p>Add up to 5 Solana wallets. Radar checks them every 2 minutes and alerts you when one buys a coin launched in the last 6 hours. The list stays on this device.</p>
+      ${mine ? `<div class="al-list">${mine}</div>` : ""}
+      <div class="fr-connect"><input type="text" data-dh-wallet placeholder="Solana wallet address" autocomplete="off" spellcheck="false"><button class="fr-btn" data-act="dh-add">Track</button></div>
+      ${a.holder ? "" : '<p class="fine">Check your wallet at the top of Radar to turn these on.</p>'}
     </section>`;
+    }
+    async toggleDiamond() {
+      try {
+        this.alerts = await send("alerts:diamond", { on: this.alerts?.diamond === false });
+      } catch (err) {
+        this.toast(err.message, 3e3);
+      }
+      this.renderBody();
+    }
+    async addMyWallet() {
+      const input = this.bodyEl.querySelector("[data-dh-wallet]");
+      try {
+        this.alerts = await send("diamond:add", { address: input?.value.trim() || "" });
+        this.toast("Radar is watching that wallet", 2200);
+      } catch (err) {
+        this.toast(err.message, 3e3);
+        return;
+      }
+      this.renderBody();
+    }
+    async removeMyWallet(address) {
+      try {
+        this.alerts = await send("diamond:remove", { address });
+      } catch (err) {
+        this.toast(err.message, 3e3);
+      }
+      this.renderBody();
     }
     settingsHtml() {
       const f = this.frontrun || {};
@@ -3695,6 +3737,19 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       }
       if (e.target.closest('[data-act="big-toggle"]')) {
         await this.toggleBig();
+        return;
+      }
+      if (e.target.closest('[data-act="diamond-toggle"]')) {
+        await this.toggleDiamond();
+        return;
+      }
+      if (e.target.closest('[data-act="dh-add"]')) {
+        await this.addMyWallet();
+        return;
+      }
+      const dhRemove = e.target.closest('[data-act="dh-remove"]');
+      if (dhRemove) {
+        await this.removeMyWallet(dhRemove.dataset.address);
         return;
       }
       const stop = e.target.closest('[data-act="unwatch"]');
@@ -5386,11 +5441,12 @@ svg { display: block; }\r
         const sol = instaSol2();
         const larp = item.larp ? `<div><i class="${toneOf(item.larp.word)}"></i>${item.larp.by === "Larpcheck" ? "Larpcheck" : "Larp check"}: <b>${esc3(item.larp.word)}${item.larp.score != null ? ` ${esc3(item.larp.score)}` : ""}</b></div>` : "<div><i></i>Larp check: not ready yet</div>";
         const holders = item.holders ? `<div><i class="${item.holders.ok ? "ok" : "risk"}"></i>${esc3(item.holders.text)}</div>` : "";
-        const signalCard = () => `<div class="nr-alert-top">${BELL}<span>@${esc3(item.watch.author)} just posted</span><button type="button" class="nr-alert-x" data-x aria-label="Close">\xD7</button></div>
+        const diamond = item.watch?.author === "Diamond Hand";
+        const signalCard = () => `<div class="nr-alert-top">${BELL}<span>${diamond ? "Diamond Hand" : `@${esc3(item.watch.author)} just posted`}</span><button type="button" class="nr-alert-x" data-x aria-label="Close">\xD7</button></div>
         ${item.coin.name ? `<div class="nr-alert-coin"><b>${esc3(item.coin.name)}</b></div>` : ""}
         <div class="nr-alert-meta">${esc3(item.text)}</div>
         ${item.coins?.length ? `<div class="nr-alert-cas">${item.coins.map((k) => `<button type="button" data-ca="${esc3(k.address)}" title="Copy ${esc3(k.address)}">${k.label ? `<i>${esc3(k.label)}</i>` : ""}<b>$${esc3(k.symbol)}</b><span>${esc3(k.address.slice(0, 6))}\u2026${esc3(k.address.slice(-4))}</span><em>Copy</em></button>`).join("")}</div><div class="nr-alert-note">Found by name and not checked yet. Open in Radar for the checks.</div>` : ""}
-        <div class="nr-alert-acts"><button type="button" data-sig>Open in Radar</button><button type="button" data-post>Open the post</button></div>`;
+        <div class="nr-alert-acts"><button type="button" data-sig>Open in Radar</button><button type="button" data-post>${diamond ? "Open the chart" : "Open the post"}</button></div>`;
         const card = document.createElement("div");
         card.className = "nr-alert";
         card.setAttribute("role", "alert");

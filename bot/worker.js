@@ -21,6 +21,7 @@ import { wantsCoins, worthRetry, mergeState } from './trigger.js';
 import { createChat } from './chat.js';
 import { tick as signalsTick, recent as signalsRecent, status as signalsStatus } from './signals.js';
 import { tick as diamondTick } from './diamond.js';
+import { launchFromPairs } from '../extension/src/lib/diamond.js';
 
 const X = 'https://api.x.com/2';
 
@@ -466,11 +467,7 @@ export default {
         if (!j || j.error) throw new Error(`${method} ${j?.error?.code || r.status}`);
         return j.result;
       };
-      const launchOf = async (mint) => {
-        const pairs = await (await fetch(`https://api.dexscreener.com/tokens/v1/solana/${mint}`)).json();
-        const times = (pairs || []).map((p) => p.pairCreatedAt).filter(Boolean);
-        return times.length ? { launched: Math.min(...times), symbol: pairs[0]?.baseToken?.symbol } : null;
-      };
+      const launchOf = async (mint) => launchFromPairs(await (await fetch(`https://api.dexscreener.com/tokens/v1/solana/${mint}`)).json());
       const out = await diamondTick({ db: env.DB, rpc, launchOf }).catch((e) => ({ error: String(e.message || e).slice(0, 200) }));
       if (out.error || out.errors?.length || out.alerts) console.log('diamond', JSON.stringify(out));
       return json(200, out);

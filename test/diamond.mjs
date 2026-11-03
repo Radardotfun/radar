@@ -64,4 +64,20 @@ const env = { DB: db, HOLDER_SECRET: '' };
 const pub = await signalFeed({ public: true }, env, { now: now + 30 * 60_000, cache: null });
 assert.equal(pub.body.items.filter((i) => i.kind === 'diamond').length, 0, 'not on the public list');
 console.log('PASS diamond: holders only');
+// The wallets people type in: only Solana addresses, and the look the extension runs on them is the same one.
+{
+  const { isWalletAddress, lookAt } = await import('../extension/src/lib/diamond.js');
+  assert.equal(isWalletAddress(W), true);
+  assert.equal(isWalletAddress(' 0x1234567890abcdef1234567890abcdef12345678 '), false, 'an EVM address');
+  assert.equal(isWalletAddress('hello'), false);
+  let s2 = [{ signature: 'A1' }];
+  const r2 = async (m) => (m === 'getSignaturesForAddress' ? s2 : buyTx(NEWC));
+  const first = await lookAt(W, null, { rpc: r2, launchOf, now });
+  assert.deepEqual(first, { last: 'A1', buys: [] }, 'the first look only notes the place');
+  s2 = [{ signature: 'A2', blockTime: now / 1000 }, ...s2];
+  const next = await lookAt(W, 'A1', { rpc: r2, launchOf, now });
+  assert.equal(next.last, 'A2');
+  assert.deepEqual(next.buys.map((b) => b.symbol), ['NEWC']);
+  console.log('PASS diamond: your own wallets get the same look');
+}
 process.exit(0);

@@ -2,6 +2,7 @@ import { makeHandlers, API_BASE, DEFAULTS } from './lib/handlers.js';
 import { listWallets, buy, KEY_RE, FRONTRUN_ORIGIN } from './lib/frontrun.js';
 import { newWatch, newFollow, verdictTurned, checkWatch, buyUrl, chartUrl, MAX_WATCHES, coinOf, statusOf, signalItem, signalCoins } from './lib/alerts.js';
 import { GUARD_KEY, GUARD_MINUTES, lookAtStar } from './lib/guard.js';
+import { lookAt, launchFromPairs, isWalletAddress, agoText, MAX_MY_WALLETS } from './lib/diamond.js';
 import { reportBlock } from './ui/holdercheck.js';
 
 export { API_BASE, DEFAULTS };
@@ -136,7 +137,10 @@ const showBadge = (n) => {
 };
 const FRESH_KEY = 'freshBadges'; // content.js reads it: new-pair badges under posts, on unless turned off
 const BIG_KEY = 'bigAccountAlerts'; // on unless turned off
-const alertList = async (a) => ({ watches: a.watches.filter((w) => w.until > Date.now()).map(publicWatch), feed: a.feed.slice(0, 20), unread: a.unread, notifications: await canNotify(), freshBadges: (await ext.storage.local.get(FRESH_KEY))[FRESH_KEY] !== false, bigAccounts: (await ext.storage.local.get(BIG_KEY))[BIG_KEY] !== false });
+const DH_KEY = 'diamondAlerts'; // on unless turned off
+const MY_WALLETS = 'diamondWallets'; // [{ address, last }]: the holder's own wallets to watch
+const MY_WALLETS_AT = 'diamondWalletsAt';
+const alertList = async (a) => ({ watches: a.watches.filter((w) => w.until > Date.now()).map(publicWatch), feed: a.feed.slice(0, 20), unread: a.unread, notifications: await canNotify(), freshBadges: (await ext.storage.local.get(FRESH_KEY))[FRESH_KEY] !== false, bigAccounts: (await ext.storage.local.get(BIG_KEY))[BIG_KEY] !== false, ...(await diamondState()) });
 
 handlers['alerts:list'] = async () => alertList(await loadAlerts());
 handlers['alerts:watch'] = async ({ post }, sender) => {
@@ -176,6 +180,29 @@ handlers['alerts:follow'] = async ({ word }, sender) => {
 };
 handlers['alerts:fresh'] = async ({ on }) => {
   await ext.storage.local.set({ [FRESH_KEY]: !!on });
+  return alertList(await loadAlerts());
+};
+// Diamond Hand's part of the alerts view: its switch, the holder's own wallets, and whether this browser holds.
+async function diamondState() {
+  const got = await ext.storage.local.get([DH_KEY, MY_WALLETS, 'radarHolder']);
+  return { diamond: got[DH_KEY] !== false, myWallets: (got[MY_WALLETS] || []).map((w) => w.address), holder: !!(got.radarHolder?.token && got.radarHolder.exp > Date.now()) };
+}
+handlers['alerts:diamond'] = async ({ on }) => {
+  await ext.storage.local.set({ [DH_KEY]: !!on });
+  return alertList(await loadAlerts());
+};
+handlers['diamond:add'] = async ({ address }) => {
+  const a = String(address || '').trim();
+  if (!isWalletAddress(a)) throw new Error('That is not a Solana wallet address');
+  const mine = (await ext.storage.local.get(MY_WALLETS))[MY_WALLETS] || [];
+  if (mine.some((w) => w.address === a)) throw new Error('Radar already watches that wallet');
+  if (mine.length >= MAX_MY_WALLETS) throw new Error(`Radar watches up to ${MAX_MY_WALLETS} of your wallets. Remove one first`);
+  await ext.storage.local.set({ [MY_WALLETS]: [...mine, { address: a, last: null }] });
+  return alertList(await loadAlerts());
+};
+handlers['diamond:remove'] = async ({ address }) => {
+  const mine = (await ext.storage.local.get(MY_WALLETS))[MY_WALLETS] || [];
+  await ext.storage.local.set({ [MY_WALLETS]: mine.filter((w) => w.address !== address) });
   return alertList(await loadAlerts());
 };
 handlers['alerts:bigAccounts'] = async ({ on }) => {
@@ -398,15 +425,22 @@ const SIGNAL_ALARM = 'radar-signals';
 const SIGNAL_SINCE = 'signalSince';
 ext.alarms.get(SIGNAL_ALARM).then((a) => a || ext.alarms.create(SIGNAL_ALARM, { periodInMinutes: 1 })).catch(() => {});
 async function runSignals() {
-  const got = await ext.storage.local.get(['radarHolder', BIG_KEY, SIGNAL_SINCE]);
+  const got = await ext.storage.local.get(['radarHolder', BIG_KEY, DH_KEY, SIGNAL_SINCE]);
   const holder = got.radarHolder;
-  if (!(holder?.token && holder.exp > Date.now()) || got[BIG_KEY] === false) return;
+  if (!(holder?.token && holder.exp > Date.now())) return;
+  if (got[DH_KEY] !== false) await runMyWallets().catch(() => {});
+  const big = got[BIG_KEY] !== false;
+  const diamond = got[DH_KEY] !== false;
+  if (!big && !diamond) return;
   // The first look starts from now, so turning it on doesn't bring up the last hour.
   if (!got[SIGNAL_SINCE]) { await ext.storage.local.set({ [SIGNAL_SINCE]: Date.now() }); return; }
   const res = await fetch(`${API_BASE}/signals`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ token: holder.token, since: got[SIGNAL_SINCE] }), signal: AbortSignal.timeout(10_000) }).catch(() => null);
   if (!res?.ok) return;
-  const items = (await res.json().catch(() => ({}))).items || [];
-  if (!items.length) return;
+  const all = (await res.json().catch(() => ({}))).items || [];
+  if (!all.length) return;
+  // Diamond Hand rows and big account posts each have their own switch.
+  const items = all.filter((s) => (s.kind === 'diamond' ? diamond : big));
+  if (!items.length) { await ext.storage.local.set({ [SIGNAL_SINCE]: Math.max(...all.map((s) => s.at)) }); return; }
   const known = (await loadAlerts()).feed;
   const waiting = items.filter((s) => s.url && !known.some((f) => f.id === `signal:${s.id}`));
   // The scan takes a few seconds. If it can't finish, the alert still goes out, without coins.
@@ -422,7 +456,55 @@ async function runSignals() {
     return newOnes;
   });
   // Only once they're saved: the browser can close during the scan, and a repeat is caught by the id check above.
-  await ext.storage.local.set({ [SIGNAL_SINCE]: Math.max(...items.map((s) => s.at)) });
+  await ext.storage.local.set({ [SIGNAL_SINCE]: Math.max(...all.map((s) => s.at)) });
+  for (const item of added.slice(0, 3)) await notify(item);
+}
+
+// Diamond Hand on the holder's own wallets: every 2 minutes, through Radar's relay. A buy of a coin launched in the last
+// 6 hours is an alert. The list never leaves this browser.
+const relay = async (method, params) => {
+  const r = await fetch(`${API_BASE}/rpc`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }), signal: AbortSignal.timeout(15_000) });
+  const j = await r.json().catch(() => null);
+  if (!j || j.error) throw new Error(`${method} ${j?.error?.code || r.status}`);
+  return j.result;
+};
+const launchOf = async (mint) => launchFromPairs(await (await fetch(`https://api.dexscreener.com/tokens/v1/solana/${encodeURIComponent(mint)}`, { signal: AbortSignal.timeout(10_000) })).json());
+const myWalletItem = (wallet, b, now = Date.now()) => ({
+  id: `mine:${b.sig.slice(0, 30)}:${b.mint.slice(0, 8)}`,
+  at: now,
+  kind: 'signal',
+  text: `Your wallet ${wallet.slice(0, 4)}…${wallet.slice(-4)} just bought $${b.symbol}, launched ${agoText(now - b.launched)} ago.`,
+  watch: { url: `https://dexscreener.com/solana/${b.mint}`, author: 'Diamond Hand', label: `$${b.symbol}` },
+  coin: { symbol: b.symbol, name: `$${b.symbol}` },
+  larp: null,
+  holders: null,
+  buy: null,
+  coins: [{ address: b.mint, symbol: b.symbol, chain: 'solana', marketCap: b.marketCap || 0, label: 'Bought' }],
+  chart: `https://dexscreener.com/solana/${b.mint}`,
+});
+async function runMyWallets(now = Date.now()) {
+  const got = await ext.storage.local.get([MY_WALLETS, MY_WALLETS_AT]);
+  const mine = got[MY_WALLETS] || [];
+  if (!mine.length || now - (got[MY_WALLETS_AT] || 0) < 110_000) return;
+  await ext.storage.local.set({ [MY_WALLETS_AT]: now });
+  const items = [];
+  const next = [];
+  for (const w of mine) {
+    const look = await lookAt(w.address, w.last, { rpc: relay, launchOf, now }).catch(() => ({ last: w.last, buys: [] }));
+    next.push({ address: w.address, last: look.last });
+    items.push(...look.buys.map((b) => myWalletItem(w.address, b, now)));
+  }
+  // Kept only for wallets still on the list: one removed meanwhile stays removed.
+  const latest = (await ext.storage.local.get(MY_WALLETS))[MY_WALLETS] || [];
+  await ext.storage.local.set({ [MY_WALLETS]: latest.map((w) => next.find((n) => n.address === w.address) || w) });
+  if (!items.length) return;
+  const added = await withAlerts(async (a) => {
+    const newOnes = items.filter((i) => !a.feed.some((f) => f.id === i.id));
+    a.feed = [...newOnes, ...a.feed].slice(0, 30);
+    a.unread += newOnes.length;
+    if (newOnes.length) showBadge(a.unread);
+    return newOnes;
+  });
   for (const item of added.slice(0, 3)) await notify(item);
 }
 ext.alarms.onAlarm.addListener((alarm) => { if (alarm.name === SIGNAL_ALARM) runSignals().catch(() => {}); });
