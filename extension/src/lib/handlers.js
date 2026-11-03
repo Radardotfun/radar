@@ -285,7 +285,7 @@ export function makeHandlers(host) {
   // open the biggest coin on the post that isn't an obvious rug and has real holders.
   // A CA written in the post goes through the same checks and is never swapped for another coin.
   // `candidates`: the panel passes the coins it already found, so nothing is searched twice.
-  async function reroute({ post, candidates = null, named = [] }) {
+  async function reroute({ post, candidates = null, named = [], where = 'post' }) {
     const s = await host.settings();
     const report = (t) => safety({ mint: t.address, pairs: t.pairAddresses || [] });
     const body = [post?.text, post?.quoted, post?.card, post?.parent].filter(Boolean).join('\n').slice(0, 2000);
@@ -300,8 +300,9 @@ export function makeHandlers(host) {
       token = inPost[0];
       checked = await report(token).catch(() => null);
       const why = marketBlock(token) || reportBlock(checked);
-      if (why) throw new Error(`$${String(token.symbol || "").trim()} in the post didn't pass: ${why}`);
-      reason = 'the coin in the post';
+      const place = where === 'bio' ? "the poster's bio" : 'the post';
+      if (why) throw new Error(`$${String(token.symbol || "").trim()} in ${place} didn't pass: ${why}`);
+      reason = `the coin in ${place}`;
     } else {
       let list = candidates;
       if (!list?.length) {

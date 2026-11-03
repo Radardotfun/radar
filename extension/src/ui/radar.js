@@ -2033,9 +2033,9 @@ class Radar {
     });
   }
 
-  async route(post, candidates = null, named = []) {
+  async route(post, candidates = null, named = [], where = 'post') {
     const p = await this.preparePost(post);
-    return send('reroute', { post: p, candidates, named });
+    return send('reroute', { post: p, candidates, named, where });
   }
 
   async rerouteFromPanel(button) {
@@ -2048,7 +2048,9 @@ class Radar {
     button.disabled = true;
     button.textContent = 'Checking…';
     try {
-      const r = await this.route(this.lastPost || {}, candidates, this.state.mentioned);
+      // The coin the post names, or else the one in the poster's bio: the order the panel's own summary uses.
+      const bio = this.state.mentioned.length ? [] : this.bioCards();
+      const r = await this.route(this.lastPost || {}, candidates, bio.length ? bio : this.state.mentioned, bio.length ? 'bio' : 'post');
       this.toast(`Opening $${r.symbol} · ${r.reason}${r.holders ? ` · ${r.holders.toLocaleString('en-US')} holders` : ''}`, 3200);
     } catch (err) {
       this.toast(err.message, 4200);

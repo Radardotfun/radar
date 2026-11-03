@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Radar
 // @namespace    https://tryradar.fun
-// @version      1.7.72
+// @version      1.7.73
 // @description  See the coins behind any post on X and instantly reroute to the biggest match that passes available on-chain safety checks.
 // @homepageURL  https://tryradar.fun
 // @supportURL   https://tryradar.fun
@@ -31,7 +31,7 @@
 // @downloadURL  https://tryradar.fun/radar.user.js
 // ==/UserScript==
 
-// Radar 1.7.72: built from the extension source at https://tryradar.fun. Not financial advice.
+// Radar 1.7.73: built from the extension source at https://tryradar.fun. Not financial advice.
 (() => {
   var __defProp = Object.defineProperty;
   var __export = (target, all) => {
@@ -1495,7 +1495,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       await host.openWindow(url);
       return true;
     }
-    async function reroute({ post, candidates = null, named = [] }) {
+    async function reroute({ post, candidates = null, named = [], where = "post" }) {
       const s = await host.settings();
       const report = (t) => safety({ mint: t.address, pairs: t.pairAddresses || [] });
       const body = [post?.text, post?.quoted, post?.card, post?.parent].filter(Boolean).join("\n").slice(0, 2e3);
@@ -1508,8 +1508,9 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
         token = inPost[0];
         checked = await report(token).catch(() => null);
         const why = marketBlock(token) || reportBlock(checked);
-        if (why) throw new Error(`$${String(token.symbol || "").trim()} in the post didn't pass: ${why}`);
-        reason = "the coin in the post";
+        const place = where === "bio" ? "the poster's bio" : "the post";
+        if (why) throw new Error(`$${String(token.symbol || "").trim()} in ${place} didn't pass: ${why}`);
+        reason = `the coin in ${place}`;
       } else {
         let list = candidates;
         if (!list?.length) {
@@ -3918,9 +3919,9 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
         this.toast(`Bought ${symbol ? `$${symbol}` : "it"} \xB7 confirmed on ${/^0x/.test(e.data.mint || "") ? "Robinhood Chain" : "Solana"}`, 4200);
       });
     }
-    async route(post, candidates = null, named = []) {
+    async route(post, candidates = null, named = [], where = "post") {
       const p = await this.preparePost(post);
-      return send("reroute", { post: p, candidates, named });
+      return send("reroute", { post: p, candidates, named, where });
     }
     async rerouteFromPanel(button) {
       const fresh = (t) => this.tokens.get(t.address) || t;
@@ -3932,7 +3933,8 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       button.disabled = true;
       button.textContent = "Checking\u2026";
       try {
-        const r = await this.route(this.lastPost || {}, candidates, this.state.mentioned);
+        const bio = this.state.mentioned.length ? [] : this.bioCards();
+        const r = await this.route(this.lastPost || {}, candidates, bio.length ? bio : this.state.mentioned, bio.length ? "bio" : "post");
         this.toast(`Opening $${r.symbol} \xB7 ${r.reason}${r.holders ? ` \xB7 ${r.holders.toLocaleString("en-US")} holders` : ""}`, 3200);
       } catch (err) {
         this.toast(err.message, 4200);

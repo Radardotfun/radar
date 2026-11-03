@@ -6,6 +6,7 @@ import { aggregate, relevance } from '../extension/src/lib/market.js';
 import { extractKeywords } from '../extension/src/lib/keywords.js';
 import { coinCheck } from '../extension/src/ui/coincheck.js';
 import { txBlock } from '../webapp/launch-guard.js';
+import { makeHandlers, DEFAULTS } from '../extension/src/lib/handlers.js';
 import { worthRetry } from '../bot/trigger.js';
 import { botCoins } from '../bot/coins.js';
 import { coinKey, plainClash, launchFields } from '../server/launch.js';
@@ -205,4 +206,19 @@ const quiet = async () => ({ score: 90, why: 'a dog', name: 'Biscuit' });
   assert.ok(worthRetry('handle 500'));
   assert.ok(!worthRetry('That post is private'));
   console.log('PASS bughunt: a limit or a duplicate gets another try');
+}
+
+// 16. Open best match says where the coin came from, and goes to the coin the bio names.
+{
+  const real = globalThis.fetch;
+  globalThis.fetch = async () => { throw new Error('offline'); };
+  const opened = [];
+  const h = makeHandlers({ settings: async () => ({ ...DEFAULTS, chains: ['solana'] }), store: { get: async () => null, set: async () => {} }, openWindow: (u) => opened.push(u), rpcUrl: async () => null, ready: Promise.resolve(), inlineImages: false });
+  const coin = { address: 'BioCoin1111111111111111111111111111111111111', chain: 'solana', symbol: 'BIO', name: 'Bio', liquidity: 90000, marketCap: 500000, pairAddresses: [] };
+  const other = { ...coin, address: 'Other11111111111111111111111111111111111111', symbol: 'OTHER' };
+  const r = await h.reroute({ post: { text: 'no address here' }, candidates: [other], named: [coin], where: 'bio' }).catch((e) => ({ error: e.message }));
+  assert.ok(r.error ? /BIO in the poster's bio didn't pass/.test(r.error) : r.symbol === 'BIO' && /poster's bio/.test(r.reason), JSON.stringify(r));
+  assert.ok(!opened.some((u) => u.includes('Other')), 'never the other coin');
+  globalThis.fetch = real;
+  console.log('PASS bughunt: Open best match goes to the coin in the bio');
 }

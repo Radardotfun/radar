@@ -1,4 +1,4 @@
-// Radar 1.7.72 alerts page, built from webapp/alerts.js: https://github.com/Radardotfun/radar
+// Radar 1.7.73 alerts page, built from webapp/alerts.js: https://github.com/Radardotfun/radar
 (() => {
   // extension/src/lib/keywords.js
   var STOP = new Set(`a about above after again against all almost also am an and any are aren as at be because been before
@@ -1373,7 +1373,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       await host.openWindow(url);
       return true;
     }
-    async function reroute({ post, candidates = null, named = [] }) {
+    async function reroute({ post, candidates = null, named = [], where = "post" }) {
       const s = await host.settings();
       const report = (t) => safety({ mint: t.address, pairs: t.pairAddresses || [] });
       const body = [post?.text, post?.quoted, post?.card, post?.parent].filter(Boolean).join("\n").slice(0, 2e3);
@@ -1386,8 +1386,9 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
         token = inPost[0];
         checked = await report(token).catch(() => null);
         const why = marketBlock(token) || reportBlock(checked);
-        if (why) throw new Error(`$${String(token.symbol || "").trim()} in the post didn't pass: ${why}`);
-        reason = "the coin in the post";
+        const place = where === "bio" ? "the poster's bio" : "the post";
+        if (why) throw new Error(`$${String(token.symbol || "").trim()} in ${place} didn't pass: ${why}`);
+        reason = `the coin in ${place}`;
       } else {
         let list = candidates;
         if (!list?.length) {
