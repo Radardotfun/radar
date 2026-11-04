@@ -213,6 +213,21 @@ export async function botCoins(res, post, { search, lookupCa, lookupBio = lookup
       if (named) break;
     }
   }
+  // A ticker written without its $ ("AMD so far so good"), when the scan already holds a coin with that ticker: the
+  // search under it finds the one that runs, not only the copies the scan met (a $86K Robinhood copy linking Jim
+  // Cramer's post, beside a $1.6M Solana $AMD). A capitalised word is often just a word, so only a coin of runner size
+  // counts, and never in a post written mostly in capitals ("TOP 10 GTA 6 MEME COINS" had named a $GTA).
+  const letters = text.match(/\p{L}/gu) || [];
+  const shouting = (text.match(/\p{Lu}/gu) || []).length > letters.length / 2;
+  if (!named && !elsewhere.size && !typed.length && !shouting) {
+    const caps = [...new Set(text.match(/(?<![\p{L}\p{N}$])[A-Z][A-Z0-9]{2,5}(?![\p{L}\p{N}])/gu) || [])].filter((w) => !MAJORS.has(w) && scanned.some((t) => sym(t) === w)).slice(0, 2);
+    for (const tk of caps) {
+      const found = aggregate(await search(tk).catch(() => [])).filter((t) => chains.includes(t.chain) && isMemecoin(t));
+      const pick = pickNamed(tk, [...scanned, ...found], text);
+      // Only a runner the scan missed: one it already holds keeps its place among the picks, older twin and all.
+      if (pick?.mcapBacked && alive(pick) && (pick.marketCap || 0) >= RUNNER_MIN && !scanned.some((t) => t.address === pick.address)) { named = pick; break; }
+    }
+  }
   let how = named ? (fromBio ? 'bio' : 'post') : null;
   // A picture post that names no coin: the coins launched with that very picture as their logo, among every coin the
   // scan searched (judged or not; up to 16 logos).

@@ -409,3 +409,24 @@ const quiet = async () => ({ score: 90, why: 'a dog', name: 'Biscuit' });
   assert.equal(replyEntries({ postAt: now - 3600e3, named: stonk, how: 'post', picks: [{ role: 'og', token: stonk }] }, now)[0].label, '📌 In the post');
   console.log('PASS bughunt: linked copies, stock cashtags, tokenized shares and old OGs');
 }
+
+// 30. A ticker written without its $ ("AMD so far so good") finds the runner under it, when the scan already met a coin
+// with that ticker; a capitalised word with only small coins under it names nothing.
+{
+  const { botReply } = await import('../bot/reply.js');
+  const now = Date.now();
+  const live = { mcapBacked: true, liquidity: 30_000, volume: { h24: 500_000 }, txns: { h1: { buys: 20, sells: 12 }, h24: { buys: 200, sells: 120 } } };
+  const rh = { ...live, address: '0x07ae00000000000000000000000000000000f60e', chain: 'robinhood', symbol: 'AMD', name: 'A Meme Dog', marketCap: 86_000, fromPost: true, createdAt: now - 3 * 3600e3, relevance: 95 };
+  const pair = (address, symbol, name, mc) => ({ chainId: 'solana', dexId: 'pumpswap', pairAddress: `P${address}`, baseToken: { address, symbol, name }, quoteToken: { address: 'So11111111111111111111111111111111111111112', symbol: 'SOL' }, marketCap: mc, fdv: mc, priceNative: '0.00001', priceUsd: '0.00167', liquidity: { usd: 134_000, quote: 400 }, volume: { h24: 8_700_000, h1: 300_000 }, txns: { h1: { buys: 400, sells: 300 }, h24: { buys: 60_000, sells: 50_000 } }, priceChange: { h1: 2, h24: 30 }, pairCreatedAt: now - 5 * 3600e3, info: { imageUrl: 'https://x/i.png' } });
+  const ddmg = 'DDmGnuvroxVrb7CSyjYcezFU8gnAfhKasg4ZZezmpump';
+  const deps = (pairs) => ({ search: async () => pairs, lookupCa: async () => null, capOf: async () => null, matchImages: async () => [], chains: ['solana', 'robinhood'] });
+  const scan = { mentioned: [], picks: [{ role: 'top', token: rh }], others: [] };
+  const res = await botCoins(scan, { text: 'AMD so far so good...moving up tech nicely', url: 'https://x.com/jimcramer/status/2117728399267639668' }, deps([pair(ddmg, 'AMD', 'A Meme Dog', 1_620_000)]));
+  assert.equal(res.named?.address, ddmg, 'the $1.6M Solana $AMD, not only the copy that links the post');
+  assert.match(botReply(res, 'https://x.com/i/status/1', now), /\$AMD · \$1\.62M/);
+  const small = await botCoins(scan, { text: 'AMD so far so good', url: 'https://x.com/jimcramer/status/2117728399267639668' }, deps([pair(ddmg, 'AMD', 'A Meme Dog', 40_000)]));
+  assert.equal(small.how, 'linked', 'nothing of runner size: the coin that links the post stays');
+  const word = await botCoins({ mentioned: [], picks: [{ role: 'top', token: { ...rh, fromPost: false, symbol: 'NEW', name: 'New' } }], others: [] }, { text: 'NEW record for tech', url: 'https://x.com/a/status/2' }, deps([pair(ddmg, 'AMD', 'A Meme Dog', 1_620_000)]));
+  assert.notEqual(word.named?.address, ddmg, 'a capitalised word only searches its own ticker');
+  console.log('PASS bughunt: a ticker written without its $ finds the runner under it');
+}
