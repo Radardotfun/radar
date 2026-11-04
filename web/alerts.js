@@ -1,4 +1,4 @@
-// Radar 1.7.109 alerts page, built from webapp/alerts.js: https://github.com/Radardotfun/radar
+// Radar 1.7.110 alerts page, built from webapp/alerts.js: https://github.com/Radardotfun/radar
 (() => {
   // extension/src/lib/keywords.js
   var STOP = new Set(`a about above after again against all almost also am an and any are aren as at be because been before

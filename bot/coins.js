@@ -54,16 +54,21 @@ const closeEarlier = (a, b) => {
   if (!x || !y || Math.max(x, y) > 2 * Math.min(x, y) || !a.createdAt || !b.createdAt) return 0;
   return a.createdAt - b.createdAt;
 };
-export function pickNamed(tk, tokens, text) {
+export function pickNamed(tk, tokens, text, own = text) {
   const words = plain(text);
+  const ownWords = plain(own);
   // A name that is only the ticker ("GTA$" for GTA$) earns nothing: every copy has it.
-  const named = (t) => { const n = plain(t.name).trim(); return n.length >= 3 && n !== lower(tk) && n !== plain(tk).trim() && words.includes(` ${n} `); };
+  const nameIn = (t, w) => { const n = plain(t.name).trim(); return n.length >= 3 && n !== lower(tk) && n !== plain(tk).trim() && w.includes(` ${n} `); };
+  const named = (t) => nameIn(t, words);
+  // The poster's own words before a quoted post's: "BAN ASI / Anti Super Inu" over a quote calling for "a ban on
+  // artificial superintelligence" had named a $632K BNB "Artificial Superintelligence" doing $980 a day.
+  const namedOwn = (t) => nameIn(t, ownWords);
   // A coin the post doesn't name by its name must be trading: a stock cashtag ($SHOP, $META) had named a dead coin that
   // only shares the ticker ("shopping " at $62 a day, a 2021 "MetaCash").
   return tokens.filter((t) => t?.address && sym(t) === tk && (tk !== 'RADAR' || t.address === RADAR_MINT) && live(t) && (t.mcapBacked || alive(t)) && (named(t) || (t.volume?.h24 || 0) >= 1000))
     // Close in size (within 2x), the earlier coin is the one made for the post: a copy launched 39 hours later at $35K on its
     // curve had beaten the $30K BingBingBing launched 34 seconds after the post.
-    .sort((a, b) => Number(named(b)) - Number(named(a)) || Number(!!b.mcapBacked) - Number(!!a.mcapBacked) || closeEarlier(a, b) || (b.marketCap || 0) - (a.marketCap || 0))[0] || null;
+    .sort((a, b) => Number(namedOwn(b)) - Number(namedOwn(a)) || Number(named(b)) - Number(named(a)) || Number(!!b.mcapBacked) - Number(!!a.mcapBacked) || closeEarlier(a, b) || (b.marketCap || 0) - (a.marketCap || 0))[0] || null;
 }
 
 // A copycat of the named coin: its ticker (alone or with a number after it, "SI276" for SI) or its name, or a name or
@@ -216,7 +221,7 @@ export async function botCoins(res, post, { search, lookupCa, lookupBio = lookup
     const wanted = (typed.length ? typed : seenInImage.length === 1 ? seenInImage : []).slice(0, 2);
     for (const tk of wanted) {
       const found = aggregate(await search(tk).catch(() => [])).filter((t) => chains.includes(t.chain) && isMemecoin(t));
-      named = pickNamed(tk, [...scanned, ...found], text);
+      named = pickNamed(tk, [...scanned, ...found], text, post?.text || text);
       if (named && STOCKS.has(tk) && !(named.mcapBacked && alive(named) && (named.marketCap || 0) >= RUNNER_MIN)) named = null;
       if (named) break;
     }
@@ -231,7 +236,7 @@ export async function botCoins(res, post, { search, lookupCa, lookupBio = lookup
     const caps = [...new Set(text.match(/(?<![\p{L}\p{N}$])[A-Z][A-Z0-9]{2,5}(?![\p{L}\p{N}])/gu) || [])].filter((w) => !MAJORS.has(w) && scanned.some((t) => sym(t) === w)).slice(0, 2);
     for (const tk of caps) {
       const found = aggregate(await search(tk).catch(() => [])).filter((t) => chains.includes(t.chain) && isMemecoin(t));
-      const pick = pickNamed(tk, [...scanned, ...found], text);
+      const pick = pickNamed(tk, [...scanned, ...found], text, post?.text || text);
       // Only a runner the scan missed: one it already holds keeps its place among the picks, older twin and all.
       if (pick?.mcapBacked && alive(pick) && (pick.marketCap || 0) >= RUNNER_MIN && !scanned.some((t) => t.address === pick.address)) { named = pick; break; }
     }

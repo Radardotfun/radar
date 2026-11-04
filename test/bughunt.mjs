@@ -634,3 +634,20 @@ const quiet = async () => ({ score: 90, why: 'a dog', name: 'Biscuit' });
   assert.equal(res.named?.address, pair.baseToken.address);
   console.log('PASS bughunt: a WETH-priced Solana pool counts as real liquidity');
 }
+
+// 44. A name the poster writes beats a name only the quoted post has: "They're trying to BAN ASI / Anti Super Inu" over a
+// quote calling for "a ban on artificial superintelligence" named the $632K BNB "Artificial Superintelligence" ($980 a
+// day, a month old) instead of the $19K Anti Super Inu launched from that very post.
+{
+  const { pickNamed } = await import('../bot/coins.js');
+  const now = Date.now();
+  const coin = (address, chain, name, marketCap, ageD, vol, fromPost = false) => ({ symbol: 'ASI', name, address, chain, marketCap, mcapBacked: true, liquidity: 20_000, createdAt: now - ageD * 864e5, volume: { h24: vol, h1: vol / 20 }, txns: { h1: { buys: 30, sells: 20 }, h24: { buys: 400, sells: 300 } }, priceChange: { h1: 3 }, fromPost });
+  const inu = coin('Ex1PtBSyMcQcegFMwjkrDQi4ogsJKpVo2frxkjgvpump', 'solana', 'Anti Super Inu', 19_600, 0.02, 126_000, true);
+  const bnb = coin('0xE97cce0000000000000000000000000000000001', 'bsc', 'Artificial Superintelligence', 632_000, 18, 980);
+  const post = { text: "They're trying to BAN ASI\n\nAnti Super Inu\nhttps://x.com/RepYassAnsari/status/2118054336077127797", quoted: 'Top of the Democratic agenda on day 1 needs to be a pause on advanced AI development, regulation of this out of control industry, and a ban on artificial superintelligence.', url: 'https://x.com/ddddddd8a/status/2118055041500069907' };
+  const text = [post.text, post.quoted].join('\n');
+  assert.equal(pickNamed('ASI', [bnb, inu], text, post.text)?.address, inu.address);
+  const res = await botCoins({ mentioned: [], picks: [], others: [], roleCandidates: [inu] }, post, { search: async () => [bnb, inu].map((t) => ({ chainId: t.chain, dexId: 'x', pairAddress: `P${t.address}`, baseToken: { address: t.address, symbol: t.symbol, name: t.name }, quoteToken: { address: t.chain === 'bsc' ? '0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c' : 'So11111111111111111111111111111111111111112', symbol: 'W' }, priceNative: '0.00001', priceUsd: String(t.marketCap / 1e9), marketCap: t.marketCap, fdv: t.marketCap, liquidity: { usd: 20_000, quote: 60 }, volume: { h24: t.volume.h24, h1: t.volume.h1 }, txns: t.txns, priceChange: t.priceChange, pairCreatedAt: t.createdAt })), lookupCa: async () => null, capOf: async () => null, matchImages: async () => [], chains: ['solana', 'bsc'] });
+  assert.equal(res.named?.address, inu.address, `named ${res.named?.name}`);
+  console.log('PASS bughunt: the poster\'s own words name the coin before a quoted post does');
+}
