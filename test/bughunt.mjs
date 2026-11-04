@@ -492,3 +492,25 @@ const quiet = async () => ({ score: 90, why: 'a dog', name: 'Biscuit' });
   assert.doesNotMatch(botReply(res, 'https://x.com/i/status/1', now), /Highest MC: DIPWHEELER/);
   console.log('PASS bughunt: the post\'s own coin competes for Highest MC however small');
 }
+
+// 35. A post of a few words over a quoted story names the coin called after them: "Recursive Self-Improvement" finds
+// "Recursive Self Inu" ($RSI, its initials); small coins or unrelated names under the search don't count.
+{
+  const { botReply } = await import('../bot/reply.js');
+  const now = Date.now();
+  const pair = (address, symbol, name, mc, chainId = 'robinhood') => ({ chainId, dexId: 'uniswap', pairAddress: `P${address}`, baseToken: { address, symbol, name }, quoteToken: { address: chainId === 'solana' ? 'So11111111111111111111111111111111111111112' : '0x0000000000000000000000000000000000000000', symbol: 'ETH' }, marketCap: mc, fdv: mc, priceNative: '0.00001', priceUsd: '0.03', liquidity: { usd: 63_665, quote: 20 }, volume: { h24: 10_865, h1: 400 }, txns: { h1: { buys: 6, sells: 5 }, h24: { buys: 101, sells: 157 } }, priceChange: { h1: 1, h24: -4 }, pairCreatedAt: now - 50 * 864e5 });
+  const rsi = '0xce4c9418b8e9bcad3e4ba2bd84123a49a6911e18';
+  const deps = (pairs) => ({ search: async () => pairs, lookupCa: async () => null, capOf: async () => null, matchImages: async () => [], chains: ['solana', 'robinhood'] });
+  const post = { text: 'Recursive Self-Improvement', quoted: 'A retired NASA engineer who had worked on the Space Shuttle program for 25 years was hired by SpaceX at age 62.', url: 'https://x.com/elonmusk/status/2110567340069003542' };
+  const scan = { mentioned: [], picks: [], others: [] };
+  const res = await botCoins(scan, post, deps([pair(rsi, 'RSI', 'Recursive Self Inu', 79_202)]));
+  assert.equal(res.named?.address, rsi);
+  assert.match(botReply(res, 'https://x.com/i/status/1', now), /📌 In the post: \$RSI · \$79\.2K · Robinhood/);
+  const tiny = await botCoins(scan, post, deps([pair(rsi, 'RSI', 'Recursive Self Inu', 2_600)]));
+  assert.equal(tiny.named, null, 'a $2.6K copy is not enough');
+  const other = await botCoins(scan, post, deps([pair(rsi, 'RSI', 'Relative Strength Index', 79_202)]));
+  assert.equal(other.named, null, 'the initials alone, under another name, are not the coin');
+  const long = await botCoins(scan, { ...post, text: 'Starlink is taking over the skies, most airlines are partnering' }, deps([pair(rsi, 'RSI', 'Recursive Self Inu', 79_202)]));
+  assert.equal(long.named, null, 'a long post is a story, not a name');
+  console.log('PASS bughunt: a short post names the coin called after its words');
+}
