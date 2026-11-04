@@ -446,3 +446,19 @@ const quiet = async () => ({ score: 90, why: 'a dog', name: 'Biscuit' });
   assert.ok(meme.named, 'a small coin under a typed ticker that is no stock is still named');
   console.log('PASS bughunt: a typed stock ticker names only a runner');
 }
+
+// 32. An old namesake that barely trades is left out of the reply; an old one that still trades, and the post's own coin, stay.
+{
+  const { botReply, replyEntries } = await import('../bot/reply.js');
+  const now = Date.now();
+  const postAt = now - 3600e3;
+  const coin = (symbol, address, marketCap, ageDays, trades, vol) => ({ symbol, name: symbol, address, chain: 'solana', marketCap, createdAt: now - ageDays * 864e5, volume: { h24: vol }, txns: { h24: { buys: Math.ceil(trades / 2), sells: Math.floor(trades / 2) } } });
+  const dem = coin('DEMOCRATS', '9VkoFQLwEbhBnxMntCiuSD5Fqmai4ZGsQeKY1es9pump', 6_000, 210, 11, 300);
+  assert.equal(botReply({ postAt, picks: [{ role: 'og', token: dem }] }, 'https://x.com/i/status/1', now), null, 'a 7-month-old coin at 11 trades a day');
+  const xav = coin('xavier', '69G8CpUVZAxbPMiEBrfCCCH445NwFxH6PzVL693Xpump', 1_060_000, 60, 900, 80_000);
+  assert.match(botReply({ postAt, alone: true, picks: [{ role: 'top', token: xav }] }, 'https://x.com/i/status/1', now), /Same name, older coin: \$xavier/, 'old but trading stays');
+  assert.equal(replyEntries({ postAt, named: dem, how: 'post', picks: [] }, now).length, 1, 'the coin the post names shows whatever its state');
+  const fresh = coin('BLUE', 'iAmPXjG2vTQoHkgSqvhb4Ncd54kVZ2oAYuDUdRSpump', 10_100, 0.1, 30, 900);
+  assert.match(botReply({ postAt, picks: [{ role: 'top', token: fresh }] }, 'https://x.com/i/status/1', now), /\$BLUE/, 'a new coin with few trades stays');
+  console.log('PASS bughunt: old namesakes that barely trade stay out of the reply');
+}

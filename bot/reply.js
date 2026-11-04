@@ -35,8 +35,11 @@ export const scanUrl = (postUrl) => `${SITE}/scan?url=${encodeURIComponent(postU
 
 // The coins to show for a scan, in order: { label, t (the token), stat }. Empty when the post has none.
 export function replyEntries(result, now = Date.now()) {
-  // Not a check, just no dust: a pick under $1K market cap that isn't trading at least $1K a day is left out.
-  const picks = (result?.picks || []).filter((p) => p?.token?.address && ((p.token.marketCap || 0) >= 1000 || (p.token.volume?.h24 || 0) >= 1000));
+  // Launched long before the post, it wasn't made for this story, whatever its name (a BNB mascot called Max, on a robot called Max).
+  const older = (t) => result?.postAt && t.createdAt && result.postAt - t.createdAt > 7 * 86_400_000;
+  // Not a check, just no dust: a pick under $1K market cap that isn't trading at least $1K a day is left out, and so is an
+  // old namesake that barely trades (a 7-month-old "DEMOCRATS" at 11 trades a day on a House result).
+  const picks = (result?.picks || []).filter((p) => p?.token?.address && ((p.token.marketCap || 0) >= 1000 || (p.token.volume?.h24 || 0) >= 1000) && !(older(p.token) && quiet(p.token, now)));
   // The coin the post names shows whatever its size: it's the one the tagger is asking about.
   const named = result?.named?.address ? result.named : null;
   const entries = [];
@@ -50,8 +53,6 @@ export function replyEntries(result, now = Date.now()) {
   const stat = (t, s) => [s, quiet(t, now) && tradesLine(t)].filter(Boolean).join(' · ');
   // Highest MC means it beat something: alone on the story, or with a bigger namesake left out, the title isn't claimed.
   const noTop = result?.alone || result?.outranked;
-  // Launched long before the post, it wasn't made for this story, whatever its name (a BNB mascot called Max, on a robot called Max).
-  const older = (t) => result?.postAt && t.createdAt && result.postAt - t.createdAt > 7 * 86_400_000;
   if (named) {
     const roles = won(named.address);
     entries.push({ label: `${result.how === 'picture' ? '🖼 Same picture as the post' : result.how === 'bio' ? '👤 In the poster\'s bio' : result.how === 'linked' ? '🔗 Launched from this post' : '📌 In the post'}${roles.length ? ` (${roles.join(', ')})` : ''}`, t: named, stat: stat(named, usd(named.marketCap)) });
