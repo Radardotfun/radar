@@ -557,7 +557,7 @@ class Radar {
       .catch((e) => { a.bundleErr = e.message || "Couldn't read the launch block"; })
       .finally(() => this.renderAudit(t.address));
     // The coin's family on pump.fun custom pairs: kept 10 minutes by the handler and the server, so a minute's look is cheap.
-    const fam = send('family', { mint: t.address })
+    const fam = send('family', { mint: t.address, quote: t.quote })
       .then((f) => { a.family = f; })
       .catch(() => {})
       .finally(() => this.renderFamily(t.address));
@@ -569,18 +569,19 @@ class Radar {
   renderFamily(addr) {
     const el = this.bodyEl.querySelector(`.card[data-addr="${addr}"] [data-k="family"]`);
     const f = this.audits.get(addr)?.family;
-    if (!el) return;
-    if (!f || (!f.children && !f.parent)) { el.innerHTML = ''; return; }
     const t = this.tokens.get(addr);
+    const parent = f?.parent;
+    if (!el) return;
+    if (!f?.children && !parent) { el.innerHTML = ''; return; }
     const dex = (a) => `https://dexscreener.com/solana/${encodeURIComponent(a)}`;
     const rows = [];
-    if (f.parent) {
-      rows.push(`<div class="fam-row"><span>Launched under</span><a href="${dex(f.parent.address)}" target="_blank" rel="noopener noreferrer">$${esc(f.parent.symbol || short(f.parent.address))}</a></div>
-      <div class="fam-note">Priced in $${esc(f.parent.symbol || 'it')}, so every buy of this coin goes through it.</div>`);
+    if (parent) {
+      rows.push(`<div class="fam-row"><span>Launched under</span><a href="${dex(parent.address)}" target="_blank" rel="noopener noreferrer">$${esc(parent.symbol || short(parent.address))}</a></div>
+      <div class="fam-note">Priced in $${esc(parent.symbol || 'it')}, so every buy of this coin goes through it.</div>`);
     }
-    if (f.children) {
-      rows.push(`<div class="fam-row"><span>Launched under $${esc(String(t?.symbol || '').trim())}</span><b>${num(f.children)}${f.more ? '+' : ''} coin${f.children === 1 && !f.more ? '' : 's'}</b></div>`);
-      const sub = [f.fresh ? `${num(f.fresh)} in the last 24h` : '', f.volume ? `${usd(f.volume)} traded 24h` : ''].filter(Boolean).join(' · ');
+    if (f?.children) {
+      rows.push(`<div class="fam-row"><span>Launched under $${esc(String(t?.symbol || '').trim())}</span><b>${num(f.children)} coin${f.children === 1 ? '' : 's'}</b></div>`);
+      const sub = [f.graduated ? `${num(f.graduated)} graduated` : '', f.volume ? `${usd(f.volume)} traded 24h` : ''].filter(Boolean).join(' · ');
       if (sub) rows.push(`<div class="fam-note">${sub}</div>`);
       if (f.biggest?.address) rows.push(`<div class="fam-row"><span>Biggest child</span><a href="${dex(f.biggest.address)}" target="_blank" rel="noopener noreferrer">$${esc(String(f.biggest.symbol || '').trim())} · ${usd(f.biggest.marketCap)}</a></div>`);
     }

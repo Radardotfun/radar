@@ -234,7 +234,7 @@ async function replyFor(postUrl, known = null, fresh = false) {
     const [larp, family] = await Promise.all([
       first ? h.larpcheck({ address: first.address }).catch(() => null) : null,
       // The first coin's family, from the engine (server/family.js), which keeps each answer 10 minutes.
-      first?.chain === 'solana' ? h.family({ mint: first.address }).catch(() => null) : null,
+      first?.chain === 'solana' ? h.family({ mint: first.address, quote: first.quote }).catch(() => null) : null,
     ]);
     return { text: botReply(res, postUrl, Date.now(), { family }) || NO_COINS, short: botReply(res, postUrl, Date.now(), { full: false, family }) || NO_COINS, links: botReply(res, postUrl, Date.now(), { links: true, larp, family }) || NO_COINS, story: res.narrative || '', scores, guessed, entries: replyEntries(res) };
   })();

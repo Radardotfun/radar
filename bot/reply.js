@@ -5,6 +5,7 @@
 // full contract address, so a copycat with the same ticker can't pass for it. No checks.
 // With three addresses a reply runs past 280 characters, which @radardotfunn's Premium allows.
 import { quiet, tradesLine } from '../extension/src/ui/holdercheck.js';
+import { parentOf } from '../extension/src/lib/family.js';
 
 const SITE = 'https://tryradar.fun';
 const ROLES = [
@@ -81,12 +82,13 @@ export function replyEntries(result, now = Date.now()) {
 // The first coin's family on pump.fun custom pairs (extension/src/lib/family.js): coins launched priced in it, or the coin
 // it was itself launched under. Plain tickers: X allows one cashtag a post.
 export function familyLine(fam, t) {
-  if (!fam || !t) return '';
-  if (fam.children > 0) {
+  if (!t) return '';
+  if (fam?.children > 0) {
     const big = fam.biggest?.address && fam.biggest.address !== t.address && usd(fam.biggest.marketCap) ? ` · biggest ${ticker(fam.biggest.symbol)} ${usd(fam.biggest.marketCap)}` : '';
-    return `🌱 Family: ${fam.children}${fam.more ? '+' : ''} coin${fam.children === 1 && !fam.more ? '' : 's'} launched under ${ticker(t.symbol)}${fam.fresh ? ` (${fam.fresh} in the last 24h)` : ''}${usd(fam.volume) ? ` · ${usd(fam.volume)} vol 24h` : ''}${big}`;
+    return `🌱 Family: ${fam.children} coin${fam.children === 1 ? '' : 's'} launched under ${ticker(t.symbol)}${fam.graduated ? ` (${fam.graduated} graduated)` : ''}${usd(fam.volume) ? ` · ${usd(fam.volume)} vol 24h` : ''}${big}`;
   }
-  return fam.parent?.symbol ? `🌳 Launched under ${ticker(fam.parent.symbol)}: priced in it, so every buy goes through it` : '';
+  const parent = parentOf(t);
+  return parent?.symbol ? `🌳 Launched under ${ticker(parent.symbol)}: priced in it, so every buy goes through it` : '';
 }
 
 // "12 coins on this story": said when there are more than the reply shows; the full scan lists them all.

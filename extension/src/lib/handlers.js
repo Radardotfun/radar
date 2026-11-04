@@ -1,5 +1,6 @@
 // The radar's backend: everything the panel asks for. The extension runs it in its service worker;
 // the web app runs it in the page. Each host supplies its own storage, window opening and RPC.
+import { familyDetails, parentOf } from './family.js';
 import { fullTokens, mentionedTokens, typedCashtags, linkedSymbol, LAUNCHPADS, pickThree, searchPairs, aggregate } from './market.js';
 import { rugReport, standInReport } from './rugcheck.js';
 import { readPost, findCoins, postCoins as coinsInPost } from './narrative.js';
@@ -133,14 +134,17 @@ export function makeHandlers(host) {
     });
   }
 
-  // A coin's family on pump.fun custom pairs (lib/family.js), read through our server, which keeps it 10 minutes.
-  async function family({ mint }) {
+  // A coin's family on pump.fun custom pairs (lib/family.js): the count from our server, which reads the chain and keeps
+  // it 10 minutes, and the graduated children's volume and biggest from DexScreener.
+  // The parent comes from the coin's own pool (quote), which the caller already has.
+  async function family({ mint, quote = null }) {
+    const parent = parentOf({ address: mint, quote });
     return cached(`fam:${mint}`, 600_000, async () => {
-      const res = await fetch(`${API_BASE}/family?mint=${encodeURIComponent(mint)}`, { signal: AbortSignal.timeout(15_000) });
+      const res = await fetch(`${API_BASE}/family?mint=${encodeURIComponent(mint)}`, { signal: AbortSignal.timeout(25_000) });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || `Family ${res.status}`);
-      return data;
-    });
+      return familyDetails(data);
+    }).then((f) => ({ ...f, parent }), () => (parent ? { children: 0, parent } : Promise.reject(new Error('Family unavailable'))));
   }
 
   // More of Larpcheck through our server: holder data for chains Radar's own check doesn't cover, its lists, and for

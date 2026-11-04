@@ -138,6 +138,8 @@ export function aggregate(pairs) {
       launchDex: first?.dexId || primary.dexId,
       launchPair: first?.pairAddress || null,
       pair: primary.pairAddress,
+      // What its main pool is priced in: SOL or a dollar usually, another coin when it was launched under one.
+      quote: primary.quoteToken?.address ? { address: primary.quoteToken.address, symbol: String(primary.quoteToken.symbol || '').trim() } : null,
       dexId: primary.dexId,
       onCurve,
       pairAddresses: list.map((p) => p.pairAddress),

@@ -1,4 +1,4 @@
-// Radar 1.7.105 on the web: built from the extension source at https://tryradar.fun. Not financial advice.
+// Radar 1.7.106 on the web: built from the extension source at https://tryradar.fun. Not financial advice.
 (() => {
   // extension/src/lib/keywords.js
   var STOP = new Set(`a about above after again against all almost also am an and any are aren as at be because been before
@@ -159,6 +159,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d",
     "0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56"
   ].map(quoteKey));
+  var isBaseQuote = (a) => QUOTES.has(quoteKey(a));
   var REAL_QUOTES = /* @__PURE__ */ new Set([...QUOTES, "t9bnCGiZVUYsRKvx4d5dPcoDCSyuBM9C33ZNGNULARP"]);
   var LAUNCHPADS = /* @__PURE__ */ new Set(["pumpfun", "launchlab", "meteoradbc", "moonshot", "boop", "heaven", "believe", "bags", "moonit", "jupstudio", "flapsh", "fourmeme"]);
   async function getJson(url2) {
@@ -255,6 +256,8 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
         launchDex: first?.dexId || primary.dexId,
         launchPair: first?.pairAddress || null,
         pair: primary.pairAddress,
+        // What its main pool is priced in: SOL or a dollar usually, another coin when it was launched under one.
+        quote: primary.quoteToken?.address ? { address: primary.quoteToken.address, symbol: String(primary.quoteToken.symbol || "").trim() } : null,
         dexId: primary.dexId,
         onCurve,
         pairAddresses: list.map((p) => p.pairAddress),
@@ -402,6 +405,15 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     }));
     return [...new Map(found.filter(Boolean).map((t) => [t.address, t])).values()];
   }
+
+  // extension/src/lib/family.js
+  async function familyDetails(counts, { tokens = fullTokens } = {}) {
+    if (!counts?.mints?.length) return { ...counts, volume: 0, biggest: null };
+    const full = await tokens(counts.mints.map((address) => ({ chain: "solana", address }))).catch(() => []);
+    const biggest = full.filter((t) => t?.mcapBacked).sort((a, b) => (b.marketCap || 0) - (a.marketCap || 0))[0] || null;
+    return { ...counts, volume: full.reduce((s, t) => s + (t?.volume?.h24 || 0), 0), biggest };
+  }
+  var parentOf = (t) => t?.quote?.address && !isBaseQuote(t.quote.address) && t.quote.address !== t.address ? { address: t.quote.address, symbol: String(t.quote.symbol || "").trim() } : null;
 
   // extension/src/lib/rugcheck.js
   var RC = "https://api.rugcheck.xyz/v1";
@@ -1281,13 +1293,14 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
         return data;
       });
     }
-    async function family({ mint }) {
+    async function family({ mint, quote = null }) {
+      const parent = parentOf({ address: mint, quote });
       return cached(`fam:${mint}`, 6e5, async () => {
-        const res = await fetch(`${API_BASE}/family?mint=${encodeURIComponent(mint)}`, { signal: AbortSignal.timeout(15e3) });
+        const res = await fetch(`${API_BASE}/family?mint=${encodeURIComponent(mint)}`, { signal: AbortSignal.timeout(25e3) });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || `Family ${res.status}`);
-        return data;
-      });
+        return familyDetails(data);
+      }).then((f) => ({ ...f, parent }), () => parent ? { children: 0, parent } : Promise.reject(new Error("Family unavailable")));
     }
     const lcGet = async (path, ttl) => cached(`lc:${path}`, ttl, async () => {
       const res = await fetch(`${API_BASE}${path}`, { signal: AbortSignal.timeout(12e3) });
@@ -2259,7 +2272,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       }).catch((e) => {
         a.bundleErr = e.message || "Couldn't read the launch block";
       }).finally(() => this.renderAudit(t.address));
-      const fam = send("family", { mint: t.address }).then((f) => {
+      const fam = send("family", { mint: t.address, quote: t.quote }).then((f) => {
         a.family = f;
       }).catch(() => {
       }).finally(() => this.renderFamily(t.address));
@@ -2270,21 +2283,22 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     renderFamily(addr) {
       const el = this.bodyEl.querySelector(`.card[data-addr="${addr}"] [data-k="family"]`);
       const f = this.audits.get(addr)?.family;
+      const t = this.tokens.get(addr);
+      const parent = f?.parent;
       if (!el) return;
-      if (!f || !f.children && !f.parent) {
+      if (!f?.children && !parent) {
         el.innerHTML = "";
         return;
       }
-      const t = this.tokens.get(addr);
       const dex = (a) => `https://dexscreener.com/solana/${encodeURIComponent(a)}`;
       const rows = [];
-      if (f.parent) {
-        rows.push(`<div class="fam-row"><span>Launched under</span><a href="${dex(f.parent.address)}" target="_blank" rel="noopener noreferrer">$${esc2(f.parent.symbol || short(f.parent.address))}</a></div>
-      <div class="fam-note">Priced in $${esc2(f.parent.symbol || "it")}, so every buy of this coin goes through it.</div>`);
+      if (parent) {
+        rows.push(`<div class="fam-row"><span>Launched under</span><a href="${dex(parent.address)}" target="_blank" rel="noopener noreferrer">$${esc2(parent.symbol || short(parent.address))}</a></div>
+      <div class="fam-note">Priced in $${esc2(parent.symbol || "it")}, so every buy of this coin goes through it.</div>`);
       }
-      if (f.children) {
-        rows.push(`<div class="fam-row"><span>Launched under $${esc2(String(t?.symbol || "").trim())}</span><b>${num(f.children)}${f.more ? "+" : ""} coin${f.children === 1 && !f.more ? "" : "s"}</b></div>`);
-        const sub = [f.fresh ? `${num(f.fresh)} in the last 24h` : "", f.volume ? `${usd(f.volume)} traded 24h` : ""].filter(Boolean).join(" \xB7 ");
+      if (f?.children) {
+        rows.push(`<div class="fam-row"><span>Launched under $${esc2(String(t?.symbol || "").trim())}</span><b>${num(f.children)} coin${f.children === 1 ? "" : "s"}</b></div>`);
+        const sub = [f.graduated ? `${num(f.graduated)} graduated` : "", f.volume ? `${usd(f.volume)} traded 24h` : ""].filter(Boolean).join(" \xB7 ");
         if (sub) rows.push(`<div class="fam-note">${sub}</div>`);
         if (f.biggest?.address) rows.push(`<div class="fam-row"><span>Biggest child</span><a href="${dex(f.biggest.address)}" target="_blank" rel="noopener noreferrer">$${esc2(String(f.biggest.symbol || "").trim())} \xB7 ${usd(f.biggest.marketCap)}</a></div>`);
       }

@@ -1,62 +1,51 @@
-// A coin's family on pump.fun custom pairs (extension/src/lib/family.js) and the line the bot prints for it.
-// GeckoTerminal and DexScreener are stubbed. node test/family.mjs
+// A coin's family on pump.fun custom pairs (extension/src/lib/family.js), read from the chain, and the lines the bot
+// prints for it. The RPC and DexScreener are stubbed. node test/family.mjs
 import assert from 'node:assert/strict';
-import { familyOf } from '../extension/src/lib/family.js';
+import { familyCounts, familyDetails, parentOf, PUMP, PUMP_AMM } from '../extension/src/lib/family.js';
+import { aggregate } from '../extension/src/lib/market.js';
 import { botReply, familyLine } from '../bot/reply.js';
 
-const SOL = 'So11111111111111111111111111111111111111112';
 const LARP = 't9bnCGiZVUYsRKvx4d5dPcoDCSyuBM9C33ZNGNULARP';
 const RADAR = 'HyDSdtgiSa5mHqkTVoz8cTFTeVLFKdZ8amPvtNYfpump';
-const now = Date.parse('2026-11-04T13:00:00Z');
-const pool = (base, quote, name, { vol = 0, reserve = 0, created = '2026-10-20T00:00:00Z' } = {}) => ({
-  attributes: { name, volume_usd: { h24: String(vol) }, reserve_in_usd: String(reserve), pool_created_at: created },
-  relationships: { base_token: { data: { id: `solana_${base}` } }, quote_token: { data: { id: `solana_${quote}` } } },
-});
-const pages = {
-  [LARP]: [[
-    pool(LARP, SOL, 'LARPCHECK / SOL', { vol: 56_000, reserve: 90_000 }),
-    pool(RADAR, LARP, 'RADAR / LARPCHECK', { vol: 2_700, reserve: 8_000 }),
-    pool('Kid2', LARP, 'Galt / LARPCHECK', { vol: 690, reserve: 1_500, created: '2026-11-04T05:00:00Z' }),
-    pool('Kid3', LARP, 'LEGIT / LARPCHECK'),
-  ]],
-  [RADAR]: [[pool(RADAR, LARP, 'RADAR / LARPCHECK', { vol: 2_700, reserve: 8_000 }), pool(RADAR, SOL, 'RADAR / SOL', { reserve: 100 })]],
-};
-const fetchJson = async (url) => {
-  const [, addr, page] = url.match(/tokens\/([^/]+)\/pools\?page=(\d+)/);
-  return { data: (pages[addr] || [])[page - 1] || [] };
-};
+const GALT = 'FomZeGyfkxa36RARLtBZyrfDRL6hqosjohPiX5E4pump';
+const B58 = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+const raw = (s) => { let n = 0n; for (const c of s) n = n * 58n + BigInt(B58.indexOf(c)); const out = []; while (n > 0n) { out.unshift(Number(n % 256n)); n /= 256n; } for (const c of s) { if (c !== '1') break; out.unshift(0); } while (out.length < 32) out.unshift(0); return Buffer.from(out).toString('base64'); };
+
+// 15 curves under LARPCHECK, two of them graduated to PumpSwap pools (RADAR and Galt).
 const asked = [];
-const tokens = async (refs) => { asked.push(...refs.map((r) => r.address)); return refs.filter((r) => r.address === RADAR).map(() => ({ address: RADAR, symbol: 'RADAR', marketCap: 7_400, mcapBacked: true })); };
+const rpc = async (method, [program, opts]) => {
+  asked.push({ program, opts });
+  const quote = opts.filters.find((f) => f.memcmp).memcmp;
+  if (program === PUMP) return quote.offset === 83 && quote.bytes === LARP ? Array.from({ length: 15 }, () => ({ account: { data: ['', 'base64'] } })) : [];
+  if (program === PUMP_AMM) return quote.offset === 75 && quote.bytes === LARP ? [RADAR, GALT].map((m) => ({ account: { data: [raw(m), 'base64'] } })) : [];
+  return [];
+};
+const counts = await familyCounts(LARP, rpc);
+assert.deepEqual(counts, { children: 15, graduated: 2, mints: [RADAR, GALT], more: false });
+assert.ok(asked.every((a) => a.opts.dataSlice), 'only the bytes needed come back');
+assert.deepEqual(asked.find((a) => a.program === PUMP).opts.filters[0], { dataSize: 166 });
+console.log('PASS family: launches under a coin, and the graduated ones\' mints, from the chain');
 
-const larp = await familyOf(LARP, { fetchJson, tokens, now });
-assert.equal(larp.parent, null, 'priced in SOL: no parent');
-assert.equal(larp.children, 3);
-assert.equal(larp.more, false);
-assert.equal(larp.fresh, 1, 'Galt launched in the last 24 hours');
-assert.equal(larp.volume, 3_390);
-assert.equal(larp.biggest?.symbol, 'RADAR');
-assert.deepEqual(asked, [RADAR, 'Kid2'], 'only children with volume or a real pool are looked up');
-assert.equal(familyLine(larp, { address: LARP, symbol: 'LARPCHECK' }), '🌱 Family: 3 coins launched under LARPCHECK (1 in the last 24h) · $3.4K vol 24h · biggest RADAR $7.4K');
-console.log('PASS family: children, the newest of them, their volume and the biggest');
+const tokens = async (refs) => refs.map((r) => (r.address === RADAR ? { address: RADAR, symbol: 'RADAR', marketCap: 7_400, mcapBacked: true, volume: { h24: 2_700 } } : { address: GALT, symbol: 'Galt', marketCap: 800, mcapBacked: false, volume: { h24: 690 } }));
+const fam = await familyDetails(counts, { tokens });
+assert.equal(fam.biggest?.symbol, 'RADAR', 'the biggest backed one');
+assert.equal(fam.volume, 3_390);
+assert.equal(familyLine(fam, { address: LARP, symbol: 'LARPCHECK' }), '🌱 Family: 15 coins launched under LARPCHECK (2 graduated) · $3.4K vol 24h · biggest RADAR $7.4K');
+console.log('PASS family: the graduated children\'s volume and the biggest');
 
-const radar = await familyOf(RADAR, { fetchJson, tokens, now });
-assert.deepEqual(radar.parent, { address: LARP, symbol: 'LARPCHECK' });
-assert.equal(radar.children, 0);
-assert.equal(familyLine(radar, { address: RADAR, symbol: 'RADAR' }), '🌳 Launched under LARPCHECK: priced in it, so every buy goes through it');
+// The parent is the coin's own pool's quote, when it's a coin.
+const pair = (quote) => ({ chainId: 'solana', dexId: 'pumpswap', pairAddress: 'P', baseToken: { address: RADAR, symbol: 'RADAR', name: 'Radar' }, quoteToken: quote, marketCap: 7_400, liquidity: { usd: 8_000 }, volume: { h24: 2_700 }, pairCreatedAt: 1 });
+const [radar] = aggregate([pair({ address: LARP, symbol: 'LARPCHECK' })]);
+assert.deepEqual(parentOf(radar), { address: LARP, symbol: 'LARPCHECK' });
+assert.equal(familyLine({ children: 0 }, radar), '🌳 Launched under LARPCHECK: priced in it, so every buy goes through it');
+const [onSol] = aggregate([pair({ address: 'So11111111111111111111111111111111111111112', symbol: 'SOL' })]);
+assert.equal(parentOf(onSol), null, 'priced in SOL: no parent');
+assert.equal(familyLine(null, onSol), '');
 console.log('PASS family: a coin priced in another coin names its parent');
 
-// A full page means there are more than were read.
-const full = Array.from({ length: 20 }, (_, i) => pool(`K${i}`, LARP, `K${i} / LARPCHECK`));
-const many = await familyOf(LARP, { fetchJson: async () => ({ data: full }), tokens: async () => [], pages: 1, now });
-assert.equal(many.more, true);
-assert.match(familyLine(many, { address: LARP, symbol: 'LARPCHECK' }), /^🌱 Family: 20\+ coins launched under LARPCHECK$/);
-console.log('PASS family: a full page reads as "20+"');
-
 // In the reply: after the coins, plain tickers only (one cashtag a post).
-const text = botReply({ named: { address: LARP, symbol: 'LARPCHECK', chain: 'solana', marketCap: 260_000 }, how: 'post', picks: [] }, 'https://x.com/i/status/1', now, { family: larp });
-assert.match(text, /\nLARPCHECK|t9bn/);
-assert.match(text, /🌱 Family: 3 coins launched under LARPCHECK/);
+const text = botReply({ named: { address: LARP, symbol: 'LARPCHECK', chain: 'solana', marketCap: 260_000 }, how: 'post', picks: [] }, 'https://x.com/i/status/1', Date.now(), { family: fam });
+assert.match(text, /🌱 Family: 15 coins launched under LARPCHECK/);
 assert.equal((text.match(/\$[A-Z]/g) || []).length, 1, 'one cashtag');
-assert.equal(familyLine(null, { symbol: 'X' }), '');
 console.log('PASS family: the reply carries the family line');
 process.exit(0);
