@@ -22,6 +22,8 @@ const QUOTES = new Set([
   '0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d',
   '0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56',
 ].map(quoteKey));
+// SOL, ETH, dollars: what a coin's pool is normally priced in. A pool priced in anything else is a child of that coin.
+export const isBaseQuote = (a) => QUOTES.has(quoteKey(a));
 // Coins that also back real pools but are memecoins themselves, so they can still be picks: pump.fun pairs coins to $LARPCHECK.
 const REAL_QUOTES = new Set([...QUOTES, 't9bnCGiZVUYsRKvx4d5dPcoDCSyuBM9C33ZNGNULARP']);
 // Launchpad curves: the pair opens in the same tx the token is born (flapsh: flap.sh on Robinhood Chain and BNB

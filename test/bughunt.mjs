@@ -550,3 +550,15 @@ const quiet = async () => ({ score: 90, why: 'a dog', name: 'Biscuit' });
   assert.match(text, /3 coins on this story, all of them in the full scan\./, 'two of the three are in the reply');
   console.log('PASS bughunt: live namesakes count as related coins');
 }
+
+// 38. One word in common is no tie for a longer name: "blind belief coin" isn't on a "Blind Ape" post; "Blind Ape" is.
+{
+  const now = Date.now();
+  const coin = (symbol, name, address, marketCap, relevance, chain = 'solana') => ({ symbol, name, address, chain, marketCap, relevance, mcapBacked: true, liquidity: 30_000, createdAt: now - 16 * 3600e3, volume: { h24: 20_000, h1: 500 }, txns: { h1: { buys: 20, sells: 10 }, h24: { buys: 200, sells: 150 } }, priceChange: { h1: 3 } });
+  const belief = coin('BBC', 'blind belief coin', '0x12b9beb489a8f1c615f6ddfc449ae1441f3305b8', 55_206, 85, 'robinhood');
+  const ape = coin('BLINDAPE', 'Blind Ape', 'Ape11111111111111111111111111111111pump', 12_000, 85);
+  const res = await botCoins({ mentioned: [], picks: [{ role: 'top', token: belief }, { role: 'mover', token: ape }], others: [], anchors: ['blind ape'], terms: ['Blind Ape'] }, { text: 'Just a Blind Ape that sends me $NEAR $ZEC and $XMR daily.', url: 'https://x.com/Chairman_DN/status/2117671934976794969' }, { search: async () => [], lookupCa: async () => null, capOf: async () => null, matchImages: async () => [], chains: ['solana', 'robinhood'] });
+  assert.ok(!res.picks.some((p) => p.token.address === belief.address), '"blind" alone is not the story');
+  assert.ok(res.picks.some((p) => p.token.address === ape.address), 'Blind Ape is');
+  console.log('PASS bughunt: one shared word is no tie for a longer coin name');
+}

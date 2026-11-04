@@ -277,7 +277,16 @@ export async function botCoins(res, post, { search, lookupCa, lookupBio = lookup
   const postWords = [...storyWords([...(res?.anchors || []), ...(res?.terms || [])], post, post?.text), ...typed];
   const runner = runnerOf(scanned.filter((t) => !namedAfterPoster(t, post, post?.text)), postWords);
   // Under $10K a coin needs the judge's 90+: a name in common is no reason to call dust the post's coin.
-  const onStory = (t) => (t.relevance || 0) >= 90 || ((t.relevance || 0) >= ON_STORY && (t.marketCap || 0) >= 10_000 && tiedToPost(t, postWords));
+  // One word in common isn't a tie for a coin whose name has more: "blind belief coin" ($BBC, $55K) was Highest MC and OG
+  // on a "Blind Ape" post. Most of a longer name has to be in the post, unless its whole ticker or name is.
+  const used = new Set(postWords.flatMap(telling));
+  const whole = new Set(postWords.map(key).filter((k) => k.length >= 2));
+  const tiedClose = (t) => {
+    if (whole.has(key(t.symbol)) || whole.has(key(t.name))) return true;
+    const mine = [...new Set(telling(t.name))];
+    return mine.length < 2 ? tiedToPost(t, postWords) : mine.filter((w) => used.has(w)).length * 2 > mine.length;
+  };
+  const onStory = (t) => (t.relevance || 0) >= 90 || ((t.relevance || 0) >= ON_STORY && (t.marketCap || 0) >= 10_000 && tiedClose(t));
   const seen = new Set();
   const isOwn = (t) => ownCoin(t, post) && live(t);
   const onlyChain = chainInPost(post?.text);
