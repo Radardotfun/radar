@@ -430,3 +430,19 @@ const quiet = async () => ({ score: 90, why: 'a dog', name: 'Biscuit' });
   assert.notEqual(word.named?.address, ddmg, 'a capitalised word only searches its own ticker');
   console.log('PASS bughunt: a ticker written without its $ finds the runner under it');
 }
+
+// 31. A typed big-stock ticker ($META on a markets post) names a coin only of runner size; $AMD's $1.6M coin still counts.
+{
+  const now = Date.now();
+  const pair = (address, symbol, name, mc, liq) => ({ chainId: 'solana', dexId: liq ? 'pumpswap' : 'meteoradbc', pairAddress: `P${address}`, baseToken: { address, symbol, name }, quoteToken: { address: 'So11111111111111111111111111111111111111112', symbol: 'SOL' }, marketCap: mc, fdv: mc, priceNative: '0.00001', priceUsd: '0.00167', liquidity: liq ? { usd: liq, quote: liq / 334 } : undefined, volume: { h24: 1_586, h1: 200 }, txns: { h1: { buys: 3, sells: 2 }, h24: { buys: 16, sells: 12 } }, priceChange: { h1: 2, h24: 30 }, pairCreatedAt: now - 16 * 3600e3 });
+  const deps = (pairs) => ({ search: async () => pairs, lookupCa: async () => null, capOf: async () => null, matchImages: async () => [], chains: ['solana'] });
+  const scan = { mentioned: [], picks: [], others: [] };
+  const meta = await botCoins(scan, { text: 'Big Tech AI spending: $GOOGL $META $MSFT', url: 'https://x.com/KobeissiLetter/status/2117424042944721041' }, deps([pair('BNzUsDssAVr8hB1RGmbc3g4VezjKdqrVihgjowFfR5yQ', 'META', 'metapad.lol', 2_660)]));
+  assert.equal(meta.named, null, 'a $2.7K launchpad coin is not the $META the post means');
+  const big = { ...pair('DDmGnuvroxVrb7CSyjYcezFU8gnAfhKasg4ZZezmpump', 'AMD', 'A Meme Dog', 1_470_000, 134_000), volume: { h24: 8_700_000, h1: 300_000 }, txns: { h1: { buys: 400, sells: 300 }, h24: { buys: 60_000, sells: 50_000 } } };
+  const amd = await botCoins(scan, { text: 'BREAKING: AMD stock, $AMD, surges over +6%', url: 'https://x.com/KobeissiLetter/status/2117728009134506332' }, deps([big]));
+  assert.equal(amd.named?.address, big.baseToken.address, 'a runner under a stock ticker still counts');
+  const meme = await botCoins(scan, { text: 'send $FROGGY', url: 'https://x.com/a/status/3' }, deps([pair('Frog1111111111111111111111111111111pump', 'FROGGY', 'Froggy', 2_660)]));
+  assert.ok(meme.named, 'a small coin under a typed ticker that is no stock is still named');
+  console.log('PASS bughunt: a typed stock ticker names only a runner');
+}

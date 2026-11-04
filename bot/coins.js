@@ -19,6 +19,9 @@ const MAJORS = new Set([...'BTC ETH SOL HYPE XRP BNB USDC USDT WBTC WETH WSOL PE
 // The real $RADAR (RADAR_MINT in the server's wrangler.toml). An $84K "Radar" on BNB Chain was Highest MC on a post
 // that mentions Radar, which sent people to a copy of our own coin.
 const RADAR_MINT = 'HyDSdtgiSa5mHqkTVoz8cTFTeVLFKdZ8amPvtNYfpump';
+// Big stocks' tickers. Typed on a markets post ($META, $SHOP) they mean the share, so a coin under the ticker has to be a
+// runner to count: Kobeissi's Big Tech post had named a $2.7K launchpad "META", a different dead one each scan.
+const STOCKS = new Set('AAPL MSFT GOOGL GOOG AMZN META NVDA TSLA AMD INTC NFLX AVGO ORCL CRM ADBE IBM QCOM MU ARM TSM ASML SHOP UBER ABNB PYPL SQ XYZ COIN HOOD MSTR PLTR SNOW NET DIS NKE WMT COST JPM GS BAC V MA BRK SPY QQQ DJT GME AMC BABA BIDU NIO RIVN LCID SMCI DELL HPQ SBUX MCD KO PEP'.split(' '));
 // Not dust: what the reply would show at all.
 const live = (t) => (t.marketCap || 0) >= 1000 || (t.volume?.h24 || 0) >= 1000;
 
@@ -210,6 +213,7 @@ export async function botCoins(res, post, { search, lookupCa, lookupBio = lookup
     for (const tk of wanted) {
       const found = aggregate(await search(tk).catch(() => [])).filter((t) => chains.includes(t.chain) && isMemecoin(t));
       named = pickNamed(tk, [...scanned, ...found], text);
+      if (named && STOCKS.has(tk) && !(named.mcapBacked && alive(named) && (named.marketCap || 0) >= RUNNER_MIN)) named = null;
       if (named) break;
     }
   }
