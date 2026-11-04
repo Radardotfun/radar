@@ -176,7 +176,7 @@ const leadOf = (tokens) => [...tokens].sort((a, b) => Number(!!b.mcapBacked) - N
  * 'picture': its logo is the post's picture) and the three story picks, as pickThree gives them. That coin competes for
  * the roles too, so Highest MC is never a smaller coin than the post's own.
  */
-export async function botCoins(res, post, { search, lookupCa, lookupBio = lookupCa, matchImages, capOf, chains = ['solana'] }) {
+export async function botCoins(res, post, { search, lookupCa, lookupBio = lookupCa, matchImages, capOf, linkedTo, chains = ['solana'] }) {
   const scanned = [...(res?.roleCandidates || []), ...(res?.picks || []).map((p) => p.token), ...(res?.others || []), res?.techMatch].filter((t) => t?.address);
   const text = [post?.text, post?.quoted, post?.parent].filter(Boolean).join('\n');
   let named = res?.mentioned?.[0] || null;
@@ -247,6 +247,14 @@ export async function botCoins(res, post, { search, lookupCa, lookupBio = lookup
   // Lily" linked the post but only showed as a Mover, under a bigger coin with another name.
   if (!named) {
     const linked = leadOf(scanned.filter((t) => t.fromPost && live(t) && !isRadarCopy(t) && !MAJORS.has(sym(t))));
+    if (linked) { named = linked; how = 'linked'; }
+  }
+  // The scan only meets a coin linking the post when its search already found it: "DooDooCoin" linked @DipWheeler's
+  // "made a pumpfun" post and never came up. DexScreener's newest profiles carry their links, so the post's id finds it.
+  if (!named && linkedTo) {
+    const id = String(post?.url || '').match(/\/status\/(\d+)/)?.[1];
+    const fresh = id ? await linkedTo(id).catch(() => []) : [];
+    const linked = leadOf(fresh.filter((t) => t?.address && chains.includes(t.chain) && live(t) && isMemecoin(t) && !isRadarCopy(t) && !MAJORS.has(sym(t))).map((t) => ({ ...t, fromPost: true })));
     if (linked) { named = linked; how = 'linked'; }
   }
   if (named && !named.marketCap && capOf) {

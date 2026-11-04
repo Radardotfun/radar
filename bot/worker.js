@@ -13,7 +13,8 @@
 // pages below). Pages (BOT_TOKEN as ?token= or x-bot-token): GET /health, GET /log, GET /preview?url=<post>,
 // POST /poll (run one round now).
 import { makeHandlers, API_BASE, DEFAULTS } from '../extension/src/lib/handlers.js';
-import { searchPairs, allPairs, aggregate } from '../extension/src/lib/market.js';
+import { searchPairs, allPairs, aggregate, fullTokens } from '../extension/src/lib/market.js';
+import { latestProfiles } from '../extension/src/lib/alerts.js';
 import { botReply, replyEntries, NO_COINS, xLength, varied } from './reply.js';
 import { botCoins, withMemory } from './coins.js';
 import { oauthHeader } from './oauth.js';
@@ -197,6 +198,13 @@ const dirty = new Set();
 // known: the verdicts this post got on earlier tags ({ address: score }), which win over a new judge call.
 // fresh: a retry, after DexScreener left lookups unanswered: nothing cached in this run is reused (the server's own
 // caches of the AI's answers still are).
+// Coins whose DexScreener profile, among the newest, links this post.
+async function linkedTo(statusId) {
+  const refs = (await latestProfiles()).filter((p) => p.tokenAddress && (p.links || []).some((l) => String(l?.url || '').includes(`/status/${statusId}`)))
+    .map((p) => ({ chain: p.chainId, address: p.tokenAddress }));
+  return refs.length ? fullTokens(refs.slice(0, 4)) : [];
+}
+
 async function replyFor(postUrl, known = null, fresh = false) {
   const hit = !fresh && scans.get(postUrl);
   if (hit && Date.now() - hit.at < 600_000) return hit.p;
@@ -221,7 +229,7 @@ async function replyFor(postUrl, known = null, fresh = false) {
     const found = await h.coins({ post, judge: true }).finally(() => { dexBudget += reserve; });
     if (found.engineError) throw new Error('Radar could not read this post right now');
     const { scan, scores, guessed } = withMemory(found, known);
-    const res = { ...scan, ...await botCoins(scan, post, { search: searchPairs, lookupCa, lookupBio, matchImages, capOf: curveCap, chains: SETTINGS.chains }) };
+    const res = { ...scan, ...await botCoins(scan, post, { search: searchPairs, lookupCa, lookupBio, matchImages, capOf: curveCap, linkedTo, chains: SETTINGS.chains }) };
     const first = replyEntries(res)[0]?.t;
     const larp = first ? await h.larpcheck({ address: first.address }).catch(() => null) : null;
     return { text: botReply(res, postUrl) || NO_COINS, short: botReply(res, postUrl, Date.now(), { full: false }) || NO_COINS, links: botReply(res, postUrl, Date.now(), { links: true, larp }) || NO_COINS, story: res.narrative || '', scores, guessed, entries: replyEntries(res) };

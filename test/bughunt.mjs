@@ -462,3 +462,21 @@ const quiet = async () => ({ score: 90, why: 'a dog', name: 'Biscuit' });
   assert.match(botReply({ postAt, picks: [{ role: 'top', token: fresh }] }, 'https://x.com/i/status/1', now), /\$BLUE/, 'a new coin with few trades stays');
   console.log('PASS bughunt: old namesakes that barely trade stay out of the reply');
 }
+
+// 33. A coin whose newest DexScreener profile links the post leads the reply even when the scan's search never met it.
+{
+  const { botReply } = await import('../bot/reply.js');
+  const now = Date.now();
+  const ddc = { address: 'FCty2praQweB4XFhkpQLU48yMnVrLf5oTW7Kat2pump', chain: 'solana', symbol: 'DDC', name: 'DooDooCoin', marketCap: 2_770, mcapBacked: true, onCurve: true, volume: { h24: 36_285, h1: 9_474 }, txns: { h1: { buys: 95, sells: 90 }, h24: { buys: 300, sells: 280 } }, createdAt: now - 2 * 3600e3 };
+  const other = { ...ddc, address: '9J5EF9c3XBhxxCHrJdJcSiQnBJ6Vz9ANAxC5j4Y2pump', symbol: 'DIPWHEELER', name: 'DipWheeler', relevance: 95, volume: { h24: 900, h1: 0 } };
+  const asked = [];
+  const deps = { search: async () => [], lookupCa: async () => null, capOf: async () => null, matchImages: async () => [], chains: ['solana'], linkedTo: async (id) => { asked.push(id); return id === '2117817977773199409' ? [ddc] : []; } };
+  const res = await botCoins({ mentioned: [], picks: [{ role: 'top', token: other }], others: [] }, { text: 'made a pumpfun. market is doo doo, might as well have some fun.', url: 'https://x.com/DipWheeler/status/2117817977773199409' }, deps);
+  assert.deepEqual(asked, ['2117817977773199409']);
+  assert.equal(res.named?.address, ddc.address);
+  assert.equal(res.how, 'linked');
+  assert.match(botReply(res, 'https://x.com/i/status/2117817977773199409', now), /🔗 Launched from this post: \$DDC/);
+  const typed = await botCoins({ mentioned: [], picks: [], others: [] }, { text: 'send $DIPWHEELER', url: 'https://x.com/a/status/5' }, { ...deps, search: async () => [], linkedTo: async () => { throw new Error('not asked'); } });
+  void typed;
+  console.log('PASS bughunt: a coin launched from the post is found from its profile');
+}
