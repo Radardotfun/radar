@@ -534,3 +534,19 @@ const quiet = async () => ({ score: 90, why: 'a dog', name: 'Biscuit' });
   assert.doesNotMatch(botReply({ ...res, related: 3 }, 'https://x.com/i/status/1', now), /coins on this story/, 'no count when the reply already shows them all');
   console.log('PASS bughunt: stock-token pools count, and the reply shows the newest coin and the total');
 }
+
+// 37. Related coins include the live namesakes of a shown coin, not only the story's own: the newest $AMD copy shows.
+{
+  const { botReply } = await import('../bot/reply.js');
+  const now = Date.now();
+  const coin = (address, marketCap, ageH, extra = {}) => ({ symbol: 'AMD', name: 'A Meme Dog', address, chain: 'solana', marketCap, mcapBacked: true, liquidity: 30_000, createdAt: now - ageH * 3600e3, volume: { h24: 20_000, h1: 500 }, txns: { h1: { buys: 20, sells: 10 }, h24: { buys: 200, sells: 150 } }, priceChange: { h1: 3 }, ...extra });
+  const main = coin('DDmGnuvroxVrb7CSyjYcezFU8gnAfhKasg4ZZezmpump', 1_600_000, 15);
+  const copies = [coin('Copy111111111111111111111111111111pump', 8_000, 9), coin('Copy222222222222222222222222222222pump', 4_000, 0.3), coin('Dead333333333333333333333333333333pump', 300, 2, { volume: { h24: 10, h1: 0 } })];
+  const res = await botCoins({ mentioned: [main], picks: [], others: [], pool: copies }, { text: '$AMD surges', url: 'https://x.com/KobeissiLetter/status/2117728009134506332' }, { search: async () => [], lookupCa: async () => null, capOf: async () => null, matchImages: async () => [], chains: ['solana'] });
+  assert.equal(res.newest?.address, copies[1].address, 'the copy launched 18 minutes ago');
+  assert.equal(res.related, 3, 'the post\'s coin and two live namesakes; the dead one is left out');
+  const text = botReply(res, 'https://x.com/i/status/1', now);
+  assert.match(text, /🆕 Newest: AMD · launched 18m ago/);
+  assert.match(text, /3 coins on this story, all of them in the full scan\./, 'two of the three are in the reply');
+  console.log('PASS bughunt: live namesakes count as related coins');
+}

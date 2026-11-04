@@ -325,8 +325,13 @@ export async function botCoins(res, post, { search, lookupCa, lookupBio = lookup
   const postAt = id ? Number((BigInt(id) >> 22n) + 1288834974657n) : null;
   // Beside the three titles, the newest live coin on the story, and how many there are in all (asked for in the Radar
   // Discord: "all related tokens, oldest, newest, highest market cap"). The full scan lists every one.
-  const shown = new Set([named?.address, ...picks.map((p) => p.token.address)].filter(Boolean));
-  const newest = story.filter((t) => !shown.has(t.address) && t.createdAt && live(t) && (alive(t) || t.onCurve) && !isMajor(t))
+  // Related means the story's coins and every live coin under a shown ticker: Kobeissi's $AMD has 16 namesakes.
+  const shownCoins = [named, ...picks.map((p) => p.token)].filter(Boolean);
+  const shown = new Set(shownCoins.map((t) => t.address));
+  const tickers = new Set(shownCoins.map(sym));
+  const all = new Map(story.map((t) => [t.address, t]));
+  for (const t of [...scanned, ...(res?.pool || [])]) if (t?.address && tickers.has(sym(t)) && chains.includes(t.chain) && live(t) && !isRadarCopy(t) && !all.has(t.address)) all.set(t.address, t);
+  const newest = [...all.values()].filter((t) => !shown.has(t.address) && t.createdAt && live(t) && (alive(t) || t.onCurve) && !isMajor(t))
     .sort((a, b) => b.createdAt - a.createdAt)[0] || null;
-  return { named, how, picks, alone: story.length < 2, outranked, postAt, newest, related: story.length };
+  return { named, how, picks, alone: story.length < 2, outranked, postAt, newest, related: all.size };
 }
