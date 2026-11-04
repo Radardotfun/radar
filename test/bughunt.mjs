@@ -562,3 +562,15 @@ const quiet = async () => ({ score: 90, why: 'a dog', name: 'Biscuit' });
   assert.ok(res.picks.some((p) => p.token.address === ape.address), 'Blind Ape is');
   console.log('PASS bughunt: one shared word is no tie for a longer coin name');
 }
+
+// 39. A newest coin that barely trades isn't shown as Newest.
+{
+  const { botReply } = await import('../bot/reply.js');
+  const now = Date.now();
+  const coin = (address, marketCap, ageH, trades, vol) => ({ symbol: 'RSI', name: 'Recursive Self Inu', address, chain: 'solana', marketCap, createdAt: now - ageH * 3600e3, volume: { h24: vol }, txns: { h24: { buys: Math.ceil(trades / 2), sells: Math.floor(trades / 2) } } });
+  const named = { ...coin('0xce4c9418b8e9bcad3e4ba2bd84123a49a6911e18', 80_700, 1200, 258, 10_800), chain: 'robinhood' };
+  const res = { named, how: 'post', postAt: now - 20 * 864e5, picks: [], related: 4, newest: coin('7B7mZXgpS29yTRxveK6j2QXWViuAo9RsrYwJhxLLpump', 2_500, 22 * 24, 4, 32) };
+  assert.doesNotMatch(botReply(res, 'https://x.com/i/status/1', now), /Newest/);
+  assert.match(botReply({ ...res, newest: coin('New1111111111111111111111111111111pump', 3_000, 0.5, 80, 4_000) }, 'https://x.com/i/status/1', now), /🆕 Newest: RSI · launched 30m ago/);
+  console.log('PASS bughunt: a quiet coin is not shown as Newest');
+}

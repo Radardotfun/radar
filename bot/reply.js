@@ -68,9 +68,10 @@ export function replyEntries(result, now = Date.now()) {
       : role === 'og' ? (ago(t.createdAt, now) ? `launched ${ago(t.createdAt, now)} ago` : usd(t.marketCap))
         : usd(t.volume?.h24) ? `${usd(t.volume.h24)} vol 24h` : usd(t.marketCap)) });
   }
-  // The newest coin on the story, when the titles left it out.
+  // The newest coin on the story, when the titles left it out. One that barely trades isn't news (a 22-day-old $RSI copy
+  // at 4 trades a day).
   const nw = result?.newest;
-  if (nw?.address && entries.length && !entries.some((e) => e.t.address === nw.address) && ((nw.marketCap || 0) >= 1000 || (nw.volume?.h24 || 0) >= 1000)) {
+  if (nw?.address && entries.length && !entries.some((e) => e.t.address === nw.address) && ((nw.marketCap || 0) >= 1000 || (nw.volume?.h24 || 0) >= 1000) && !quiet(nw, now)) {
     entries.push({ label: '🆕 Newest', t: nw, stat: stat(nw, ago(nw.createdAt, now) ? `launched ${ago(nw.createdAt, now)} ago` : usd(nw.marketCap)) });
   }
   return entries;
