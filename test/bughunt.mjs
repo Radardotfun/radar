@@ -599,3 +599,22 @@ const quiet = async () => ({ score: 90, why: 'a dog', name: 'Biscuit' });
   assert.notEqual(res.newest?.address, tito.address);
   console.log('PASS bughunt: Newest is a namesake of a shown coin');
 }
+
+// 42. A term a longer post names, hyphenated or quoted, is searched as a coin name too: "ie recursive self-improvement"
+// in Elon's reply finds Recursive Self Inu; a coin under its initials with another name doesn't count.
+{
+  const now = Date.now();
+  const pair = (address, symbol, name, mc) => ({ chainId: 'robinhood', dexId: 'uniswap', pairAddress: `P${address}`, baseToken: { address, symbol, name }, quoteToken: { address: '0x2e0847E8910a9732eB3fb1bb4b70a580ADAD4FE3', name: 'Alphabet Class A • Robinhood Token', symbol: 'GOOGL' }, marketCap: mc, fdv: mc, priceNative: '0.0000002854', priceUsd: '0.00007920', liquidity: { usd: 63_665, quote: 84.3 }, volume: { h24: 10_865, h1: 400 }, txns: { h1: { buys: 6, sells: 5 }, h24: { buys: 101, sells: 157 } }, priceChange: { h1: 1 }, pairCreatedAt: now - 50 * 864e5 });
+  const rsi = '0xce4c9418b8e9bcad3e4ba2bd84123a49a6911e18';
+  const asked = [];
+  const deps = (pairs) => ({ search: async (q) => { asked.push(q); return pairs; }, lookupCa: async () => null, capOf: async () => null, matchImages: async () => [], chains: ['solana', 'robinhood'] });
+  const post = { text: '@wholemars That part doesn’t matter. \n\nSynthetic data generation and accurate evaluation, ie recursive self-improvement, is more likely.', url: 'https://x.com/elonmusk/status/1727864202184786342' };
+  const res = await botCoins({ mentioned: [], picks: [], others: [] }, post, deps([pair(rsi, 'RSI', 'Recursive Self Inu', 80_700)]));
+  assert.ok(asked.includes('recursive self improvement'), `searched ${JSON.stringify(asked)}`);
+  assert.equal(res.named?.address, rsi);
+  const other = await botCoins({ mentioned: [], picks: [], others: [] }, post, deps([pair(rsi, 'RSI', 'Relative Strength Index', 80_700)]));
+  assert.equal(other.named, null);
+  const quoted = await botCoins({ mentioned: [], picks: [], others: [] }, { text: 'They call it "Recursive Self Improvement" and it is coming fast, says the lab', url: 'https://x.com/a/status/7' }, deps([pair(rsi, 'RSI', 'Recursive Self Inu', 80_700)]));
+  assert.equal(quoted.named?.address, rsi, 'a quoted term');
+  console.log('PASS bughunt: a hyphenated or quoted term in a longer post is searched as a coin name');
+}

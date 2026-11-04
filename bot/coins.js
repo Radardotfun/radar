@@ -239,14 +239,24 @@ export async function botCoins(res, post, { search, lookupCa, lookupBio = lookup
   // A post of a few words over a quoted story is usually the coin's name: Elon's "Recursive Self-Improvement" quoting a
   // NASA engineer read as a SpaceX story, and "Recursive Self Inu" ($RSI, $79K) never came up. The phrase is searched as a
   // name; a coin carrying it, or ticker'd with its initials, counts when it's a backed coin of some size.
+  // In a longer post the same goes for a term it names: a hyphenated one with the word before it ("ie recursive
+  // self-improvement" in Elon's 2023 reply about Q*, which read as an OpenAI story) or a quoted one.
   if (!named && !elsewhere.size && !typed.length) {
-    const own = plain(String(post?.text || '').replace(/https?:\/\/\S+|@\w+/g, ' ')).trim();
-    const words = own ? own.split(' ') : [];
-    if (words.length >= 2 && words.length <= 5 && words.join('').length >= 8) {
+    const bare = String(post?.text || '').replace(/https?:\/\/\S+|@\w+/g, ' ');
+    const own = plain(bare).trim();
+    const phrases = [];
+    if (own && own.split(' ').length >= 2 && own.split(' ').length <= 5) phrases.push(own);
+    else {
+      for (const m of bare.matchAll(/(?:^|[^\p{L}])((?:\p{L}+\s+)?\p{L}{3,}-\p{L}{3,})(?![\p{L}-])/gu)) phrases.push(plain(m[1]).trim());
+      for (const m of bare.matchAll(/["“]([^"”]{6,40})["”]/gu)) phrases.push(plain(m[1]).trim());
+    }
+    for (const phrase of [...new Set(phrases)].filter((ph) => ph.split(' ').length >= 2 && ph.replace(/ /g, '').length >= 8).slice(0, 2)) {
+      const words = phrase.split(' ');
       const initials = words.map((w) => w[0]).join('').toUpperCase();
-      const carries = (t) => plain(t.name).includes(` ${own} `) || (initials.length >= 3 && sym(t) === initials && plain(t.name).trim().startsWith(words.slice(0, 2).join(' ')));
-      const found = aggregate(await search(words.join(' ')).catch(() => [])).filter((t) => chains.includes(t.chain) && isMemecoin(t) && !isRadarCopy(t));
+      const carries = (t) => plain(t.name).includes(` ${phrase} `) || (initials.length >= 3 && sym(t) === initials && plain(t.name).trim().startsWith(words.slice(0, 2).join(' ')));
+      const found = aggregate(await search(phrase).catch(() => [])).filter((t) => chains.includes(t.chain) && isMemecoin(t) && !isRadarCopy(t));
       named = leadOf([...scanned, ...found].filter((t) => carries(t) && t.mcapBacked && alive(t) && (t.marketCap || 0) >= 10_000)) || null;
+      if (named) break;
     }
   }
   let how = named ? (fromBio ? 'bio' : 'post') : null;
