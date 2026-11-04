@@ -54,7 +54,7 @@ export function replyEntries(result, now = Date.now()) {
   const older = (t) => result?.postAt && t.createdAt && result.postAt - t.createdAt > 7 * 86_400_000;
   if (named) {
     const roles = won(named.address);
-    entries.push({ label: `${result.how === 'picture' ? '🖼 Same picture as the post' : result.how === 'bio' ? '👤 In the poster\'s bio' : '📌 In the post'}${roles.length ? ` (${roles.join(', ')})` : ''}`, t: named, stat: stat(named, usd(named.marketCap)) });
+    entries.push({ label: `${result.how === 'picture' ? '🖼 Same picture as the post' : result.how === 'bio' ? '👤 In the poster\'s bio' : result.how === 'linked' ? '🔗 Launched from this post' : '📌 In the post'}${roles.length ? ` (${roles.join(', ')})` : ''}`, t: named, stat: stat(named, usd(named.marketCap)) });
   }
   for (const [role, label] of ROLES) {
     const t = picks.find((p) => p.role === role)?.token;

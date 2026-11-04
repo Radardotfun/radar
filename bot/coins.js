@@ -222,6 +222,12 @@ export async function botCoins(res, post, { search, lookupCa, lookupBio = lookup
     named = leadOf(pictured);
     if (named) how = 'picture';
   }
+  // A coin launched with this very post as its link (its DexScreener profile points here) is the post's coin: "Freaky
+  // Lily" linked the post but only showed as a Mover, under a bigger coin with another name.
+  if (!named) {
+    const linked = leadOf(scanned.filter((t) => t.fromPost && live(t) && !isRadarCopy(t) && !MAJORS.has(sym(t))));
+    if (linked) { named = linked; how = 'linked'; }
+  }
   if (named && !named.marketCap && capOf) {
     const cap = await capOf(named).catch(() => 0);
     if (cap) named = { ...named, marketCap: cap };

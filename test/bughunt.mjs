@@ -369,3 +369,16 @@ const quiet = async () => ({ score: 90, why: 'a dog', name: 'Biscuit' });
   assert.equal(pickNamed('BINGBINGBING', [big, first], 'Ticker should be BingBingBing?')?.address, '4DXt', 'a far bigger coin still wins');
   console.log('PASS bughunt: close in size, the earlier coin is the one named');
 }
+
+// 28. A coin whose profile links this very post leads the reply when the post names none.
+{
+  const { botReply } = await import('../bot/reply.js');
+  const live = { mcapBacked: true, liquidity: 15_000, volume: { h24: 52_000 }, txns: { h1: { buys: 20, sells: 12 }, h24: { buys: 200, sells: 120 } }, createdAt: Date.now() - 4 * 3600e3, chain: 'solana' };
+  const lily = { ...live, address: 'FZs4lily11111111111111111111111111111pump', symbol: 'LILY', name: 'Freaky Lily', marketCap: 9_000, fromPost: true };
+  const other = { ...live, address: 'Kitty1111111111111111111111111111111pump', symbol: 'kittylick', name: 'Freaky ah', marketCap: 12_600 };
+  const res = await botCoins({ mentioned: [], picks: [{ role: 'top', token: other }, { role: 'mover', token: lily }], others: [] }, { text: 'freaky lily', url: 'https://x.com/zeroveyl/status/2116962191165272095' }, { search: async () => [], lookupCa: async () => null, capOf: async () => null, matchImages: async () => [], chains: ['solana'] });
+  assert.equal(res.named?.address, lily.address);
+  assert.equal(res.how, 'linked');
+  assert.match(botReply(res, 'https://x.com/i/status/2116962191165272095'), /🔗 Launched from this post: \$LILY/);
+  console.log('PASS bughunt: a coin launched from the post leads the reply');
+}
