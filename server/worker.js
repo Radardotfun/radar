@@ -12,7 +12,6 @@ import { engine, interpret, memeScore, judge, storyCheck, transcribe, watchVideo
 import { holderOn, holderConfig, holderVerify, holderWho } from './holder.js';
 import { recordPost, readStatus } from './ledger.js';
 import { feed } from './feed.js';
-import { family, serverRpc } from './family.js';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -438,15 +437,6 @@ const app = {
       if (limited(`pair:${ipOf(request)}`, 300)) return json(429, { error: 'Too many checks, slow down a little' });
       const r = await takePair(env.DB, (await jsonOf(request))?.id);
       return json(r.status, r.body);
-    }
-    if (pathname === '/family' && request.method === 'GET') {
-      if (limited(`family:${ipOf(request)}`, 60)) return json(429, { error: 'Too many checks, slow down a little' });
-      try {
-        const r = await family(new URL(request.url).searchParams.get('mint'), { rpc: serverRpc(relayUrl(env)) });
-        return json(r.status, r.body);
-      } catch (e) {
-        return json(502, { error: 'Family lookup failed', detail: String(e?.message || e).slice(0, 120) });
-      }
     }
     if (pathname === '/signals' && request.method === 'POST') {
       if (limited(`signals:${ipOf(request)}`, 120)) return json(429, { error: 'Too many checks, slow down a little' });

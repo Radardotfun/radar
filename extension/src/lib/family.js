@@ -23,11 +23,30 @@ function base58(bytes) {
 }
 const bytesOf = (b64) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
 
+// A filtered read of a program's accounts. Helius refuses getProgramAccounts on programs this size ("Too many accounts
+// requested ... Please use getProgramAccountsV2 with pagination"), so on that answer the paged call is used instead.
+async function programAccounts(rpc, program, opts) {
+  try {
+    return await rpc('getProgramAccounts', [program, opts]);
+  } catch (e) {
+    if (!/getProgramAccountsV2/.test(String(e?.message))) throw e;
+  }
+  const out = [];
+  let paginationKey;
+  for (let page = 0; page < 5; page++) {
+    const r = await rpc('getProgramAccountsV2', [program, { ...opts, limit: 10_000, ...(paginationKey ? { paginationKey } : {}) }]);
+    out.push(...(r?.accounts || []));
+    paginationKey = r?.paginationKey;
+    if (!paginationKey) break;
+  }
+  return out;
+}
+
 /** On the server: how many coins launched under `mint`, and the mints of the graduated ones. rpc(method, params) -> result. */
 export async function familyCounts(mint, rpc) {
   const [curves, pools] = await Promise.all([
-    rpc('getProgramAccounts', [PUMP, { encoding: 'base64', dataSlice: { offset: 0, length: 0 }, filters: [{ dataSize: CURVE_SIZE }, { memcmp: { offset: 83, bytes: mint } }] }]),
-    rpc('getProgramAccounts', [PUMP_AMM, { encoding: 'base64', dataSlice: { offset: 43, length: 32 }, filters: [{ memcmp: { offset: 75, bytes: mint } }] }]),
+    programAccounts(rpc, PUMP, { encoding: 'base64', dataSlice: { offset: 0, length: 0 }, filters: [{ dataSize: CURVE_SIZE }, { memcmp: { offset: 83, bytes: mint } }] }),
+    programAccounts(rpc, PUMP_AMM, { encoding: 'base64', dataSlice: { offset: 43, length: 32 }, filters: [{ memcmp: { offset: 75, bytes: mint } }] }),
   ]);
   const mints = [...new Set((pools || []).map((a) => base58(bytesOf(a.account.data[0]))).filter((m) => m !== mint))];
   // A coin launched straight on PumpSwap has a pool and no curve, so the count is whichever is larger.

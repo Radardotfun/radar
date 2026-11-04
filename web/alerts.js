@@ -1,4 +1,4 @@
-// Radar 1.7.106 alerts page, built from webapp/alerts.js: https://github.com/Radardotfun/radar
+// Radar 1.7.107 alerts page, built from webapp/alerts.js: https://github.com/Radardotfun/radar
 (() => {
   // extension/src/lib/keywords.js
   var STOP = new Set(`a about above after again against all almost also am an and any are aren as at be because been before
@@ -386,6 +386,50 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
   }
 
   // extension/src/lib/family.js
+  var PUMP = "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P";
+  var PUMP_AMM = "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA";
+  var CURVE_SIZE = 166;
+  var MINTS_MAX = 90;
+  var B58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+  function base58(bytes) {
+    let n2 = 0n;
+    for (const b of bytes) n2 = n2 * 256n + BigInt(b);
+    let s = "";
+    while (n2 > 0n) {
+      s = B58[Number(n2 % 58n)] + s;
+      n2 /= 58n;
+    }
+    for (const b of bytes) {
+      if (b) break;
+      s = `1${s}`;
+    }
+    return s;
+  }
+  var bytesOf = (b64) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+  async function programAccounts(rpc, program, opts) {
+    try {
+      return await rpc("getProgramAccounts", [program, opts]);
+    } catch (e) {
+      if (!/getProgramAccountsV2/.test(String(e?.message))) throw e;
+    }
+    const out = [];
+    let paginationKey;
+    for (let page = 0; page < 5; page++) {
+      const r = await rpc("getProgramAccountsV2", [program, { ...opts, limit: 1e4, ...paginationKey ? { paginationKey } : {} }]);
+      out.push(...r?.accounts || []);
+      paginationKey = r?.paginationKey;
+      if (!paginationKey) break;
+    }
+    return out;
+  }
+  async function familyCounts(mint, rpc) {
+    const [curves, pools] = await Promise.all([
+      programAccounts(rpc, PUMP, { encoding: "base64", dataSlice: { offset: 0, length: 0 }, filters: [{ dataSize: CURVE_SIZE }, { memcmp: { offset: 83, bytes: mint } }] }),
+      programAccounts(rpc, PUMP_AMM, { encoding: "base64", dataSlice: { offset: 43, length: 32 }, filters: [{ memcmp: { offset: 75, bytes: mint } }] })
+    ]);
+    const mints = [...new Set((pools || []).map((a) => base58(bytesOf(a.account.data[0]))).filter((m) => m !== mint))];
+    return { children: Math.max((curves || []).length, mints.length), graduated: mints.length, mints: mints.slice(0, MINTS_MAX), more: mints.length > MINTS_MAX };
+  }
   async function familyDetails(counts, { tokens = fullTokens } = {}) {
     if (!counts?.mints?.length) return { ...counts, volume: 0, biggest: null };
     const full = await tokens(counts.mints.map((address) => ({ chain: "solana", address }))).catch(() => []);
@@ -1260,14 +1304,10 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
         return data;
       });
     }
+    const famRpc = makeRpc(PUBLIC_RPC, { concurrency: 2 });
     async function family({ mint, quote = null }) {
       const parent = parentOf({ address: mint, quote });
-      return cached(`fam:${mint}`, 6e5, async () => {
-        const res = await fetch(`${API_BASE}/family?mint=${encodeURIComponent(mint)}`, { signal: AbortSignal.timeout(25e3) });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data.error || `Family ${res.status}`);
-        return familyDetails(data);
-      }).then((f) => ({ ...f, parent }), () => parent ? { children: 0, parent } : Promise.reject(new Error("Family unavailable")));
+      return cached(`fam:${mint}`, 6e5, async () => familyDetails(await familyCounts(mint, famRpc))).then((f) => ({ ...f, parent }), () => parent ? { children: 0, parent } : Promise.reject(new Error("Family unavailable")));
     }
     const lcGet = async (path, ttl) => cached(`lc:${path}`, ttl, async () => {
       const res = await fetch(`${API_BASE}${path}`, { signal: AbortSignal.timeout(12e3) });
