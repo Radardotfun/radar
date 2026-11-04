@@ -231,8 +231,12 @@ async function replyFor(postUrl, known = null, fresh = false) {
     const { scan, scores, guessed } = withMemory(found, known);
     const res = { ...scan, ...await botCoins(scan, post, { search: searchPairs, lookupCa, lookupBio, matchImages, capOf: curveCap, linkedTo, chains: SETTINGS.chains }) };
     const first = replyEntries(res)[0]?.t;
-    const larp = first ? await h.larpcheck({ address: first.address }).catch(() => null) : null;
-    return { text: botReply(res, postUrl) || NO_COINS, short: botReply(res, postUrl, Date.now(), { full: false }) || NO_COINS, links: botReply(res, postUrl, Date.now(), { links: true, larp }) || NO_COINS, story: res.narrative || '', scores, guessed, entries: replyEntries(res) };
+    const [larp, family] = await Promise.all([
+      first ? h.larpcheck({ address: first.address }).catch(() => null) : null,
+      // The first coin's family, from the engine (server/family.js), which keeps each answer 10 minutes.
+      first?.chain === 'solana' ? h.family({ mint: first.address }).catch(() => null) : null,
+    ]);
+    return { text: botReply(res, postUrl, Date.now(), { family }) || NO_COINS, short: botReply(res, postUrl, Date.now(), { full: false, family }) || NO_COINS, links: botReply(res, postUrl, Date.now(), { links: true, larp, family }) || NO_COINS, story: res.narrative || '', scores, guessed, entries: replyEntries(res) };
   })();
   scans.set(postUrl, { at: Date.now(), p });
   p.catch(() => scans.delete(postUrl));

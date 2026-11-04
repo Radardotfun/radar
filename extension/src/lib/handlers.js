@@ -133,6 +133,16 @@ export function makeHandlers(host) {
     });
   }
 
+  // A coin's family on pump.fun custom pairs (lib/family.js), read through our server, which keeps it 10 minutes.
+  async function family({ mint }) {
+    return cached(`fam:${mint}`, 600_000, async () => {
+      const res = await fetch(`${API_BASE}/family?mint=${encodeURIComponent(mint)}`, { signal: AbortSignal.timeout(15_000) });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `Family ${res.status}`);
+      return data;
+    });
+  }
+
   // More of Larpcheck through our server: holder data for chains Radar's own check doesn't cover, its lists, and for
   // holders with a plan on the server, new checks and questions.
   const lcGet = async (path, ttl) => cached(`lc:${path}`, ttl, async () => {
@@ -432,7 +442,7 @@ export function makeHandlers(host) {
 
   const launchState = () => cached('launch:state', 600_000, async () => (await fetch(`${API_BASE}/launch/settings`, { signal: AbortSignal.timeout(6000) })).json());
 
-  const handlers = { forgetCoins, breaking, starList, starToggle, videoInfo, tweet, read, coins, fresh, postCoins, mentioned, story, larpcheck, refresh, safety, bundle, image, openWindow, reroute, holderStatus, holderSave, holderWho, holderActive, recentList, recentAdd, recentClear, launchState, lcHolders, lcBoard, lcSettings, lcStart, lcAsk, lcPoll, settings: () => host.settings() };
+  const handlers = { forgetCoins, breaking, starList, starToggle, videoInfo, tweet, read, coins, fresh, postCoins, mentioned, story, larpcheck, family, refresh, safety, bundle, image, openWindow, reroute, holderStatus, holderSave, holderWho, holderActive, recentList, recentAdd, recentClear, launchState, lcHolders, lcBoard, lcSettings, lcStart, lcAsk, lcPoll, settings: () => host.settings() };
   // Changing the RPC drops cached bundle results so they're re-read through the new one.
   handlers.resetBundles = () => memo.forEach((_, k) => k.startsWith('bd:') && memo.delete(k));
   return handlers;

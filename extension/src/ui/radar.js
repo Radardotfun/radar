@@ -556,8 +556,35 @@ class Radar {
       .then((b) => { a.bundle = b; a.bundleAt = Date.now(); a.bundleErr = null; })
       .catch((e) => { a.bundleErr = e.message || "Couldn't read the launch block"; })
       .finally(() => this.renderAudit(t.address));
-    await Promise.allSettled([rug, bundle]);
+    // The coin's family on pump.fun custom pairs: kept 10 minutes by the handler and the server, so a minute's look is cheap.
+    const fam = send('family', { mint: t.address })
+      .then((f) => { a.family = f; })
+      .catch(() => {})
+      .finally(() => this.renderFamily(t.address));
+    await Promise.allSettled([rug, bundle, fam]);
     a.loading = false;
+  }
+
+  // Coins launched priced in this one (its children), or the coin it was itself launched under. Shown only when there is one.
+  renderFamily(addr) {
+    const el = this.bodyEl.querySelector(`.card[data-addr="${addr}"] [data-k="family"]`);
+    const f = this.audits.get(addr)?.family;
+    if (!el) return;
+    if (!f || (!f.children && !f.parent)) { el.innerHTML = ''; return; }
+    const t = this.tokens.get(addr);
+    const dex = (a) => `https://dexscreener.com/solana/${encodeURIComponent(a)}`;
+    const rows = [];
+    if (f.parent) {
+      rows.push(`<div class="fam-row"><span>Launched under</span><a href="${dex(f.parent.address)}" target="_blank" rel="noopener noreferrer">$${esc(f.parent.symbol || short(f.parent.address))}</a></div>
+      <div class="fam-note">Priced in $${esc(f.parent.symbol || 'it')}, so every buy of this coin goes through it.</div>`);
+    }
+    if (f.children) {
+      rows.push(`<div class="fam-row"><span>Launched under $${esc(String(t?.symbol || '').trim())}</span><b>${num(f.children)}${f.more ? '+' : ''} coin${f.children === 1 && !f.more ? '' : 's'}</b></div>`);
+      const sub = [f.fresh ? `${num(f.fresh)} in the last 24h` : '', f.volume ? `${usd(f.volume)} traded 24h` : ''].filter(Boolean).join(' · ');
+      if (sub) rows.push(`<div class="fam-note">${sub}</div>`);
+      if (f.biggest?.address) rows.push(`<div class="fam-row"><span>Biggest child</span><a href="${dex(f.biggest.address)}" target="_blank" rel="noopener noreferrer">$${esc(String(f.biggest.symbol || '').trim())} · ${usd(f.biggest.marketCap)}</a></div>`);
+    }
+    el.innerHTML = `<h4>Family <em>pump.fun pairs</em></h4>${rows.join('')}`;
   }
 
   /* ----- live updates ----- */
@@ -1346,6 +1373,7 @@ class Radar {
             </div>
             ${t.chain === 'solana' ? `<div class="supply" data-k="supply">${this.supplyHtml(null)}</div>` : ''}
             ${t.chain === 'solana' ? '<section class="coin-check" data-k="check"></section>' : ''}
+            ${t.chain === 'solana' ? '<section class="family" data-k="family"></section>' : ''}
             <section class="audit">
               <h4>Launch audit</h4>
               <div class="rows" data-k="audit"></div>

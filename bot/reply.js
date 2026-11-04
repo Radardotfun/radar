@@ -78,6 +78,17 @@ export function replyEntries(result, now = Date.now()) {
   return entries;
 }
 
+// The first coin's family on pump.fun custom pairs (extension/src/lib/family.js): coins launched priced in it, or the coin
+// it was itself launched under. Plain tickers: X allows one cashtag a post.
+export function familyLine(fam, t) {
+  if (!fam || !t) return '';
+  if (fam.children > 0) {
+    const big = fam.biggest?.address && fam.biggest.address !== t.address && usd(fam.biggest.marketCap) ? ` · biggest ${ticker(fam.biggest.symbol)} ${usd(fam.biggest.marketCap)}` : '';
+    return `🌱 Family: ${fam.children}${fam.more ? '+' : ''} coin${fam.children === 1 && !fam.more ? '' : 's'} launched under ${ticker(t.symbol)}${fam.fresh ? ` (${fam.fresh} in the last 24h)` : ''}${usd(fam.volume) ? ` · ${usd(fam.volume)} vol 24h` : ''}${big}`;
+  }
+  return fam.parent?.symbol ? `🌳 Launched under ${ticker(fam.parent.symbol)}: priced in it, so every buy goes through it` : '';
+}
+
 // "12 coins on this story": said when there are more than the reply shows; the full scan lists them all.
 const moreLine = (result, shown) => ((result?.related || 0) > shown ? `${result.related} coins on this story, all of them in the full scan.` : '');
 
@@ -86,7 +97,7 @@ const moreLine = (result, shown) => ((result?.related || 0) > shown ? `${result.
 // an app's first 7 days ("Crypto addresses are prohibited for the first 7 days after authentication").
 // `links: true` puts each coin's DexScreener page on its own line instead (the address travels inside the link). A
 // post with a link costs $0.20 instead of $0.01, so this is only for the week X refuses addresses as text.
-export function botReply(result, postUrl, now = Date.now(), { full = true, links = false, larp = null } = {}) {
+export function botReply(result, postUrl, now = Date.now(), { full = true, links = false, larp = null, family = null } = {}) {
   const entries = replyEntries(result, now);
   if (!entries.length) return null;
   const lines = [];
@@ -111,7 +122,7 @@ export function botReply(result, postUrl, now = Date.now(), { full = true, links
   // ticker, as X allows one cashtag a post.
   const verdict = links && larp?.checked && /^[A-Z ]{2,20}$/.test(larp.verdict || '') && /^https:\/\/larpcheck\.app\//.test(larp.url || '')
     ? [`Larpcheck on ${ticker(entries[0].t.symbol)}: ${larp.verdict}${(larp.total ?? larp.score) == null ? '' : ` ${larp.total ?? larp.score}`}`, larp.url] : [];
-  const more = moreLine(result, entries.length);
+  const more = [familyLine(family, entries[0].t), moreLine(result, entries.length)].filter(Boolean).join('\n');
   if (links) return [head, `Full scan + Insta Buy: ${scanUrl(postUrl)}&from=bot`, '', ...lines, ...(more ? [more, ''] : []), ...verdict].join('\n').trimEnd();
   return [head, '', ...lines, ...(more ? [more] : []), 'Full scan + Insta Buy: link in bio'].join('\n');
 }
