@@ -292,7 +292,9 @@ export async function botCoins(res, post, { search, lookupCa, lookupBio = lookup
   for (const t of pictured) if (!story.some((s) => s.address === t.address) && !sameCoin(t, named) && !(onlyChain && chains.includes(onlyChain) && t.chain !== onlyChain)) { seen.add(t.address); story.push({ ...t, relevance: 99 }); }
   // A second address in the post is a coin the post names too.
   for (const t of (res?.mentioned || []).slice(1)) if (chains.includes(t.chain) && !seen.has(t.address) && !sameCoin(t, named)) { seen.add(t.address); story.push({ ...t, relevance: 99 }); }
-  if (named) story.push({ ...named, relevance: Math.max(100, ...story.map((t) => t.relevance || 0)) });
+  // Small or not, it's the post's own coin and competes for the titles: under $5K and past its first hour it read as
+  // dust, so a $2.6K namesake took Highest MC beside @DipWheeler's own $2.8K DooDooCoin.
+  if (named) story.push({ ...named, keepSmall: true, relevance: Math.max(100, ...story.map((t) => t.relevance || 0)) });
   // The panel's tiers (narrative.js findCoins) without its last fallback to every judged coin, so Highest MC is the
   // biggest coin on the story itself.
   // Beside a coin the post names, or the account's own, an older namesake is no OG to send people to: the title just isn't

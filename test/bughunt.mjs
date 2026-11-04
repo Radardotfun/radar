@@ -467,7 +467,7 @@ const quiet = async () => ({ score: 90, why: 'a dog', name: 'Biscuit' });
 {
   const { botReply } = await import('../bot/reply.js');
   const now = Date.now();
-  const ddc = { address: 'FCty2praQweB4XFhkpQLU48yMnVrLf5oTW7Kat2pump', chain: 'solana', symbol: 'DDC', name: 'DooDooCoin', marketCap: 2_770, mcapBacked: true, onCurve: true, volume: { h24: 36_285, h1: 9_474 }, txns: { h1: { buys: 95, sells: 90 }, h24: { buys: 300, sells: 280 } }, createdAt: now - 2 * 3600e3 };
+  const ddc = { address: 'FCty2praQweB4XFhkpQLU48yMnVrLf5oTW7Kat2pump', chain: 'solana', symbol: 'DDC', name: 'DooDooCoin', marketCap: 2_770, mcapBacked: true, onCurve: true, volume: { h24: 36_285, h1: 9_474 }, txns: { h1: { buys: 95, sells: 90 }, h24: { buys: 300, sells: 280 } }, createdAt: now - 2 * 3600e3, priceChange: { h1: 5 } };
   const other = { ...ddc, address: '9J5EF9c3XBhxxCHrJdJcSiQnBJ6Vz9ANAxC5j4Y2pump', symbol: 'DIPWHEELER', name: 'DipWheeler', relevance: 95, volume: { h24: 900, h1: 0 } };
   const asked = [];
   const deps = { search: async () => [], lookupCa: async () => null, capOf: async () => null, matchImages: async () => [], chains: ['solana'], linkedTo: async (id) => { asked.push(id); return id === '2117817977773199409' ? [ddc] : []; } };
@@ -475,8 +475,20 @@ const quiet = async () => ({ score: 90, why: 'a dog', name: 'Biscuit' });
   assert.deepEqual(asked, ['2117817977773199409']);
   assert.equal(res.named?.address, ddc.address);
   assert.equal(res.how, 'linked');
-  assert.match(botReply(res, 'https://x.com/i/status/2117817977773199409', now), /🔗 Launched from this post: \$DDC/);
+  assert.match(botReply(res, 'https://x.com/i/status/2117817977773199409', now), /🔗 Launched from this post( \([^)]*\))?: \$DDC/);
   const typed = await botCoins({ mentioned: [], picks: [], others: [] }, { text: 'send $DIPWHEELER', url: 'https://x.com/a/status/5' }, { ...deps, search: async () => [], linkedTo: async () => { throw new Error('not asked'); } });
   void typed;
   console.log('PASS bughunt: a coin launched from the post is found from its profile');
+}
+
+// 34. The post's own coin competes for the titles however small: a $2.6K namesake doesn't take Highest MC beside a $2.8K one.
+{
+  const { botReply } = await import('../bot/reply.js');
+  const now = Date.now();
+  const ddc = { address: 'FCty2praQweB4XFhkpQLU48yMnVrLf5oTW7Kat2pump', chain: 'solana', symbol: 'DDC', name: 'DooDooCoin', marketCap: 2_770, mcapBacked: true, onCurve: true, volume: { h24: 36_285, h1: 9_474 }, txns: { h1: { buys: 95, sells: 90 }, h24: { buys: 300, sells: 280 } }, createdAt: now - 2 * 3600e3, priceChange: { h1: 5 } };
+  const other = { ...ddc, address: '9J5EF9c3XBhxxCHrJdJcSiQnBJ6Vz9ANAxC5j4Y2pump', symbol: 'DIPWHEELER', name: 'DipWheeler', marketCap: 2_600, relevance: 95, volume: { h24: 900, h1: 0 } };
+  const res = await botCoins({ mentioned: [], picks: [{ role: 'top', token: other }], others: [] }, { text: 'made a pumpfun. market is doo doo', url: 'https://x.com/DipWheeler/status/2117817977773199409' }, { search: async () => [], lookupCa: async () => null, capOf: async () => null, matchImages: async () => [], chains: ['solana'], linkedTo: async () => [ddc] });
+  assert.equal(res.picks.find((p) => p.role === 'top')?.token.address, ddc.address);
+  assert.doesNotMatch(botReply(res, 'https://x.com/i/status/1', now), /Highest MC: DIPWHEELER/);
+  console.log('PASS bughunt: the post\'s own coin competes for Highest MC however small');
 }
