@@ -1,4 +1,4 @@
-// Radar 1.7.108 on the web: built from the extension source at https://tryradar.fun. Not financial advice.
+// Radar 1.7.109 on the web: built from the extension source at https://tryradar.fun. Not financial advice.
 (() => {
   // extension/src/lib/keywords.js
   var STOP = new Set(`a about above after again against all almost also am an and any are aren as at be because been before
@@ -146,6 +146,8 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     // USDT
     "USD1ttGY1N17NEEHLmELoaybftRBUSErhqYiQzvEmuB",
     // USD1
+    // Wormhole WETH on Solana: Wethamphetamine ($METH, $78K) has its only pool against it and read as having no liquidity.
+    "7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs",
     // Robinhood Chain: WETH, native ETH (Uniswap v4 pools) and USDG, the dollar its pools trade against. Its stock tokens
     // (SPY, NVDA…) also pair memecoins, but copies of them exist, so they don't count as real liquidity.
     "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73",

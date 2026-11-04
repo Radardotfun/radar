@@ -618,3 +618,19 @@ const quiet = async () => ({ score: 90, why: 'a dog', name: 'Biscuit' });
   assert.equal(quoted.named?.address, rsi, 'a quoted term');
   console.log('PASS bughunt: a hyphenated or quoted term in a longer post is searched as a coin name');
 }
+
+// 43. A Solana pool priced in Wormhole WETH is real money: "Sharing some $meth" had named nothing, because the $78K
+// Wethamphetamine's only pool is against WETH and its liquidity read as zero. WETH is no parent either.
+{
+  const now = Date.now();
+  const { aggregate } = await import('../extension/src/lib/market.js');
+  const { parentOf } = await import('../extension/src/lib/family.js');
+  const weth = '7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs';
+  const pair = { chainId: 'solana', dexId: 'raydium', pairAddress: 'Pmeth', baseToken: { address: '6CsmCtDAhRnhPfmhQgpgiJH5d34nnXqmGqh47D6Ypump', symbol: 'METH', name: 'Wethamphetamine' }, quoteToken: { address: weth, symbol: 'WETH', name: 'Wrapped Ether (Wormhole)' }, priceNative: '0.0000002', priceUsd: '0.0007789', marketCap: 77_890, fdv: 77_890, liquidity: { usd: 28_405, base: 182_345_152, quote: 5.866 }, volume: { h24: 2_371, h1: 120 }, txns: { h1: { buys: 3, sells: 6 }, h24: { buys: 30, sells: 31 } }, priceChange: { h1: -6, h24: 18 }, pairCreatedAt: now - 57 * 864e5 };
+  const [t] = aggregate([pair]);
+  assert.ok(t.liquidity > 20_000, `liquidity ${t.liquidity}`);
+  assert.equal(parentOf(t), null);
+  const res = await botCoins({ mentioned: [], picks: [], others: [] }, { text: 'Are we back 👀 Stonk memes looking pretty bullish 😍\n\nSharing some $meth to stay happy forever 😁', url: 'https://x.com/Bundle_buyer/status/2117994561494515874' }, { search: async (q) => (q === 'METH' ? [pair] : []), lookupCa: async () => null, capOf: async () => null, matchImages: async () => [], chains: ['solana'] });
+  assert.equal(res.named?.address, pair.baseToken.address);
+  console.log('PASS bughunt: a WETH-priced Solana pool counts as real liquidity');
+}
