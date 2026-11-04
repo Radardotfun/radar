@@ -344,7 +344,9 @@ export async function botCoins(res, post, { search, lookupCa, lookupBio = lookup
   const tickers = new Set(shownCoins.map(sym));
   const all = new Map(story.map((t) => [t.address, t]));
   for (const t of [...scanned, ...(res?.pool || [])]) if (t?.address && tickers.has(sym(t)) && chains.includes(t.chain) && live(t) && !isRadarCopy(t) && !all.has(t.address)) all.set(t.address, t);
-  const newest = [...all.values()].filter((t) => !shown.has(t.address) && t.createdAt && live(t) && (alive(t) || t.onCurve) && !isMajor(t))
+  // Newest is the latest coin under a ticker the reply shows: other story coins were left out for a reason (a Robinhood TITO
+  // came up as Newest on a $███ post).
+  const newest = [...all.values()].filter((t) => !shown.has(t.address) && tickers.has(sym(t)) && t.createdAt && live(t) && (alive(t) || t.onCurve) && !isMajor(t))
     .sort((a, b) => b.createdAt - a.createdAt)[0] || null;
   return { named, how, picks, alone: story.length < 2, outranked, postAt, newest, related: all.size };
 }

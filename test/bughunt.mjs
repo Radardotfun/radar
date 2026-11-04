@@ -588,3 +588,14 @@ const quiet = async () => ({ score: 90, why: 'a dog', name: 'Biscuit' });
   assert.match(botReply(res, 'https://x.com/i/status/1', now), /📌 In the post: \$███ · \$1\.09M/);
   console.log('PASS bughunt: a ticker of symbols is read');
 }
+
+// 41. Newest is only ever a coin under a ticker the reply shows, never another coin from the story.
+{
+  const now = Date.now();
+  const coin = (symbol, address, marketCap, ageH, relevance) => ({ symbol, name: symbol, address, chain: 'solana', marketCap, relevance, mcapBacked: true, liquidity: 30_000, createdAt: now - ageH * 3600e3, volume: { h24: 50_000, h1: 900 }, txns: { h1: { buys: 30, sells: 20 }, h24: { buys: 400, sells: 300 } }, priceChange: { h1: 3 } });
+  const blk = coin('███', 'EwX2T1p2PmgTsSq2Bi6XtQYxPC5krR4P2fxPfN4Qpump', 1_080_000, 260, 100);
+  const tito = { ...coin('TITO', 'Tito1111111111111111111111111111111pump', 4_000, 11, 95), txns: { h1: { buys: 0, sells: 0 }, h24: { buys: 400, sells: 300 } } };
+  const res = await botCoins({ mentioned: [blk], picks: [{ role: 'mover', token: tito }], others: [] }, { text: '$███ has pumped 224% today!', url: 'https://x.com/PumpfunEco/status/2117554934224736442' }, { search: async () => [], lookupCa: async () => null, capOf: async () => null, matchImages: async () => [], chains: ['solana'] });
+  assert.notEqual(res.newest?.address, tito.address);
+  console.log('PASS bughunt: Newest is a namesake of a shown coin');
+}
