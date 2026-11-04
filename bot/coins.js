@@ -51,7 +51,9 @@ export function pickNamed(tk, tokens, text) {
   const words = plain(text);
   // A name that is only the ticker ("GTA$" for GTA$) earns nothing: every copy has it.
   const named = (t) => { const n = plain(t.name).trim(); return n.length >= 3 && n !== lower(tk) && n !== plain(tk).trim() && words.includes(` ${n} `); };
-  return tokens.filter((t) => t?.address && sym(t) === tk && (tk !== 'RADAR' || t.address === RADAR_MINT) && live(t) && (t.mcapBacked || alive(t)))
+  // A coin the post doesn't name by its name must be trading: a stock cashtag ($SHOP, $META) had named a dead coin that
+  // only shares the ticker ("shopping " at $62 a day, a 2021 "MetaCash").
+  return tokens.filter((t) => t?.address && sym(t) === tk && (tk !== 'RADAR' || t.address === RADAR_MINT) && live(t) && (t.mcapBacked || alive(t)) && (named(t) || (t.volume?.h24 || 0) >= 1000))
     // Close in size (within 2x), the earlier coin is the one made for the post: a copy launched 39 hours later at $35K on its
     // curve had beaten the $30K BingBingBing launched 34 seconds after the post.
     .sort((a, b) => Number(named(b)) - Number(named(a)) || Number(!!b.mcapBacked) - Number(!!a.mcapBacked) || closeEarlier(a, b) || (b.marketCap || 0) - (a.marketCap || 0))[0] || null;
@@ -241,12 +243,16 @@ export async function botCoins(res, post, { search, lookupCa, lookupBio = lookup
   const onlyChain = chainInPost(post?.text);
   // A coin found only by its picture doesn't own the name: a bigger namesake with real liquidity is no copy of it, and it
   // keeps Highest MC ($goat at $3K had pushed out $GOAT at $14M and taken the title).
-  const copyOfNamed = (t) => named && sameCoin(t, named) && !(how === 'picture' && t.mcapBacked && (t.marketCap || 0) > (named.marketCap || 0));
+  // Nor does a coin whose profile only links the post: a bigger or earlier namesake stays ($AMD on Robinhood linked Jim
+  // Cramer's post two hours after a $1.7M Solana $AMD launched on it).
+  const copyOfNamed = (t) => named && sameCoin(t, named) && !((how === 'picture' || how === 'linked') && t.mcapBacked && ((t.marketCap || 0) > (named.marketCap || 0) || (t.createdAt && named.createdAt && t.createdAt < named.createdAt)));
+  // A tokenized share of a typed stock ($GOOGL as GOOGLB, "Alphabet", on BNB) is no memecoin on the story.
+  const stockTwin = (t) => typed.some((tk) => new RegExp(`^${tk.replace(/[^\p{L}\p{N}]/gu, '')}(B|X|ON)$`, 'iu').test(sym(t)) && !lower(t.name).includes(lower(tk)));
   let story = [...scanned, ...(res?.pool || []).filter((t) => t?.address && isOwn(t))].filter((t) => {
     if (seen.has(t.address)) return false;
     seen.add(t.address);
     if (onlyChain && chains.includes(onlyChain) && t.chain !== onlyChain && !isOwn(t) && !t.fromPost) return false;
-    return (onStory(t) || isOwn(t) || t.address === runner?.address) && !isMajor(t) && !isRadarCopy(t) && (isOwn(t) || !namedAfterPoster(t, post, post?.text)) && !elsewhere.has(sym(t)) && !copyOfNamed(t);
+    return (onStory(t) || isOwn(t) || t.address === runner?.address) && !isMajor(t) && !isRadarCopy(t) && (isOwn(t) || !namedAfterPoster(t, post, post?.text)) && !elsewhere.has(sym(t)) && !copyOfNamed(t) && !stockTwin(t);
   }).map((t) => (t.address === runner?.address || isOwn(t) ? { ...t, relevance: Math.max(t.relevance || 0, 90), keepSmall: isOwn(t) } : t));
   // With the account's own coin found, dust that only the judge tied to the story is noise beside it.
   if (story.some(isOwn)) story = story.filter((t) => isOwn(t) || (t.marketCap || 0) >= 10_000);

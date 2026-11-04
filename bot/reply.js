@@ -44,7 +44,7 @@ export function replyEntries(result, now = Date.now()) {
   // isn't claimed too. A coin alone on the story beat nothing, so the post's own coin claims no title then.
   const won = (address) => {
     const p = result?.alone ? null : picks.find((x) => x.token.address === address);
-    return ROLES.filter(([role]) => p && !(role === 'top' && noTop) && (p.role === role || (p[ALSO[role]] && !picks.some((x) => x.role === role && x.token.address !== address)))).map(([, label]) => label.replace(/^\S+ /, ''));
+    return ROLES.filter(([role]) => p && !(role === 'top' && noTop) && (p.role === role || (p[ALSO[role]] && !picks.some((x) => x.role === role && x.token.address !== address))) && !(role === 'og' && older(p.token))).map(([, label]) => label.replace(/^\S+ /, ''));
   };
   // A coin past its first day that barely trades says so, beside the number that earned its place.
   const stat = (t, s) => [s, quiet(t, now) && tradesLine(t)].filter(Boolean).join(' · ');

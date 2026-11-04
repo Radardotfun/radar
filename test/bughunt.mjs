@@ -382,3 +382,30 @@ const quiet = async () => ({ score: 90, why: 'a dog', name: 'Biscuit' });
   assert.match(botReply(res, 'https://x.com/i/status/2116962191165272095'), /🔗 Launched from this post: \$LILY/);
   console.log('PASS bughunt: a coin launched from the post leads the reply');
 }
+
+// 29. From the second real-post check: a linked later copy hides no bigger earlier namesake, a stock cashtag names no dead
+// coin, a tokenized share isn't on the story, and a coin launched months before the post is never "(OG)".
+{
+  const { pickNamed } = await import('../bot/coins.js');
+  const { botReply, replyEntries } = await import('../bot/reply.js');
+  const now = Date.now();
+  const live = { mcapBacked: true, liquidity: 30_000, volume: { h24: 500_000 }, txns: { h1: { buys: 20, sells: 12 }, h24: { buys: 200, sells: 120 } } };
+  const rh = { ...live, address: '0x07ae00000000000000000000000000000000f60e', chain: 'robinhood', symbol: 'AMD', name: 'AMD', marketCap: 81_700, fromPost: true, createdAt: now - 3600e3, relevance: 95 };
+  const sol = { ...live, address: 'DDmGnuvroxVrb7CSyjYcezFU8gnAfhKasg4ZZezmpump', chain: 'solana', symbol: 'AMD', name: 'A Meme Dog', marketCap: 1_740_000, createdAt: now - 3 * 3600e3, relevance: 95 };
+  const res = await botCoins({ mentioned: [], picks: [{ role: 'top', token: sol }, { role: 'og', token: sol }, { role: 'mover', token: rh }], others: [] }, { text: 'AMD is the real deal', url: 'https://x.com/jimcramer/status/2117728399267639668' }, { search: async () => [], lookupCa: async () => null, capOf: async () => null, matchImages: async () => [], chains: ['solana', 'robinhood'] });
+  assert.ok(res.picks.some((p) => p.token.address === sol.address), 'the bigger, earlier Solana $AMD stays on the story');
+
+  const dead = { address: 'E8mhshop111111111111111111111111111pump', chain: 'solana', symbol: 'SHOP', name: 'shopping ', marketCap: 7_600, volume: { h24: 62 }, liquidity: 6_000, mcapBacked: true, txns: { h24: { buys: 2, sells: 1 } }, createdAt: now - 3600e3 };
+  assert.equal(pickNamed('SHOP', [dead], 'Shopify stock, $SHOP, falls over -15%'), null, 'a dead namesake of a stock cashtag');
+  assert.equal(pickNamed('SHOP', [{ ...dead, name: 'Shopify' }], 'Shopify stock, $SHOP, falls over -15%')?.address, dead.address, 'named by its name, it still counts');
+
+  const googl = { ...live, address: '0x3f5300000000000000000000000000000000323b', chain: 'bsc', symbol: 'GOOGLB', name: 'Alphabet', marketCap: 26_870_000, createdAt: now - 95 * 86_400e3, relevance: 95 };
+  const r2 = await botCoins({ mentioned: [], picks: [{ role: 'top', token: googl }], others: [] }, { text: 'Big Tech AI spending: $GOOGL $META $MSFT', url: 'https://x.com/KobeissiLetter/status/2117424042944721041' }, { search: async () => [], lookupCa: async () => null, capOf: async () => null, matchImages: async () => [], chains: ['solana', 'bsc'] });
+  assert.ok(!r2.picks.some((p) => p.token.address === googl.address), 'a tokenized share is no memecoin');
+
+  const stonk = { ...live, address: 'STONK111111111111111111111111111111pump', chain: 'solana', symbol: 'STONK', name: 'Stonk', marketCap: 116_750_000, createdAt: now - 83 * 86_400e3 };
+  const text = botReply({ postAt: now - 3600e3, picks: [{ role: 'top', token: stonk, alsoOg: true }] }, 'https://x.com/i/status/1', now);
+  assert.doesNotMatch(text, /OG/, 'launched 83 days before the post');
+  assert.equal(replyEntries({ postAt: now - 3600e3, named: stonk, how: 'post', picks: [{ role: 'og', token: stonk }] }, now)[0].label, '📌 In the post');
+  console.log('PASS bughunt: linked copies, stock cashtags, tokenized shares and old OGs');
+}
