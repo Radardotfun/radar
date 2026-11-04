@@ -77,8 +77,11 @@ const n = (x) => (Number.isFinite(+x) ? +x : 0);
 
 // Liquidity you could actually sell into: 2x the real-money side of each pool.
 // One-sided / self-paired pools report huge "liquidity" with almost nothing behind it.
+// Robinhood Chain's tokenized shares ("Alphabet Class A • Robinhood Token") are real money on the other side of a pool
+// too: Recursive Self Inu's only pool is against GOOGL, and its $79K read as unbacked (the user's call, 4 Nov 2026).
+const stockQuote = (p) => p.chainId === 'robinhood' && /•\s*Robinhood Token$/i.test(String(p.quoteToken?.name || '').trim());
 function realLiquidity(p) {
-  if (!REAL_QUOTES.has(quoteKey(p.quoteToken?.address))) return 0;
+  if (!REAL_QUOTES.has(quoteKey(p.quoteToken?.address)) && !stockQuote(p)) return 0;
   const quoteUsd = n(p.liquidity?.quote) * (n(p.priceNative) ? n(p.priceUsd) / n(p.priceNative) : 0);
   return Math.min(n(p.liquidity?.usd), 2 * quoteUsd);
 }

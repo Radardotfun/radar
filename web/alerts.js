@@ -1,4 +1,4 @@
-// Radar 1.7.98 alerts page, built from webapp/alerts.js: https://github.com/Radardotfun/radar
+// Radar 1.7.99 alerts page, built from webapp/alerts.js: https://github.com/Radardotfun/radar
 (() => {
   // extension/src/lib/keywords.js
   var STOP = new Set(`a about above after again against all almost also am an and any are aren as at be because been before
@@ -182,8 +182,9 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     return out;
   }
   var n = (x) => Number.isFinite(+x) ? +x : 0;
+  var stockQuote = (p) => p.chainId === "robinhood" && /•\s*Robinhood Token$/i.test(String(p.quoteToken?.name || "").trim());
   function realLiquidity(p) {
-    if (!REAL_QUOTES.has(quoteKey(p.quoteToken?.address))) return 0;
+    if (!REAL_QUOTES.has(quoteKey(p.quoteToken?.address)) && !stockQuote(p)) return 0;
     const quoteUsd = n(p.liquidity?.quote) * (n(p.priceNative) ? n(p.priceUsd) / n(p.priceNative) : 0);
     return Math.min(n(p.liquidity?.usd), 2 * quoteUsd);
   }

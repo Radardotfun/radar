@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Radar
 // @namespace    https://tryradar.fun
-// @version      1.7.98
+// @version      1.7.99
 // @description  See the coins behind any post on X and instantly reroute to the biggest match that passes available on-chain safety checks.
 // @homepageURL  https://tryradar.fun
 // @supportURL   https://tryradar.fun
@@ -31,7 +31,7 @@
 // @downloadURL  https://tryradar.fun/radar.user.js
 // ==/UserScript==
 
-// Radar 1.7.98: built from the extension source at https://tryradar.fun. Not financial advice.
+// Radar 1.7.99: built from the extension source at https://tryradar.fun. Not financial advice.
 (() => {
   var __defProp = Object.defineProperty;
   var __export = (target, all) => {
@@ -292,8 +292,9 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     return out;
   }
   var n = (x) => Number.isFinite(+x) ? +x : 0;
+  var stockQuote = (p) => p.chainId === "robinhood" && /•\s*Robinhood Token$/i.test(String(p.quoteToken?.name || "").trim());
   function realLiquidity(p) {
-    if (!REAL_QUOTES.has(quoteKey(p.quoteToken?.address))) return 0;
+    if (!REAL_QUOTES.has(quoteKey(p.quoteToken?.address)) && !stockQuote(p)) return 0;
     const quoteUsd = n(p.liquidity?.quote) * (n(p.priceNative) ? n(p.priceUsd) / n(p.priceNative) : 0);
     return Math.min(n(p.liquidity?.usd), 2 * quoteUsd);
   }

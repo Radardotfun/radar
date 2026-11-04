@@ -323,5 +323,10 @@ export async function botCoins(res, post, { search, lookupCa, lookupBio = lookup
   // A post's id carries its time.
   const id = String(post?.url || '').match(/status\/(\d+)/)?.[1];
   const postAt = id ? Number((BigInt(id) >> 22n) + 1288834974657n) : null;
-  return { named, how, picks, alone: story.length < 2, outranked, postAt };
+  // Beside the three titles, the newest live coin on the story, and how many there are in all (asked for in the Radar
+  // Discord: "all related tokens, oldest, newest, highest market cap"). The full scan lists every one.
+  const shown = new Set([named?.address, ...picks.map((p) => p.token.address)].filter(Boolean));
+  const newest = story.filter((t) => !shown.has(t.address) && t.createdAt && live(t) && (alive(t) || t.onCurve) && !isMajor(t))
+    .sort((a, b) => b.createdAt - a.createdAt)[0] || null;
+  return { named, how, picks, alone: story.length < 2, outranked, postAt, newest, related: story.length };
 }

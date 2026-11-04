@@ -514,3 +514,23 @@ const quiet = async () => ({ score: 90, why: 'a dog', name: 'Biscuit' });
   assert.equal(long.named, null, 'a long post is a story, not a name');
   console.log('PASS bughunt: a short post names the coin called after its words');
 }
+
+// 36. A pool against a Robinhood stock token is real liquidity (Recursive Self Inu against GOOGL), and the reply shows the
+// newest coin on the story and how many there are in all (asked for in the Radar Discord).
+{
+  const { aggregate } = await import('../extension/src/lib/market.js');
+  const { botReply } = await import('../bot/reply.js');
+  const now = Date.now();
+  const rsiPair = { chainId: 'robinhood', dexId: 'uniswap', pairAddress: 'Prsi', baseToken: { address: '0xce4c9418b8e9bcad3e4ba2bd84123a49a6911e18', symbol: 'RSI', name: 'Recursive Self Inu' }, quoteToken: { address: '0x2e0847E8910a9732eB3fb1bb4b70a580ADAD4FE3', name: 'Alphabet Class A • Robinhood Token', symbol: 'GOOGL' }, priceNative: '0.0000002854', priceUsd: '0.00007920', marketCap: 79_202, fdv: 79_202, liquidity: { usd: 63_665, base: 508_433_811, quote: 84.3171 }, volume: { h24: 10_865, h1: 400 }, txns: { h1: { buys: 6, sells: 5 }, h24: { buys: 101, sells: 157 } }, priceChange: { h1: 1 }, pairCreatedAt: now - 50 * 864e5 };
+  const [rsi] = aggregate([rsiPair]);
+  assert.ok(rsi.liquidity > 40_000 && rsi.mcapBacked, 'the GOOGL side of the pool counts');
+  const fake = aggregate([{ ...rsiPair, chainId: 'solana', quoteToken: { address: 'Fake111', name: 'Alphabet Class A • Robinhood Token', symbol: 'GOOGL' } }])[0];
+  assert.equal(fake.liquidity, 0, 'only on Robinhood Chain');
+  const coin = (symbol, address, marketCap, ageH) => ({ symbol, name: symbol, address, chain: 'solana', marketCap, createdAt: now - ageH * 3600e3, volume: { h24: 20_000 }, txns: { h24: { buys: 200, sells: 150 } } });
+  const res = { postAt: now - 30 * 3600e3, related: 9, picks: [{ role: 'top', token: coin('AMD', 'Top1111111111111111111111111111111pump', 1_600_000, 20) }, { role: 'og', token: coin('AMD', 'Og11111111111111111111111111111111pump', 4_000, 29) }], newest: coin('AMD', 'New1111111111111111111111111111111pump', 3_000, 0.2) };
+  const text = botReply(res, 'https://x.com/i/status/1', now);
+  assert.match(text, /🆕 Newest: AMD · launched 12m ago/);
+  assert.match(text, /9 coins on this story, all of them in the full scan\./);
+  assert.doesNotMatch(botReply({ ...res, related: 3 }, 'https://x.com/i/status/1', now), /coins on this story/, 'no count when the reply already shows them all');
+  console.log('PASS bughunt: stock-token pools count, and the reply shows the newest coin and the total');
+}

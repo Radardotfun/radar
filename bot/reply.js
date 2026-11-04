@@ -68,8 +68,16 @@ export function replyEntries(result, now = Date.now()) {
       : role === 'og' ? (ago(t.createdAt, now) ? `launched ${ago(t.createdAt, now)} ago` : usd(t.marketCap))
         : usd(t.volume?.h24) ? `${usd(t.volume.h24)} vol 24h` : usd(t.marketCap)) });
   }
+  // The newest coin on the story, when the titles left it out.
+  const nw = result?.newest;
+  if (nw?.address && entries.length && !entries.some((e) => e.t.address === nw.address) && ((nw.marketCap || 0) >= 1000 || (nw.volume?.h24 || 0) >= 1000)) {
+    entries.push({ label: '🆕 Newest', t: nw, stat: stat(nw, ago(nw.createdAt, now) ? `launched ${ago(nw.createdAt, now)} ago` : usd(nw.marketCap)) });
+  }
   return entries;
 }
+
+// "12 coins on this story": said when there are more than the reply shows; the full scan lists them all.
+const moreLine = (result, shown) => ((result?.related || 0) > shown ? `${result.related} coins on this story, all of them in the full scan.` : '');
 
 // The reply text, or null when the post has no coins (the bot then says so, briefly). `full: false` gives the short
 // form (first 4 and last 4 characters of each contract) for when X won't take crypto addresses: it refuses them for
@@ -101,8 +109,9 @@ export function botReply(result, postUrl, now = Date.now(), { full = true, links
   // ticker, as X allows one cashtag a post.
   const verdict = links && larp?.checked && /^[A-Z ]{2,20}$/.test(larp.verdict || '') && /^https:\/\/larpcheck\.app\//.test(larp.url || '')
     ? [`Larpcheck on ${ticker(entries[0].t.symbol)}: ${larp.verdict}${(larp.total ?? larp.score) == null ? '' : ` ${larp.total ?? larp.score}`}`, larp.url] : [];
-  if (links) return [head, `Full scan + Insta Buy: ${scanUrl(postUrl)}&from=bot`, '', ...lines, ...verdict].join('\n').trimEnd();
-  return [head, '', ...lines, 'Full scan + Insta Buy: link in bio'].join('\n');
+  const more = moreLine(result, entries.length);
+  if (links) return [head, `Full scan + Insta Buy: ${scanUrl(postUrl)}&from=bot`, '', ...lines, ...(more ? [more, ''] : []), ...verdict].join('\n').trimEnd();
+  return [head, '', ...lines, ...(more ? [more] : []), 'Full scan + Insta Buy: link in bio'].join('\n');
 }
 
 export const NO_COINS = 'No coins on this one yet.';
