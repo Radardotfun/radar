@@ -32,6 +32,10 @@ export function cashtags(text) {
     const t = m[1].toUpperCase();
     if (!MAJORS.has(t) && !out.includes(t)) out.push(t);
   }
+  // A ticker of symbols, not letters: $███ (a $1.1M coin, quoted as "$███ has pumped 224% today!") read as no ticker at all.
+  for (const m of String(text || '').matchAll(/(?:^|[^\w$])\$([▀-◿☀-➿\p{Extended_Pictographic}]{1,8})(?![\w$])/gu)) {
+    if (!out.includes(m[1])) out.push(m[1]);
+  }
   // A ticker with the $ at the end ("GTA$"): the coin's own symbol keeps it.
   for (const m of String(text || '').matchAll(/(?:^|[^\w$])([A-Za-z][A-Za-z0-9]{1,11}\$)(?![\w$])/g)) {
     const t = m[1].toUpperCase();

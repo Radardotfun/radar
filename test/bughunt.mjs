@@ -574,3 +574,17 @@ const quiet = async () => ({ score: 90, why: 'a dog', name: 'Biscuit' });
   assert.match(botReply({ ...res, newest: coin('New1111111111111111111111111111111pump', 3_000, 0.5, 80, 4_000) }, 'https://x.com/i/status/1', now), /🆕 Newest: RSI · launched 30m ago/);
   console.log('PASS bughunt: a quiet coin is not shown as Newest');
 }
+
+// 40. A ticker of symbols ($███) is a cashtag: the quoted "$███ has pumped 224% today!" names the $1.1M coin.
+{
+  const { cashtags } = await import('../bot/coins.js');
+  const { botReply, ticker } = await import('../bot/reply.js');
+  const now = Date.now();
+  assert.deepEqual(cashtags('Just a Blind Ape that sends me $NEAR $ZEC and $XMR daily.\n@PumpfunEco: $███ has pumped 224% today!'), ['███']);
+  assert.equal(ticker('███'), '███');
+  const pair = { chainId: 'solana', dexId: 'pumpswap', pairAddress: 'Pblk', baseToken: { address: 'EwX2T1p2PmgTsSq2Bi6XtQYxPC5krR4P2fxPfN4Qpump', symbol: '███', name: '███' }, quoteToken: { address: 'So11111111111111111111111111111111111111112', symbol: 'SOL' }, priceNative: '0.00001', priceUsd: '0.00167', marketCap: 1_091_471, fdv: 1_091_471, liquidity: { usd: 113_463, quote: 340 }, volume: { h24: 529_817, h1: 20_000 }, txns: { h1: { buys: 300, sells: 250 }, h24: { buys: 6_000, sells: 5_000 } }, priceChange: { h1: 4 }, pairCreatedAt: now - 11 * 864e5 };
+  const res = await botCoins({ mentioned: [], picks: [], others: [] }, { text: 'Just a Blind Ape that sends me $NEAR $ZEC and $XMR daily.', quoted: '@PumpfunEco: $███ has pumped 224% today!', url: 'https://x.com/Chairman_DN/status/2117671934976794969' }, { search: async (q) => (q === '███' ? [pair] : []), lookupCa: async () => null, capOf: async () => null, matchImages: async () => [], chains: ['solana'] });
+  assert.equal(res.named?.address, pair.baseToken.address);
+  assert.match(botReply(res, 'https://x.com/i/status/1', now), /📌 In the post: \$███ · \$1\.09M/);
+  console.log('PASS bughunt: a ticker of symbols is read');
+}
