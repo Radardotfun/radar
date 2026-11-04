@@ -1,4 +1,4 @@
-// Radar 1.7.110 on the web: built from the extension source at https://tryradar.fun. Not financial advice.
+// Radar 1.7.111 on the web: built from the extension source at https://tryradar.fun. Not financial advice.
 (() => {
   // extension/src/lib/keywords.js
   var STOP = new Set(`a about above after again against all almost also am an and any are aren as at be because been before
@@ -635,7 +635,11 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       cached(`q:${k.toLowerCase()}`, 3e5, () => searchPairs(k)).catch(() => {
       });
     }
-    const speech = post.videoUrl && !post.gif ? cached(`tr:${post.videoUrl}`, 36e5, () => engine(apiBase, "transcribe", { videoUrl: post.videoUrl })).then((r) => r.text).catch(() => "") : "";
+    let speechLost = false;
+    const speech = post.videoUrl && !post.gif ? cached(`tr:${post.videoUrl}`, 36e5, () => engine(apiBase, "transcribe", { videoUrl: post.videoUrl }, post.quickRead ? 15e3 : 45e3)).then((r) => r.text).catch((e) => {
+      if (!/too long/i.test(e?.message || "")) speechLost = true;
+      return "";
+    }) : "";
     const bioLookup = bioTokens(post, chains, apiBase, cached);
     const [inPost, transcript, videoNotes] = await Promise.all([
       postCoins(post, chains, cached),
@@ -652,7 +656,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
 [Coin in this post: ${named}]` } : full }, 35e3);
     } catch (e) {
       if (!mentioned.length) throw e;
-      return { narrative: "", engineError: e.message, coinable: true, terms: [], anchors: [], judge: false, mentioned, tickers: [], post: full };
+      return { narrative: "", speechLost, engineError: e.message, coinable: true, terms: [], anchors: [], judge: false, mentioned, tickers: [], post: full };
     }
     const seen = new Set(mentioned.map((t) => t.address.toLowerCase()));
     const fromImages = (read.cas || []).filter((a) => !seen.has(a.toLowerCase()));
@@ -660,7 +664,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       mentioned.push(...await mentionedTokens(fromImages.join(" "), chains, (q) => cached(`q:${q}`, 2e4, () => searchPairs(q))).catch(() => []));
     }
     const fromBio = mentioned.length ? [] : tiedBioCoin(await bioLookup, post, read, fullText);
-    return { speechPending: transcript === null, narrative: read.narrative, coinable: read.coinable, terms: read.terms || [], anchors: read.anchors || [], judge: read.judge !== false && !read.anchors?.length, mentioned, bioCoins: fromBio, tickers: read.tickers || [], post: full };
+    return { speechPending: transcript === null, speechLost, narrative: read.narrative, coinable: read.coinable, terms: read.terms || [], anchors: read.anchors || [], judge: read.judge !== false && !read.anchors?.length, mentioned, bioCoins: fromBio, tickers: read.tickers || [], post: full };
   }
   function anchorHits(t, anchors) {
     const name = norm(t.name || "");
@@ -691,13 +695,13 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     const best = matches.filter((m) => m.anchorIndex === firstAnchor).sort((a, b) => b.score - a.score || Number(Boolean(b.token.mcapBacked)) - Number(Boolean(a.token.mcapBacked)) || (b.token.marketCap || 0) - (a.token.marketCap || 0))[0];
     return { ...best.token, techAnchor: anchors[firstAnchor] };
   }
-  async function findCoins({ narrative, coinable, terms, anchors = [], judge = true, mentioned, bioCoins: fromBio = [], tickers = [], post, engineError }, chains, { apiBase, cached = passthrough }) {
+  async function findCoins({ narrative, coinable, terms, anchors = [], judge = true, mentioned, bioCoins: fromBio = [], tickers = [], post, engineError, speechLost = false }, chains, { apiBase, cached = passthrough }) {
     const t0 = Date.now();
     const timing = {};
     const lap = (k) => {
       timing[k] = Date.now() - t0;
     };
-    const base = { mode: "ai", narrative, coinable, mentioned, bioCoins: fromBio, tickers, anchors, terms, engineError, ts: Date.now(), timing, techMatch: null };
+    const base = { mode: "ai", narrative, coinable, mentioned, bioCoins: fromBio, tickers, anchors, terms, engineError, speechLost, ts: Date.now(), timing, techMatch: null };
     if (!terms.length) return { ...base, picks: [], others: [], techMatch: findTechMatch([], mentioned, anchors, /* @__PURE__ */ new Map(), narrative, post) };
     const statusId = post.url?.match(/status\/(\d+)/)?.[1] || null;
     let failed = 0;

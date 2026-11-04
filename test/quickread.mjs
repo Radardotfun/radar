@@ -56,3 +56,26 @@ await postCoins(post, ['solana'], cached);
 assert.equal(calls, before, 'a second call is served from the cache');
 assert.deepEqual(first, []);
 console.log('PASS quick read: first cards are shared with the read');
+
+// A long video's speech can take more than 15 s to transcribe: the bot waited 15 s, read the post without its speech and
+// answered "No coins" (@Teezy_Cop on MarioNawfal's AI-teacher clip, whose speech named the coin). It now waits longer,
+// and a read whose speech never came says so (speechLost), so the bot tries the tag again instead of answering.
+{
+  const { findCoins } = await import('../extension/src/lib/narrative.js');
+  speechMs = 16_000;
+  t0 = Date.now();
+  const slow = await readPost({ ...video, skipBio: true, url: 'https://x.com/a/status/5', videoUrl: 'https://video.twimg.com/c.mp4' }, ['solana'], opts);
+  assert.equal(slow.post.transcript, 'the speech', `a 16 s transcription is waited for (${Date.now() - t0} ms)`);
+  assert.equal(slow.speechLost, false);
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url, o) => (String(url).includes('/transcribe') ? new Response('{"error":"down"}', { status: 502 }) : realFetch(url, o));
+  const lost = await readPost({ ...video, skipBio: true, url: 'https://x.com/a/status/6', videoUrl: 'https://video.twimg.com/d.mp4' }, ['solana'], opts);
+  assert.equal(lost.speechLost, true, 'a failed transcription is reported');
+  const found = await findCoins({ ...lost, terms: [] }, ['solana'], opts);
+  assert.equal(found.speechLost, true, 'and carried to the coins result');
+  globalThis.fetch = async (url, o) => (String(url).includes('/transcribe') ? new Response('{"error":"video too long to transcribe"}', { status: 400 }) : realFetch(url, o));
+  const long = await readPost({ ...video, skipBio: true, url: 'https://x.com/a/status/7', videoUrl: 'https://video.twimg.com/e.mp4' }, ['solana'], opts);
+  assert.equal(long.speechLost, false, 'a video too long to transcribe is no reason to wait');
+  globalThis.fetch = realFetch;
+  console.log('PASS quick read: the bot waits for long speech, and says when it never came');
+}

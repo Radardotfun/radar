@@ -236,7 +236,7 @@ async function replyFor(postUrl, known = null, fresh = false) {
       // The first coin's family, from the engine (server/family.js), which keeps each answer 10 minutes.
       first?.chain === 'solana' ? h.family({ mint: first.address, quote: first.quote }).catch(() => null) : null,
     ]);
-    return { text: botReply(res, postUrl, Date.now(), { family }) || NO_COINS, short: botReply(res, postUrl, Date.now(), { full: false, family }) || NO_COINS, links: botReply(res, postUrl, Date.now(), { links: true, larp, family }) || NO_COINS, story: res.narrative || '', scores, guessed, entries: replyEntries(res) };
+    return { text: botReply(res, postUrl, Date.now(), { family }) || NO_COINS, short: botReply(res, postUrl, Date.now(), { full: false, family }) || NO_COINS, links: botReply(res, postUrl, Date.now(), { links: true, larp, family }) || NO_COINS, story: res.narrative || '', scores, guessed, speechLost: !!found.speechLost, entries: replyEntries(res) };
   })();
   scans.set(postUrl, { at: Date.now(), p });
   p.catch(() => scans.delete(postUrl));
@@ -360,7 +360,13 @@ async function handle(env, { mention, target, live, scores: known = null, tries 
     const sent = await post(busy);
     return { busy: String(e.message || e).slice(0, 200), chars: xLength(busy), text: busy, reply: sent.data?.id };
   }
-  const { text, short, links, story, scores, guessed } = found;
+  const { text, short, links, story, scores, guessed, speechLost } = found;
+  // The video's speech never came (the transcription failed or timed out) and nothing was found without it: the speech
+  // may name the coin, so try again next minute rather than answer "No coins". The last try answers with what there is.
+  if (speechLost && text === NO_COINS && tries < 4) {
+    scans.delete(postUrl);
+    throw new Error("The video's speech could not be read, trying again next minute");
+  }
   // The judge timed out, so some coins have no verdict. Try again next minute; the last try posts only coins that have one.
   if (guessed && tries < 4) {
     scans.delete(postUrl);

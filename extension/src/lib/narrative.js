@@ -77,8 +77,11 @@ export async function readPost(post, chains, { apiBase, cached = passthrough }) 
     cached(`q:${k.toLowerCase()}`, 300_000, () => searchPairs(k)).catch(() => {});
   }
   // Speech in the video (transcribed by the engine) and coins written in the post, in parallel.
+  // A long clip can take more than 15 s to transcribe; a read that waits for it (the bot, alerts) gives it 45 s. A
+  // transcription that fails is reported as speechLost, so the bot tries the tag again rather than answer without it.
+  let speechLost = false;
   const speech = post.videoUrl && !post.gif
-    ? cached(`tr:${post.videoUrl}`, 3_600_000, () => engine(apiBase, 'transcribe', { videoUrl: post.videoUrl })).then((r) => r.text).catch(() => '')
+    ? cached(`tr:${post.videoUrl}`, 3_600_000, () => engine(apiBase, 'transcribe', { videoUrl: post.videoUrl }, post.quickRead ? 15_000 : 45_000)).then((r) => r.text).catch((e) => { if (!/too long/i.test(e?.message || '')) speechLost = true; return ''; })
     : '';
   const bioLookup = bioTokens(post, chains, apiBase, cached);
   const [inPost, transcript, videoNotes] = await Promise.all([
@@ -100,7 +103,7 @@ export async function readPost(post, chains, { apiBase, cached = passthrough }) 
   } catch (e) {
     // No AI right now: a coin whose CA is written in the post still shows, it needs no reading.
     if (!mentioned.length) throw e;
-    return { narrative: '', engineError: e.message, coinable: true, terms: [], anchors: [], judge: false, mentioned, tickers: [], post: full };
+    return { narrative: '', speechLost, engineError: e.message, coinable: true, terms: [], anchors: [], judge: false, mentioned, tickers: [], post: full };
   }
   // A contract address shown only in an image (the engine reads it off) counts as written in the post, once
   // DexScreener confirms it is a real token: a misread address matches nothing and is dropped.
@@ -110,7 +113,7 @@ export async function readPost(post, chains, { apiBase, cached = passthrough }) 
     mentioned.push(...await mentionedTokens(fromImages.join(' '), chains, (q) => cached(`q:${q}`, 20_000, () => searchPairs(q))).catch(() => []));
   }
   const fromBio = mentioned.length ? [] : tiedBioCoin(await bioLookup, post, read, fullText);
-  return { speechPending: transcript === null, narrative: read.narrative, coinable: read.coinable, terms: read.terms || [], anchors: read.anchors || [], judge: read.judge !== false && !read.anchors?.length, mentioned, bioCoins: fromBio, tickers: read.tickers || [], post: full };
+  return { speechPending: transcript === null, speechLost, narrative: read.narrative, coinable: read.coinable, terms: read.terms || [], anchors: read.anchors || [], judge: read.judge !== false && !read.anchors?.length, mentioned, bioCoins: fromBio, tickers: read.tickers || [], post: full };
 }
 
 /** Stage 2: which on-chain coins are really about it? */
@@ -153,11 +156,11 @@ function findTechMatch(tokens, mentioned, anchors, scores, narrative, post) {
   return { ...best.token, techAnchor: anchors[firstAnchor] };
 }
 
-export async function findCoins({ narrative, coinable, terms, anchors = [], judge = true, mentioned, bioCoins: fromBio = [], tickers = [], post, engineError }, chains, { apiBase, cached = passthrough }) {
+export async function findCoins({ narrative, coinable, terms, anchors = [], judge = true, mentioned, bioCoins: fromBio = [], tickers = [], post, engineError, speechLost = false }, chains, { apiBase, cached = passthrough }) {
   const t0 = Date.now();
   const timing = {};
   const lap = (k) => { timing[k] = Date.now() - t0; };
-  const base = { mode: 'ai', narrative, coinable, mentioned, bioCoins: fromBio, tickers, anchors, terms, engineError, ts: Date.now(), timing, techMatch: null };
+  const base = { mode: 'ai', narrative, coinable, mentioned, bioCoins: fromBio, tickers, anchors, terms, engineError, speechLost, ts: Date.now(), timing, techMatch: null };
   if (!terms.length) return { ...base, picks: [], others: [], techMatch: findTechMatch([], mentioned, anchors, new Map(), narrative, post) };
 
   const statusId = post.url?.match(/status\/(\d+)/)?.[1] || null;
