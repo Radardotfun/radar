@@ -367,7 +367,7 @@ class Radar {
     if (this.view === 'stars' || this.view === 'feed') this.view = 'scan';
     this.stopTimers();
     this.lastPost = post;
-    this.state = { ...this.state, loading: true, early: [], error: null, narrative: null, heard: '', engineError: null, story: null, source: source ?? this.state.source };
+    this.state = { ...this.state, loading: true, early: [], error: null, narrative: null, heard: '', typedExtra: null, engineError: null, story: null, source: source ?? this.state.source };
     this.updateLive();
     this.renderFoot();
     this.renderHead();
@@ -426,6 +426,22 @@ class Radar {
     this.renderFoot();
     this.loadAudits();
     this.startTimers();
+    this.lookUpTyped();
+  }
+
+  // The ticker a post types, when the scan's coins don't hold it: looked up on its own, then pinned first.
+  async lookUpTyped() {
+    const id = this.scanId;
+    const tickers = this.typedTickers();
+    if (!tickers.length || this.typedCoin() || this.state.mentioned?.length || this.bioCards().length) return;
+    const t = await send('typedTicker', { tickers }).catch(() => null);
+    if (id !== this.scanId || !t?.address) return;
+    this.tokens.set(t.address, t);
+    this.state = { ...this.state, typedExtra: t };
+    this.renderBody();
+    this.hydrateImages();
+    this.loadAudit(t);
+    this.loadLarp(t);
   }
 
   // A video's speech comes in after the first answer. When it changes which coins the post is about, the cards follow.
@@ -956,12 +972,17 @@ class Radar {
 
   // The coin a post types with its $ (no address in the post), from the coins the scan found: "Sharing some $meth"
   // showed $METH among the picks as the Mover, not as the post's own coin.
-  typedCoin() {
-    const { mentioned = [], picks = [], others = [], roleCandidates = [] } = this.state;
-    if (mentioned.length || this.bioCards().length) return null;
+  typedTickers() {
     const text = [this.lastPost?.text, this.lastPost?.quoted].filter(Boolean).join(' ');
-    const typed = [...new Set([...text.matchAll(/(?:^|[^\w$])\$([A-Za-z][A-Za-z0-9]{1,11})\b/g)].map((m) => m[1].toUpperCase()))].slice(0, 3);
+    return [...new Set([...text.matchAll(/(?:^|[^\w$])\$([A-Za-z][A-Za-z0-9]{1,11})\b/g)].map((m) => m[1].toUpperCase()))].slice(0, 3);
+  }
+
+  typedCoin() {
+    const { mentioned = [], picks = [], others = [], roleCandidates = [], typedExtra = null } = this.state;
+    if (mentioned.length || this.bioCards().length) return null;
+    const typed = this.typedTickers();
     if (!typed.length) return null;
+    if (typedExtra && typed.includes(String(typedExtra.symbol || '').toUpperCase())) return this.tokens.get(typedExtra.address) || typedExtra;
     const pool = [...picks.map((p) => p.token), ...others, ...roleCandidates].filter(Boolean).map((t) => this.tokens.get(t.address) || t);
     for (const tk of typed) {
       const hit = pool.filter((t) => String(t.symbol || '').toUpperCase() === tk && t.mcapBacked && (t.volume?.h24 || 0) >= 1000)

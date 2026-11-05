@@ -1,7 +1,7 @@
 // The radar's backend: everything the panel asks for. The extension runs it in its service worker;
 // the web app runs it in the page. Each host supplies its own storage, window opening and RPC.
 import { familyCounts, familyDetails, parentOf } from './family.js';
-import { fullTokens, mentionedTokens, typedCashtags, linkedSymbol, LAUNCHPADS, pickThree, searchPairs, aggregate } from './market.js';
+import { fullTokens, mentionedTokens, typedCashtags, linkedSymbol, LAUNCHPADS, pickThree, searchPairs, aggregate, isMemecoin, alive, MAJOR_TICKERS, STOCK_TICKERS } from './market.js';
 import { rugReport, standInReport } from './rugcheck.js';
 import { readPost, findCoins, postCoins as coinsInPost } from './narrative.js';
 import { freshPairs, keepBest, postWords, storyWords, BADGE_MS } from './fresh.js';
@@ -181,6 +181,24 @@ export function makeHandlers(host) {
   }
 
   // Coins whose CA is written in a post: shown under it right away, no AI involved.
+  // The coin under a ticker the post types, when the scan didn't meet it: a backed coin trading $1K+ a day, the biggest;
+  // for a big stock's ticker ($AMD, $META) only a runner of $100K+, since the post most likely means the share.
+  async function typedTicker({ tickers = [] }) {
+    const s = await host.settings();
+    for (const raw of tickers.slice(0, 2)) {
+      const tk = String(raw || '').toUpperCase();
+      if (!/^[A-Z][A-Z0-9]{1,11}$/.test(tk) || MAJOR_TICKERS.has(tk)) continue;
+      const found = await cached(`tt:${tk}:${s.chains}`, 60_000, async () => aggregate(await searchPairs(tk).catch(() => []))
+        .filter((t) => s.chains.includes(t.chain) && isMemecoin(t) && String(t.symbol || '').toUpperCase() === tk && t.mcapBacked && alive(t) && (t.volume?.h24 || 0) >= 1000
+          && (!STOCK_TICKERS.has(tk) || (t.marketCap || 0) >= 100_000)
+          // $RADAR only ever means the real mint, never a copy.
+          && (tk !== 'RADAR' || t.address === 'HyDSdtgiSa5mHqkTVoz8cTFTeVLFKdZ8amPvtNYfpump'))
+        .sort((a, b) => (b.marketCap || 0) - (a.marketCap || 0))[0] || null);
+      if (found) return found;
+    }
+    return null;
+  }
+
   async function mentioned({ text }) {
     const s = await host.settings();
     return cached(`mn:${text}`, 60_000, async () => (await mentionedTokens(String(text || '').slice(0, 2000), s.chains))
@@ -444,7 +462,7 @@ export function makeHandlers(host) {
 
   const launchState = () => cached('launch:state', 600_000, async () => (await fetch(`${API_BASE}/launch/settings`, { signal: AbortSignal.timeout(6000) })).json());
 
-  const handlers = { forgetCoins, breaking, starList, starToggle, videoInfo, tweet, read, coins, fresh, postCoins, mentioned, story, larpcheck, family, refresh, safety, bundle, image, openWindow, reroute, holderStatus, holderSave, holderWho, holderActive, recentList, recentAdd, recentClear, launchState, lcHolders, lcBoard, lcSettings, lcStart, lcAsk, lcPoll, settings: () => host.settings() };
+  const handlers = { typedTicker, forgetCoins, breaking, starList, starToggle, videoInfo, tweet, read, coins, fresh, postCoins, mentioned, story, larpcheck, family, refresh, safety, bundle, image, openWindow, reroute, holderStatus, holderSave, holderWho, holderActive, recentList, recentAdd, recentClear, launchState, lcHolders, lcBoard, lcSettings, lcStart, lcAsk, lcPoll, settings: () => host.settings() };
   // Changing the RPC drops cached bundle results so they're re-read through the new one.
   handlers.resetBundles = () => memo.forEach((_, k) => k.startsWith('bd:') && memo.delete(k));
   return handlers;

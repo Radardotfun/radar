@@ -186,6 +186,9 @@ export function relevance(token, keywords) {
 // what bridged majors look like on Solana.
 const NON_MEME = /\b(prestocks?|xstocks?|tokenized|securities|backed|wrapped|wormhole|bridged|binance-peg|portal|ondo|stablecoin|usd coin|tether|robinhood token|global dollar)\b/i;
 const MAJOR_NAMES = new Set('bitcoin ethereum zcash solana hyperliquid xrp ripple bnb cardano chainlink sui aptos near tron litecoin monero avalanche polkadot toncoin dogecoin stellar cosmos arbitrum optimism polygon'.split(' '));
+// Big stocks' tickers. Typed on a markets post ($META, $SHOP) they mean the share, so a coin under the ticker has to be a
+// runner to count (the bot, and the panel's ticker in the post).
+export const STOCK_TICKERS = new Set('AAPL MSFT GOOGL GOOG AMZN META NVDA TSLA AMD INTC NFLX AVGO ORCL CRM ADBE IBM QCOM MU ARM TSM ASML SHOP UBER ABNB PYPL SQ XYZ COIN HOOD MSTR PLTR SNOW NET DIS NKE WMT COST JPM GS BAC V MA BRK SPY QQQ DJT GME AMC BABA BIDU NIO RIVN LCID SMCI DELL HPQ SBUX MCD KO PEP'.split(' '));
 export const MAJOR_TICKERS = new Set('BTC ETH ZEC SOL HYPE XRP BNB ADA LINK SUI APT NEAR TRX LTC XMR AVAX DOT TON XLM ATOM ARB OP POL'.split(' '));
 export function isMemecoin(t) {
   if (NON_MEME.test(`${t.name} ${t.symbol}`)) return false;

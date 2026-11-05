@@ -1,4 +1,4 @@
-// Radar 1.7.115 alerts page, built from webapp/alerts.js: https://github.com/Radardotfun/radar
+// Radar 1.7.116 alerts page, built from webapp/alerts.js: https://github.com/Radardotfun/radar
 (() => {
   // extension/src/lib/keywords.js
   var STOP = new Set(`a about above after again against all almost also am an and any are aren as at be because been before
@@ -279,6 +279,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
   }
   var NON_MEME = /\b(prestocks?|xstocks?|tokenized|securities|backed|wrapped|wormhole|bridged|binance-peg|portal|ondo|stablecoin|usd coin|tether|robinhood token|global dollar)\b/i;
   var MAJOR_NAMES = new Set("bitcoin ethereum zcash solana hyperliquid xrp ripple bnb cardano chainlink sui aptos near tron litecoin monero avalanche polkadot toncoin dogecoin stellar cosmos arbitrum optimism polygon".split(" "));
+  var STOCK_TICKERS = new Set("AAPL MSFT GOOGL GOOG AMZN META NVDA TSLA AMD INTC NFLX AVGO ORCL CRM ADBE IBM QCOM MU ARM TSM ASML SHOP UBER ABNB PYPL SQ XYZ COIN HOOD MSTR PLTR SNOW NET DIS NKE WMT COST JPM GS BAC V MA BRK SPY QQQ DJT GME AMC BABA BIDU NIO RIVN LCID SMCI DELL HPQ SBUX MCD KO PEP".split(" "));
   var MAJOR_TICKERS = new Set("BTC ETH ZEC SOL HYPE XRP BNB ADA LINK SUI APT NEAR TRX LTC XMR AVAX DOT TON XLM ATOM ARB OP POL".split(" "));
   function isMemecoin(t) {
     if (NON_MEME.test(`${t.name} ${t.symbol}`)) return false;
@@ -1345,6 +1346,16 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       const s = await host.settings();
       return postCoins(post, s.chains, cached);
     }
+    async function typedTicker({ tickers = [] }) {
+      const s = await host.settings();
+      for (const raw of tickers.slice(0, 2)) {
+        const tk = String(raw || "").toUpperCase();
+        if (!/^[A-Z][A-Z0-9]{1,11}$/.test(tk) || MAJOR_TICKERS.has(tk)) continue;
+        const found = await cached(`tt:${tk}:${s.chains}`, 6e4, async () => aggregate(await searchPairs(tk).catch(() => [])).filter((t) => s.chains.includes(t.chain) && isMemecoin(t) && String(t.symbol || "").toUpperCase() === tk && t.mcapBacked && alive(t) && (t.volume?.h24 || 0) >= 1e3 && (!STOCK_TICKERS.has(tk) || (t.marketCap || 0) >= 1e5) && (tk !== "RADAR" || t.address === "HyDSdtgiSa5mHqkTVoz8cTFTeVLFKdZ8amPvtNYfpump")).sort((a, b) => (b.marketCap || 0) - (a.marketCap || 0))[0] || null);
+        if (found) return found;
+      }
+      return null;
+    }
     async function mentioned({ text }) {
       const s = await host.settings();
       return cached(`mn:${text}`, 6e4, async () => (await mentionedTokens(String(text || "").slice(0, 2e3), s.chains)).map((t) => ({ address: t.address, chain: t.chain, symbol: t.symbol, name: t.name, marketCap: t.marketCap, createdAt: t.createdAt })));
@@ -1582,7 +1593,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       });
     }
     const launchState = () => cached("launch:state", 6e5, async () => (await fetch(`${API_BASE}/launch/settings`, { signal: AbortSignal.timeout(6e3) })).json());
-    const handlers2 = { forgetCoins, breaking, starList, starToggle, videoInfo, tweet, read, coins: coins2, fresh, postCoins: postCoins2, mentioned, story, larpcheck, family, refresh, safety, bundle, image, openWindow, reroute, holderStatus, holderSave, holderWho, holderActive, recentList, recentAdd, recentClear, launchState, lcHolders, lcBoard, lcSettings, lcStart, lcAsk, lcPoll, settings: () => host.settings() };
+    const handlers2 = { typedTicker, forgetCoins, breaking, starList, starToggle, videoInfo, tweet, read, coins: coins2, fresh, postCoins: postCoins2, mentioned, story, larpcheck, family, refresh, safety, bundle, image, openWindow, reroute, holderStatus, holderSave, holderWho, holderActive, recentList, recentAdd, recentClear, launchState, lcHolders, lcBoard, lcSettings, lcStart, lcAsk, lcPoll, settings: () => host.settings() };
     handlers2.resetBundles = () => memo.forEach((_, k) => k.startsWith("bd:") && memo.delete(k));
     return handlers2;
   }

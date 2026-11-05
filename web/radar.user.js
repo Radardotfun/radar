@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Radar
 // @namespace    https://tryradar.fun
-// @version      1.7.115
+// @version      1.7.116
 // @description  See the coins behind any post on X and instantly reroute to the biggest match that passes available on-chain safety checks.
 // @homepageURL  https://tryradar.fun
 // @supportURL   https://tryradar.fun
@@ -31,7 +31,7 @@
 // @downloadURL  https://tryradar.fun/radar.user.js
 // ==/UserScript==
 
-// Radar 1.7.115: built from the extension source at https://tryradar.fun. Not financial advice.
+// Radar 1.7.116: built from the extension source at https://tryradar.fun. Not financial advice.
 (() => {
   var __defProp = Object.defineProperty;
   var __export = (target, all) => {
@@ -389,6 +389,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
   }
   var NON_MEME = /\b(prestocks?|xstocks?|tokenized|securities|backed|wrapped|wormhole|bridged|binance-peg|portal|ondo|stablecoin|usd coin|tether|robinhood token|global dollar)\b/i;
   var MAJOR_NAMES = new Set("bitcoin ethereum zcash solana hyperliquid xrp ripple bnb cardano chainlink sui aptos near tron litecoin monero avalanche polkadot toncoin dogecoin stellar cosmos arbitrum optimism polygon".split(" "));
+  var STOCK_TICKERS = new Set("AAPL MSFT GOOGL GOOG AMZN META NVDA TSLA AMD INTC NFLX AVGO ORCL CRM ADBE IBM QCOM MU ARM TSM ASML SHOP UBER ABNB PYPL SQ XYZ COIN HOOD MSTR PLTR SNOW NET DIS NKE WMT COST JPM GS BAC V MA BRK SPY QQQ DJT GME AMC BABA BIDU NIO RIVN LCID SMCI DELL HPQ SBUX MCD KO PEP".split(" "));
   var MAJOR_TICKERS = new Set("BTC ETH ZEC SOL HYPE XRP BNB ADA LINK SUI APT NEAR TRX LTC XMR AVAX DOT TON XLM ATOM ARB OP POL".split(" "));
   function isMemecoin(t) {
     if (NON_MEME.test(`${t.name} ${t.symbol}`)) return false;
@@ -1467,6 +1468,16 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       const s = await host.settings();
       return postCoins(post, s.chains, cached);
     }
+    async function typedTicker({ tickers = [] }) {
+      const s = await host.settings();
+      for (const raw of tickers.slice(0, 2)) {
+        const tk = String(raw || "").toUpperCase();
+        if (!/^[A-Z][A-Z0-9]{1,11}$/.test(tk) || MAJOR_TICKERS.has(tk)) continue;
+        const found = await cached(`tt:${tk}:${s.chains}`, 6e4, async () => aggregate(await searchPairs(tk).catch(() => [])).filter((t) => s.chains.includes(t.chain) && isMemecoin(t) && String(t.symbol || "").toUpperCase() === tk && t.mcapBacked && alive(t) && (t.volume?.h24 || 0) >= 1e3 && (!STOCK_TICKERS.has(tk) || (t.marketCap || 0) >= 1e5) && (tk !== "RADAR" || t.address === "HyDSdtgiSa5mHqkTVoz8cTFTeVLFKdZ8amPvtNYfpump")).sort((a, b) => (b.marketCap || 0) - (a.marketCap || 0))[0] || null);
+        if (found) return found;
+      }
+      return null;
+    }
     async function mentioned({ text }) {
       const s = await host.settings();
       return cached(`mn:${text}`, 6e4, async () => (await mentionedTokens(String(text || "").slice(0, 2e3), s.chains)).map((t) => ({ address: t.address, chain: t.chain, symbol: t.symbol, name: t.name, marketCap: t.marketCap, createdAt: t.createdAt })));
@@ -1704,7 +1715,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       });
     }
     const launchState = () => cached("launch:state", 6e5, async () => (await gmFetch(`${API_BASE}/launch/settings`, { signal: AbortSignal.timeout(6e3) })).json());
-    const handlers2 = { forgetCoins, breaking, starList, starToggle, videoInfo, tweet, read, coins, fresh, postCoins: postCoins2, mentioned, story, larpcheck, family, refresh, safety, bundle, image, openWindow, reroute, holderStatus, holderSave, holderWho, holderActive, recentList, recentAdd, recentClear, launchState, lcHolders, lcBoard, lcSettings, lcStart, lcAsk, lcPoll, settings: () => host.settings() };
+    const handlers2 = { typedTicker, forgetCoins, breaking, starList, starToggle, videoInfo, tweet, read, coins, fresh, postCoins: postCoins2, mentioned, story, larpcheck, family, refresh, safety, bundle, image, openWindow, reroute, holderStatus, holderSave, holderWho, holderActive, recentList, recentAdd, recentClear, launchState, lcHolders, lcBoard, lcSettings, lcStart, lcAsk, lcPoll, settings: () => host.settings() };
     handlers2.resetBundles = () => memo.forEach((_, k) => k.startsWith("bd:") && memo.delete(k));
     return handlers2;
   }
@@ -2244,7 +2255,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       if (this.view === "stars" || this.view === "feed") this.view = "scan";
       this.stopTimers();
       this.lastPost = post;
-      this.state = { ...this.state, loading: true, early: [], error: null, narrative: null, heard: "", engineError: null, story: null, source: source ?? this.state.source };
+      this.state = { ...this.state, loading: true, early: [], error: null, narrative: null, heard: "", typedExtra: null, engineError: null, story: null, source: source ?? this.state.source };
       this.updateLive();
       this.renderFoot();
       this.renderHead();
@@ -2304,6 +2315,21 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       this.renderFoot();
       this.loadAudits();
       this.startTimers();
+      this.lookUpTyped();
+    }
+    // The ticker a post types, when the scan's coins don't hold it: looked up on its own, then pinned first.
+    async lookUpTyped() {
+      const id = this.scanId;
+      const tickers = this.typedTickers();
+      if (!tickers.length || this.typedCoin() || this.state.mentioned?.length || this.bioCards().length) return;
+      const t = await send("typedTicker", { tickers }).catch(() => null);
+      if (id !== this.scanId || !t?.address) return;
+      this.tokens.set(t.address, t);
+      this.state = { ...this.state, typedExtra: t };
+      this.renderBody();
+      this.hydrateImages();
+      this.loadAudit(t);
+      this.loadLarp(t);
     }
     // A video's speech comes in after the first answer. When it changes which coins the post is about, the cards follow.
     async readSpeech({ quickRead, ...post }, shown, id) {
@@ -2832,12 +2858,16 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     }
     // The coin a post types with its $ (no address in the post), from the coins the scan found: "Sharing some $meth"
     // showed $METH among the picks as the Mover, not as the post's own coin.
-    typedCoin() {
-      const { mentioned = [], picks = [], others = [], roleCandidates = [] } = this.state;
-      if (mentioned.length || this.bioCards().length) return null;
+    typedTickers() {
       const text = [this.lastPost?.text, this.lastPost?.quoted].filter(Boolean).join(" ");
-      const typed = [...new Set([...text.matchAll(/(?:^|[^\w$])\$([A-Za-z][A-Za-z0-9]{1,11})\b/g)].map((m) => m[1].toUpperCase()))].slice(0, 3);
+      return [...new Set([...text.matchAll(/(?:^|[^\w$])\$([A-Za-z][A-Za-z0-9]{1,11})\b/g)].map((m) => m[1].toUpperCase()))].slice(0, 3);
+    }
+    typedCoin() {
+      const { mentioned = [], picks = [], others = [], roleCandidates = [], typedExtra = null } = this.state;
+      if (mentioned.length || this.bioCards().length) return null;
+      const typed = this.typedTickers();
       if (!typed.length) return null;
+      if (typedExtra && typed.includes(String(typedExtra.symbol || "").toUpperCase())) return this.tokens.get(typedExtra.address) || typedExtra;
       const pool = [...picks.map((p) => p.token), ...others, ...roleCandidates].filter(Boolean).map((t) => this.tokens.get(t.address) || t);
       for (const tk of typed) {
         const hit = pool.filter((t) => String(t.symbol || "").toUpperCase() === tk && t.mcapBacked && (t.volume?.h24 || 0) >= 1e3).sort((a, b) => (b.marketCap || 0) - (a.marketCap || 0))[0];

@@ -8,7 +8,7 @@
 // - leaves out copies of our own coin, anything else called Radar, unless the post gives its contract;
 // - keeps the story's main runner (its biggest real coin, carrying a name the post uses) even when the judge rates it
 //   low, so a pile of small copies can't take Highest MC from it.
-import { aggregate, pickThree, alive, olderTwinOf, isMemecoin, MAJOR_TICKERS } from '../extension/src/lib/market.js';
+import { aggregate, pickThree, alive, olderTwinOf, isMemecoin, MAJOR_TICKERS, STOCK_TICKERS } from '../extension/src/lib/market.js';
 import { sym, lower, key, telling, tiedToPost, bioCas, tiedToBio, chainInPost } from '../extension/src/lib/bio.js';
 
 export { tiedToPost, bioCas, tiedToBio };
@@ -21,7 +21,7 @@ const MAJORS = new Set([...'BTC ETH SOL HYPE XRP BNB USDC USDT WBTC WETH WSOL PE
 const RADAR_MINT = 'HyDSdtgiSa5mHqkTVoz8cTFTeVLFKdZ8amPvtNYfpump';
 // Big stocks' tickers. Typed on a markets post ($META, $SHOP) they mean the share, so a coin under the ticker has to be a
 // runner to count: Kobeissi's Big Tech post had named a $2.7K launchpad "META", a different dead one each scan.
-const STOCKS = new Set('AAPL MSFT GOOGL GOOG AMZN META NVDA TSLA AMD INTC NFLX AVGO ORCL CRM ADBE IBM QCOM MU ARM TSM ASML SHOP UBER ABNB PYPL SQ XYZ COIN HOOD MSTR PLTR SNOW NET DIS NKE WMT COST JPM GS BAC V MA BRK SPY QQQ DJT GME AMC BABA BIDU NIO RIVN LCID SMCI DELL HPQ SBUX MCD KO PEP'.split(' '));
+const STOCKS = STOCK_TICKERS;
 // Not dust: what the reply would show at all.
 const live = (t) => (t.marketCap || 0) >= 1000 || (t.volume?.h24 || 0) >= 1000;
 

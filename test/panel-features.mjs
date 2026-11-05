@@ -67,4 +67,18 @@ const radar = await ui.mountInline(new El(), 'dark');
   assert.doesNotMatch(radar.bodyEl.innerHTML, /TICKER IN THE POST/, 'no ticker typed, nothing pinned');
   console.log('PASS panel: the ticker a post types is pinned first');
 }
+
+// 3. When the scan's story didn't meet the typed coin (it read the meth post as an "All INU" collage), the panel looks
+// the ticker up on its own and pins what comes back.
+{
+  const asked = [];
+  handlers.coins = async () => ({ mode: 'ai', ts: Date.now(), mentioned: [], picks: [{ role: 'top', token: PEPE }], others: [] });
+  handlers.typedTicker = async ({ tickers }) => { asked.push(...tickers); return tickers.includes('METH') ? METH : null; };
+  await radar.scan({ post: { text: 'Sharing some $meth to stay happy forever', author: 'Bundle_buyer', url: 'https://x.com/Bundle_buyer/status/2117994561494515876' } });
+  for (let i = 0; i < 20 && !/TICKER IN THE POST/.test(radar.bodyEl.innerHTML); i++) await new Promise((r) => setTimeout(r, 10));
+  assert.deepEqual(asked, ['METH']);
+  const cards = [...radar.bodyEl.innerHTML.matchAll(/<article class="card (\w+)[^"]*" data-addr="(\w+)"/g)].map((m) => `${m[1]}:${m[2].slice(0, 4)}`);
+  assert.equal(cards[0], 'typed:Meth', `cards ${cards}`);
+  console.log('PASS panel: a typed ticker the scan missed is looked up and pinned');
+}
 process.exit(0);
