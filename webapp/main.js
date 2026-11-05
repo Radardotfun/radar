@@ -5,6 +5,7 @@
 import { makeHandlers, API_BASE, DEFAULTS } from '../extension/src/lib/handlers.js';
 import { isPostLink, mountInline, useBackend } from '../extension/src/ui/radar.js';
 import css from '../extension/src/ui/radar.css';
+import { shareText } from './share.js';
 
 const PUBLIC_NODE = 'https://solana-rpc.publicnode.com';
 
@@ -61,19 +62,36 @@ handlers.reroute = async (msg) => {
 };
 
 // A post read from a pasted link becomes the page's address, so the scan can be shared.
+// What "Post it on X" says: the story and the lead coin, filled in as the scan reads them.
+const shared = { narrative: '', res: null };
 const tweet = handlers.tweet;
 handlers.tweet = async (msg) => {
   const r = await tweet(msg);
   history.replaceState(null, '', `/scan?url=${encodeURIComponent(msg.url.trim())}`);
+  shared.narrative = '';
+  shared.res = null;
   showShare();
+  return r;
+};
+const read = handlers.read;
+handlers.read = async (msg) => {
+  const r = await read(msg);
+  if (r?.narrative) { shared.narrative = r.narrative; showShare(false); }
+  return r;
+};
+const coins = handlers.coins;
+handlers.coins = async (msg) => {
+  const r = await coins(msg);
+  if (r) { shared.res = r; showShare(false); }
   return r;
 };
 
 // The buttons under the panel, once there's a scan to pass on.
-function showShare() {
+// open: show the buttons (a post was read); otherwise only refresh them when they are already showing.
+function showShare(open = true) {
   const box = document.getElementById('scan-share');
-  if (!box) return;
-  box.querySelector('[data-share-post]').href = `https://x.com/intent/post?text=${encodeURIComponent("Radar's read on this post:")}&url=${encodeURIComponent(location.href)}`;
+  if (!box || (!open && box.hidden)) return;
+  box.querySelector('[data-share-post]').href = `https://x.com/intent/post?text=${encodeURIComponent(shareText(shared))}&url=${encodeURIComponent(location.href)}`;
   box.hidden = false;
 }
 document.querySelector('[data-share-copy]')?.addEventListener('click', async (e) => {

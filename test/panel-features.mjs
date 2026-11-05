@@ -81,4 +81,18 @@ const radar = await ui.mountInline(new El(), 'dark');
   assert.equal(cards[0], 'typed:Meth', `cards ${cards}`);
   console.log('PASS panel: a typed ticker the scan missed is looked up and pinned');
 }
+
+// 4. "Post it on X" on tryradar.fun/scan says what Radar found: the story and the lead coin, not just a link.
+{
+  const { shareText } = await import('../webapp/share.js');
+  const text = shareText({ narrative: 'Rep. Ansari calls for a ban on artificial superintelligence, and traders launch ASI coins on it.', res: { mentioned: [], picks: [{ role: 'og', token: METH }, { role: 'top', token: PEPE }] } });
+  assert.match(text, /^Radar's read on this post:\n\nRep\. Ansari calls/);
+  assert.match(text, /Top coin: \$PEPE · \$724K$/);
+  assert.equal(shareText({}), "Radar's read on this post:", 'nothing read yet: the old line');
+  const long = shareText({ narrative: 'word '.repeat(60) });
+  assert.ok(/word…$/.test(long.split('\n\n')[1]) && long.length < 200, long);
+  const src = (await import('node:fs')).readFileSync(new URL('../webapp/main.js', import.meta.url), 'utf8');
+  assert.ok(src.includes('intent/post?text=${encodeURIComponent(shareText(shared))}'), 'the site uses it');
+  console.log('PASS panel: a shared scan carries the story and the lead coin');
+}
 process.exit(0);

@@ -1,4 +1,4 @@
-// Radar 1.7.118 on the web: built from the extension source at https://tryradar.fun. Not financial advice.
+// Radar 1.7.119 on the web: built from the extension source at https://tryradar.fun. Not financial advice.
 (() => {
   // extension/src/lib/keywords.js
   var STOP = new Set(`a about above after again against all almost also am an and any are aren as at be because been before
@@ -688,9 +688,9 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     const found = await Promise.all(bioCas({ bio }).map((ca) => mentionedTokens(ca, chains, (q) => cached(`q:${q}`, 2e4, () => searchPairs(q))).then(([t]) => t).catch(() => null)));
     return found.filter(Boolean);
   }
-  function tiedBioCoin(tokens, post, read, fullText) {
+  function tiedBioCoin(tokens, post, read2, fullText) {
     const typed = tickersIn(fullText);
-    const words = [...read.anchors || [], ...read.terms || [], ...fullText.split(/[^\p{L}\p{N}]+/u).filter((w) => w.length >= 3)];
+    const words = [...read2.anchors || [], ...read2.terms || [], ...fullText.split(/[^\p{L}\p{N}]+/u).filter((w) => w.length >= 3)];
     return tokens.filter((t) => ((t.marketCap || 0) >= 1e3 || typed.includes(sym(t))) && tiedToBio(t, post, words, typed)).slice(0, 1);
   }
   var SPEECH_WAIT_MS = 2e3;
@@ -715,21 +715,21 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     const mentioned = [...inPost];
     const full = { ...post, ...transcript ? { transcript } : {}, ...videoNotes ? { videoNotes } : {} };
     const named = mentioned.map((t) => `${t.name} ($${t.symbol})`).join(", ");
-    let read;
+    let read2;
     try {
-      read = await engine(apiBase, "interpret", { post: named ? { ...full, text: `${full.text || ""}
+      read2 = await engine(apiBase, "interpret", { post: named ? { ...full, text: `${full.text || ""}
 [Coin in this post: ${named}]` } : full }, 35e3);
     } catch (e) {
       if (!mentioned.length) throw e;
       return { narrative: "", speechLost, engineError: e.message, coinable: true, terms: [], anchors: [], judge: false, mentioned, tickers: [], post: full };
     }
     const seen = new Set(mentioned.map((t) => t.address.toLowerCase()));
-    const fromImages = (read.cas || []).filter((a) => !seen.has(a.toLowerCase()));
+    const fromImages = (read2.cas || []).filter((a) => !seen.has(a.toLowerCase()));
     if (fromImages.length) {
       mentioned.push(...await mentionedTokens(fromImages.join(" "), chains, (q) => cached(`q:${q}`, 2e4, () => searchPairs(q))).catch(() => []));
     }
-    const fromBio = mentioned.length ? [] : tiedBioCoin(await bioLookup, post, read, fullText);
-    return { speechPending: transcript === null, speechLost, narrative: read.narrative, coinable: read.coinable, terms: read.terms || [], anchors: read.anchors || [], judge: read.judge !== false && !read.anchors?.length, mentioned, bioCoins: fromBio, tickers: read.tickers || [], post: full };
+    const fromBio = mentioned.length ? [] : tiedBioCoin(await bioLookup, post, read2, fullText);
+    return { speechPending: transcript === null, speechLost, narrative: read2.narrative, coinable: read2.coinable, terms: read2.terms || [], anchors: read2.anchors || [], judge: read2.judge !== false && !read2.anchors?.length, mentioned, bioCoins: fromBio, tickers: read2.tickers || [], post: full };
   }
   function anchorHits(t, anchors) {
     const name = norm(t.name || "");
@@ -1351,16 +1351,16 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       }
       return res;
     }
-    async function read({ post }) {
+    async function read2({ post }) {
       const s = await host.settings();
       const key2 = `rd:${postKey(post, s.chains)}`;
       return forgetIfFailed(key2, cached(key2, 3e5, () => readPost(post, s.chains, { apiBase: API_BASE, cached })));
     }
-    async function coins({ post, judge = false }) {
+    async function coins2({ post, judge = false }) {
       const s = await host.settings();
       const key2 = `co:${judge ? "j:" : ""}${postKey(post, s.chains)}`;
       return forgetIfFailed(key2, cached(key2, 12e4, async () => {
-        const r = await read({ post });
+        const r = await read2({ post });
         const found = await findCoins(judge ? { ...r, judge: true } : r, s.chains, { apiBase: API_BASE, cached });
         const words = [.../* @__PURE__ */ new Set([...found.anchors || [], ...found.terms || [], ...postWords(post?.text)])];
         const newPairs = keepBest(freshPairs([...found.pool || [], ...found.roleCandidates || [], ...found.others || [], ...found.mentioned || []], storyWords(words, post?.author, post?.text), { chains: s.chains }));
@@ -1372,8 +1372,8 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       if (!words.length) return { coins: [] };
       const s = await host.settings();
       const pairs = (await Promise.all(words.slice(0, 2).map((w) => cached(`fr:${norm(w)}`, 18e4, () => searchPairs(w)).catch(() => [])))).flat();
-      const coins2 = freshPairs(aggregate(pairs), words, { chains: s.chains, maxAge: BADGE_MS, hot: true }).filter((t) => !t.copyOf).slice(0, 5);
-      return { coins: coins2.map((t) => ({ address: t.address, symbol: t.symbol, createdAt: t.createdAt })) };
+      const coins3 = freshPairs(aggregate(pairs), words, { chains: s.chains, maxAge: BADGE_MS, hot: true }).filter((t) => !t.copyOf).slice(0, 5);
+      return { coins: coins3.map((t) => ({ address: t.address, symbol: t.symbol, createdAt: t.createdAt })) };
     }
     async function forgetCoins({ post }) {
       const s = await host.settings();
@@ -1563,7 +1563,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       const report = (t) => safety({ mint: t.address, pairs: t.pairAddresses || [] });
       const body = [post?.text, post?.quoted, post?.card, post?.parent].filter(Boolean).join("\n").slice(0, 2e3);
       let inPost = named.length ? named : body ? await mentionedTokens(body, s.chains).catch(() => []) : [];
-      if (!inPost.length && !candidates?.length) inPost = (await coins({ post }).catch(() => null))?.mentioned || [];
+      if (!inPost.length && !candidates?.length) inPost = (await coins2({ post }).catch(() => null))?.mentioned || [];
       let token;
       let checked;
       let reason;
@@ -1577,7 +1577,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       } else {
         let list = candidates;
         if (!list?.length) {
-          const found = await coins({ post });
+          const found = await coins2({ post });
           list = [...found.techMatch ? [found.techMatch] : [], ...(found.picks || []).map((p) => p.token), ...found.others || []];
           if (!list.length && found.engineError) throw new Error("Radar couldn't read this post right now");
         }
@@ -1690,7 +1690,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       });
     }
     const launchState = () => cached("launch:state", 6e5, async () => (await fetch(`${API_BASE}/launch/settings`, { signal: AbortSignal.timeout(6e3) })).json());
-    const handlers2 = { typedTicker, forgetCoins, breaking, starList, starToggle, videoInfo, tweet: tweet2, read, coins, fresh, postCoins: postCoins2, mentioned, story, larpcheck, family, refresh, safety, bundle, image, openWindow: openWindow2, reroute: reroute2, holderStatus, holderSave, holderWho, holderActive, recentList, recentAdd, recentClear, launchState, lcHolders, lcBoard, lcSettings, lcStart, lcAsk, lcPoll, settings: () => host.settings() };
+    const handlers2 = { typedTicker, forgetCoins, breaking, starList, starToggle, videoInfo, tweet: tweet2, read: read2, coins: coins2, fresh, postCoins: postCoins2, mentioned, story, larpcheck, family, refresh, safety, bundle, image, openWindow: openWindow2, reroute: reroute2, holderStatus, holderSave, holderWho, holderActive, recentList, recentAdd, recentClear, launchState, lcHolders, lcBoard, lcSettings, lcStart, lcAsk, lcPoll, settings: () => host.settings() };
     handlers2.resetBundles = () => memo.forEach((_, k) => k.startsWith("bd:") && memo.delete(k));
     return handlers2;
   }
@@ -2240,18 +2240,18 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
         });
         const p = await this.preparePost(post, id);
         if (stale()) return;
-        const read = await send("read", { post: p });
+        const read2 = await send("read", { post: p });
         if (stale()) return;
-        this.state = { ...this.state, narrative: read.narrative, heard: read.post?.transcript || "" };
+        this.state = { ...this.state, narrative: read2.narrative, heard: read2.post?.transcript || "" };
         this.renderHead();
         const res = await send("coins", { post: p });
         if (stale()) return;
         this.bodyEl.dataset.timing = JSON.stringify(res.timing || {});
         this.showCoins(res);
-        this.loadStory(p, read.narrative, res, id);
-        send("recentAdd", { item: recentItem({ asked, source, narrative: read.narrative, res }) }).catch(() => {
+        this.loadStory(p, read2.narrative, res, id);
+        send("recentAdd", { item: recentItem({ asked, source, narrative: read2.narrative, res }) }).catch(() => {
         });
-        if (read.speechPending) this.readSpeech(p, res, id);
+        if (read2.speechPending) this.readSpeech(p, res, id);
       } catch (e) {
         if (stale()) return;
         this.state = { ...this.state, loading: false, error: e.message };
@@ -2288,16 +2288,16 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     }
     // A video's speech comes in after the first answer. When it changes which coins the post is about, the cards follow.
     async readSpeech({ quickRead, ...post }, shown, id) {
-      const read = await send("read", { post }).catch(() => null);
-      if (id !== this.scanId || !read?.post?.transcript) return;
+      const read2 = await send("read", { post }).catch(() => null);
+      if (id !== this.scanId || !read2?.post?.transcript) return;
       const res = await send("coins", { post }).catch(() => null);
       if (id !== this.scanId || !res) return;
       const coinsOf = (r) => [...r.mentioned, ...(r.picks || []).map((p) => p.token)].map((t) => t.address).join();
-      this.state = { ...this.state, narrative: read.narrative, heard: read.post.transcript };
+      this.state = { ...this.state, narrative: read2.narrative, heard: read2.post.transcript };
       this.renderHead();
       if (coinsOf(res) === coinsOf(shown)) return;
       this.showCoins(res);
-      this.loadStory(post, read.narrative, res, id);
+      this.loadStory(post, read2.narrative, res, id);
     }
     // Video posts: pull the MP4, grid its frames for the vision model, keep the MP4 for transcription.
     preparePost(post, id = null) {
@@ -5018,6 +5018,27 @@ svg { display: block; }
 .feed-entry:hover { background: var(--card-2); }
 `;
 
+  // webapp/share.js
+  var clip = (text, max) => {
+    const t = String(text || "").replace(/\s+/g, " ").trim();
+    if (t.length <= max) return t;
+    const cut = t.slice(0, max - 1);
+    const at = cut.lastIndexOf(" ");
+    return `${(at > max * 0.5 ? cut.slice(0, at) : cut).replace(/[\s,;:.\-–—]+$/, "")}\u2026`;
+  };
+  function leadCoin(res) {
+    return res?.mentioned?.[0] || res?.bioCoins?.[0] || res?.picks?.find((p) => p.role === "top")?.token || res?.picks?.[0]?.token || null;
+  }
+  function shareText({ narrative = "", res = null } = {}) {
+    const lines = ["Radar's read on this post:"];
+    const story = clip(narrative, 140);
+    if (story) lines.push(story);
+    const t = leadCoin(res);
+    const sym2 = String(t?.symbol || "").trim();
+    if (sym2 && /^[\p{L}\p{N}]{1,12}$/u.test(sym2)) lines.push(`Top coin: $${sym2}${t.marketCap ? ` \xB7 ${usd(t.marketCap)}` : ""}`);
+    return lines.join("\n\n");
+  }
+
   // webapp/main.js
   var PUBLIC_NODE = "https://solana-rpc.publicnode.com";
   var store = {
@@ -5073,17 +5094,38 @@ svg { display: block; }
       throw e;
     }
   };
+  var shared = { narrative: "", res: null };
   var tweet = handlers.tweet;
   handlers.tweet = async (msg) => {
     const r = await tweet(msg);
     history.replaceState(null, "", `/scan?url=${encodeURIComponent(msg.url.trim())}`);
+    shared.narrative = "";
+    shared.res = null;
     showShare();
     return r;
   };
-  function showShare() {
+  var read = handlers.read;
+  handlers.read = async (msg) => {
+    const r = await read(msg);
+    if (r?.narrative) {
+      shared.narrative = r.narrative;
+      showShare(false);
+    }
+    return r;
+  };
+  var coins = handlers.coins;
+  handlers.coins = async (msg) => {
+    const r = await coins(msg);
+    if (r) {
+      shared.res = r;
+      showShare(false);
+    }
+    return r;
+  };
+  function showShare(open = true) {
     const box = document.getElementById("scan-share");
-    if (!box) return;
-    box.querySelector("[data-share-post]").href = `https://x.com/intent/post?text=${encodeURIComponent("Radar's read on this post:")}&url=${encodeURIComponent(location.href)}`;
+    if (!box || !open && box.hidden) return;
+    box.querySelector("[data-share-post]").href = `https://x.com/intent/post?text=${encodeURIComponent(shareText(shared))}&url=${encodeURIComponent(location.href)}`;
     box.hidden = false;
   }
   document.querySelector("[data-share-copy]")?.addEventListener("click", async (e) => {
