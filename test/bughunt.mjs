@@ -651,3 +651,18 @@ const quiet = async () => ({ score: 90, why: 'a dog', name: 'Biscuit' });
   assert.equal(res.named?.address, inu.address, `named ${res.named?.name}`);
   console.log('PASS bughunt: the poster\'s own words name the coin before a quoted post does');
 }
+
+// 45. A big account alert's reason is never cut mid-word: the engine clipped it at 120 characters, so the alerts page
+// read "...but the reply only adds a dull detail about a tracki". It now ends on a whole word with "…".
+{
+  const { clipText } = await import('../server/narrative.js');
+  const why = 'Absurd helicopter penis-shaped flight path is funny and repeatable, but the reply only adds a dull detail about a tracking website.';
+  const c = clipText(why, 120);
+  assert.ok(c.length <= 120, `${c.length} chars`);
+  assert.match(c, /about a…$/);
+  assert.equal(clipText('Short and whole.', 120), 'Short and whole.');
+  assert.equal(clipText('x'.repeat(130), 120).length, 120, 'one long word is still cut to fit');
+  const src = (await import('node:fs')).readFileSync(new URL('../server/narrative.js', import.meta.url), 'utf8');
+  assert.match(src, /why: clipText\(String\(r\.why \|\| ''\), 120\)/, 'memeScore uses it');
+  console.log('PASS bughunt: an alert reason ends on a whole word');
+}
