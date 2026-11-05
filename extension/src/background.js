@@ -474,7 +474,8 @@ const launchOf = async (mint) => {
   return launchFromPairs(await r.json());
 };
 const myWalletItem = (wallet, b, now = Date.now()) => ({
-  id: `mine:${b.sig.slice(0, 30)}:${b.mint.slice(0, 8)}`,
+  // One alert per wallet and coin, not per transaction: buying more of the same coin isn't news.
+  id: `mine:${wallet.slice(0, 8)}:${b.mint}`,
   at: now,
   kind: 'signal',
   text: `Your wallet ${wallet.slice(0, 4)}…${wallet.slice(-4)} just bought $${b.symbol}, launched ${agoText(now - b.launched)} ago.`,

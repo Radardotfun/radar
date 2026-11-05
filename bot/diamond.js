@@ -45,8 +45,10 @@ export async function tick({ db, rpc: rpc0, launchOf: launchOf0, now = Date.now(
         out.buys += 1;
         const why = `Diamond Hand: a wallet that bought $${w.symbol} in its first hour and still holds it just bought $${b.symbol}, launched ${agoText(now - b.launched)} ago.`;
         const post = { text: `${why}\n${b.mint}`, author: 'diamondhand', authorName: 'Diamond Hand', url: `https://dexscreener.com/solana/${b.mint}`, images: [] };
+        // One alert per coin: the id was the buy's transaction, so four $FLOAT wallets buying $chan in pieces made about
+        // 20 alerts for that one coin over three hours (4 Nov). The first watched wallet to buy it is the alert.
         const r = await db.prepare('INSERT OR IGNORE INTO signals (id, author, at, kind, post, state, signal, narrative, terms, read_at) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?)')
-          .bind(`dh-${b.sig.slice(0, 40)}-${b.mint.slice(0, 8)}`, 'Diamond Hand', b.at, 'diamond', JSON.stringify(post), 'read', `100: ${why}`, JSON.stringify([`$${b.symbol}`]), now + seq++).run();
+          .bind(`dh-coin-${b.mint}`, 'Diamond Hand', b.at, 'diamond', JSON.stringify(post), 'read', `100: ${why}`, JSON.stringify([`$${b.symbol}`]), now + seq++).run();
         if (r?.meta?.changes) out.alerts += 1;
       }
       // Written only when it changed, or when there are more wallets than one run looks at and the turn order matters.

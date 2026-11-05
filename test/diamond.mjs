@@ -57,6 +57,12 @@ assert.match(rows[0].narrative, new RegExp(`^100: Diamond Hand: a wallet that bo
 assert.match(JSON.parse(rows[0].post).text, new RegExp(NEWC));
 out = await tick({ db, rpc, launchOf, now: now + 10 * 60_000 });
 assert.equal(sql.prepare("SELECT COUNT(*) n FROM signals WHERE kind = 'diamond'").get().n, 1, 'never twice');
+// Buying more of the same coin in another transaction is no new alert: four $FLOAT wallets buying $chan in pieces made
+// about 20 alerts for that one coin over three hours on 4 Nov.
+txs.S4 = buyTx(NEWC);
+sigs = [{ signature: 'S4', blockTime: now / 1000 + 500 }, ...sigs];
+for (let i = 0; i < Math.ceil(list.wallets.length / 10) + 1; i++) await tick({ db, rpc, launchOf, now: now + (20 + i) * 60_000 });
+assert.equal(sql.prepare("SELECT COUNT(*) n FROM signals WHERE kind = 'diamond'").get().n, 1, 'one alert per coin, however many buys');
 console.log('PASS diamond: a watched wallet buying a coin launched in the last 6 hours is an alert, once');
 
 // Holders get it; the public, delayed list doesn't.
