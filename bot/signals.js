@@ -102,6 +102,22 @@ const dayOf = (now) => new Date(now).toISOString().slice(0, 10);
 const getMeta = async (db, k) => (await db.prepare('SELECT v FROM signal_meta WHERE k = ?').bind(k).first())?.v ?? null;
 const setMeta = (db, k, v) => db.prepare('INSERT INTO signal_meta (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v').bind(k, String(v)).run();
 
+// The words of a post that tell its story: links, handles and short words left out.
+const storyWords = (text) => new Set(String(text || '').toLowerCase().replace(/https?:\/\/\S+|@\w+/g, ' ').replace(/[’']/g, '').split(/[^\p{L}\p{N}]+/u).filter((w) => w.length >= 3 && !/^(the|and|for|this|that|with|has|have|says|said|just|breaking)$/.test(w)));
+export const SAME_STORY_MS = 6 * 3600e3;
+// An alert in the last 6 hours whose post says the same thing: most of the shorter post's words are in the other (4 at least).
+async function sameStory(db, row, now) {
+  const mine = storyWords(JSON.parse(row.post).text);
+  if (mine.size < 4) return null;
+  const earlier = (await db.prepare("SELECT id, post FROM signals WHERE signal = 1 AND kind != 'diamond' AND id != ? AND at > ? ORDER BY at DESC LIMIT 60").bind(row.id, now - SAME_STORY_MS).all()).results || [];
+  for (const e of earlier) {
+    const theirs = storyWords(JSON.parse(e.post || '{}').text);
+    const shared = [...mine].filter((w) => theirs.has(w)).length;
+    if (shared >= 4 && shared >= 0.6 * Math.min(mine.size, theirs.size)) return e.id;
+  }
+  return null;
+}
+
 /** db: D1. x(url): X's JSON answer. read(post): the AI's read. One minute's work: fetch what's new, then read what's waiting. */
 export async function tick({ db, x, read, now = Date.now(), accounts = ACCOUNTS, cap = READS_PER_DAY, clock = Date.now }) {
   for (const sql of SCHEMA) await db.prepare(sql).run();
@@ -152,9 +168,12 @@ export async function tick({ db, x, read, now = Date.now(), accounts = ACCOUNTS,
       out.errors.push(`read: ${String(e.message || e).slice(0, 120)}`);
       continue; // still 'new', so it's tried again next minute
     }
-    const hit = isSignal(r);
+    let hit = isSignal(r);
+    // One story is one alert: Elon's "space lasers" joke alerted three times (his post, then two accounts repeating it).
+    const twin = hit ? await sameStory(db, row, now) : null;
+    if (twin) hit = false;
     await db.prepare("UPDATE signals SET state = 'read', signal = ?, narrative = ?, terms = ?, read_at = ? WHERE id = ?")
-      .bind(hit ? 1 : 0, `${Math.round(r?.score || 0)}: ${String(r?.why || '').slice(0, 180)}`, JSON.stringify(r?.name ? [r.name] : []), clock(), row.id).run();
+      .bind(hit ? 1 : 0, `${Math.round(r?.score || 0)}: ${twin ? `same story as ${twin} · ` : ''}${String(r?.why || '').slice(0, 180)}`, JSON.stringify(r?.name ? [r.name] : []), clock(), row.id).run();
     out.read += 1;
     if (hit) out.signals += 1;
   }

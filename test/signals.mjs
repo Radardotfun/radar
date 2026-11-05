@@ -126,6 +126,27 @@ assert.equal(order[0], 'post number 0 about something', 'the newest is read firs
 assert.equal((await tick({ db: db3, x, read: log, now: now + 60_000, accounts })).read, 5);
 console.log('PASS signals: retries and backlog');
 
+// One story is one alert: Elon's "space lasers" joke alerted three times on 4 Nov (his post, then @unusual_whales and
+// @Kalshi repeating it), and @PopCrave's post twice (posted again with a typo fixed). A different story still alerts.
+{
+  const dbd = fakeD1();
+  const hot = async () => ({ score: 80, name: 'Space Lasers', why: 'quotable' });
+  const at = (t, id, text) => ({ ...tweet(id, text), created_at: new Date(t - 30_000).toISOString() });
+  batch = [at(now, '500', 'Guess my election-interfering space lasers didn’t work this time 🤷‍♂️')];
+  assert.equal((await tick({ db: dbd, x, read: hot, now, accounts })).signals, 1);
+  batch = [at(now + 9 * 60_000, '501', 'BREAKING: Elon Musk has said: Guess my election-interfering space lasers didn’t work this time')];
+  assert.equal((await tick({ db: dbd, x, read: hot, now: now + 9 * 60_000, accounts })).signals, 0, 'the same story told again');
+  batch = [at(now + 150 * 60_000, '502', 'JUST IN: Elon Musk says his "election-interfering space lasers" didn’t work this time https://t.co/x')];
+  assert.equal((await tick({ db: dbd, x, read: hot, now: now + 150 * 60_000, accounts })).signals, 0, 'two hours later still');
+  batch = [at(now + 160 * 60_000, '503', 'JUST IN: Sam Altman changes X name to "Ram Altman"')];
+  assert.equal((await tick({ db: dbd, x, read: hot, now: now + 160 * 60_000, accounts })).signals, 1, 'another story');
+  batch = [at(now + 8 * 3600e3, '504', 'Guess my election-interfering space lasers didn’t work this time, says Elon')];
+  assert.equal((await tick({ db: dbd, x, read: hot, now: now + 8 * 3600e3, accounts })).signals, 1, 'after 6 hours it can alert again');
+  const dup = (await recent(dbd)).find((r) => r.id === '501');
+  assert.match(dup.narrative, /same story as 500/);
+  console.log('PASS signals: one story is one alert');
+}
+
 // The spending cap holds, and a new day starts again.
 const db4 = fakeD1();
 let calls = 0;
