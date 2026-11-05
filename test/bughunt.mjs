@@ -709,3 +709,18 @@ const quiet = async () => ({ score: 90, why: 'a dog', name: 'Biscuit' });
   assert.equal(ticker(''), '?');
   console.log('PASS bughunt: a ticker of a currency sign prints as itself');
 }
+
+// 49. Two different coins never share one label: on a Zelda post the reply read "🎯 On this story: $ZELDA · $356.9K" and
+// "🎯 On this story: ZELDA · launched 2h ago", because the story counted as one coin while the reply showed two.
+{
+  const { replyEntries } = await import('../bot/reply.js');
+  const now = Date.now();
+  const coin = (address, marketCap, ageH) => ({ symbol: 'ZELDA', name: 'Zelda', address, chain: 'solana', marketCap, mcapBacked: true, liquidity: 40_000, createdAt: now - ageH * 3600e3, volume: { h24: 30_000, h1: 900 }, txns: { h1: { buys: 30, sells: 20 }, h24: { buys: 400, sells: 300 } }, priceChange: { h1: 3 } });
+  const res = { alone: true, postAt: now - 3600e3, picks: [{ role: 'top', token: coin('Zbig111111111111111111111111111111111pump', 356_900, 30) }, { role: 'og', token: coin('Zold111111111111111111111111111111111pump', 20_000, 2) }] };
+  const labels = replyEntries(res, now).map((e) => e.label);
+  assert.equal(new Set(labels).size, labels.length, `labels ${JSON.stringify(labels)}`);
+  const one = replyEntries({ ...res, picks: [res.picks[0]] }, now).map((e) => e.label);
+  assert.equal(one.length, 1);
+  assert.match(one[0], /On this story/, 'a coin truly alone still claims no title');
+  console.log('PASS bughunt: two coins never share one label');
+}

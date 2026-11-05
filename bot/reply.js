@@ -45,17 +45,20 @@ export function replyEntries(result, now = Date.now()) {
   const picks = (result?.picks || []).filter((p) => p?.token?.address && ((p.token.marketCap || 0) >= 1000 || (p.token.volume?.h24 || 0) >= 1000) && !(older(p.token) && quiet(p.token, now)));
   // The coin the post names shows whatever its size: it's the one the tagger is asking about.
   const named = result?.named?.address ? result.named : null;
+  // Alone means one coin in the reply: the story can count one coin while the picks hold two, and both read "🎯 On this
+  // story" on a Zelda post.
+  const alone = !!result?.alone && new Set([named?.address, ...picks.map((p) => p.token.address)].filter(Boolean)).size < 2;
   const entries = [];
   // Every role a coin holds ("📌 In the post (Highest MC, OG)") instead of lines repeating it. A role another line holds
   // isn't claimed too. A coin alone on the story beat nothing, so the post's own coin claims no title then.
   const won = (address) => {
-    const p = result?.alone ? null : picks.find((x) => x.token.address === address);
+    const p = alone ? null : picks.find((x) => x.token.address === address);
     return ROLES.filter(([role]) => p && !(role === 'top' && noTop) && (p.role === role || (p[ALSO[role]] && !picks.some((x) => x.role === role && x.token.address !== address))) && !(role === 'og' && older(p.token))).map(([, label]) => label.replace(/^\S+ /, ''));
   };
   // A coin past its first day that barely trades says so, beside the number that earned its place.
   const stat = (t, s) => [s, quiet(t, now) && tradesLine(t)].filter(Boolean).join(' · ');
   // Highest MC means it beat something: alone on the story, or with a bigger namesake left out, the title isn't claimed.
-  const noTop = result?.alone || result?.outranked;
+  const noTop = alone || result?.outranked;
   if (named) {
     const roles = won(named.address);
     entries.push({ label: `${result.how === 'picture' ? '🖼 Same picture as the post' : result.how === 'bio' ? '👤 In the poster\'s bio' : result.how === 'linked' ? '🔗 Launched from this post' : '📌 In the post'}${roles.length ? ` (${roles.join(', ')})` : ''}`, t: named, stat: stat(named, usd(named.marketCap)) });
@@ -67,7 +70,7 @@ export function replyEntries(result, now = Date.now()) {
     // A coin alone holds whichever role it landed on (OG or Mover too, when its market cap isn't backed) and beat nobody for it.
     // OG means the first coin on this story: one launched over a week before the post just shares the name (a 24-day-old raccoon
     // "Pepper" was the OG on a dog called Pepper).
-    entries.push({ label: [result?.alone || (role === 'top' && noTop) ? (older(t) ? '🔁 Same name, older coin' : '🎯 On this story') : role === 'og' && older(t) ? '🔁 Same name, older coin' : label, ...also].join(', '), t, stat: stat(t, role === 'top' ? usd(t.marketCap)
+    entries.push({ label: [alone || (role === 'top' && noTop) ? (older(t) ? '🔁 Same name, older coin' : '🎯 On this story') : role === 'og' && older(t) ? '🔁 Same name, older coin' : label, ...also].join(', '), t, stat: stat(t, role === 'top' ? usd(t.marketCap)
       : role === 'og' ? (ago(t.createdAt, now) ? `launched ${ago(t.createdAt, now)} ago` : usd(t.marketCap))
         : usd(t.volume?.h24) ? `${usd(t.volume.h24)} vol 24h` : usd(t.marketCap)) });
   }
