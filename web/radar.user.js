@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Radar
 // @namespace    https://tryradar.fun
-// @version      1.7.117
+// @version      1.7.118
 // @description  See the coins behind any post on X and instantly reroute to the biggest match that passes available on-chain safety checks.
 // @homepageURL  https://tryradar.fun
 // @supportURL   https://tryradar.fun
@@ -31,7 +31,7 @@
 // @downloadURL  https://tryradar.fun/radar.user.js
 // ==/UserScript==
 
-// Radar 1.7.117: built from the extension source at https://tryradar.fun. Not financial advice.
+// Radar 1.7.118: built from the extension source at https://tryradar.fun. Not financial advice.
 (() => {
   var __defProp = Object.defineProperty;
   var __export = (target, all) => {
@@ -251,7 +251,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     "0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56"
   ].map(quoteKey));
   var isBaseQuote = (a) => QUOTES.has(quoteKey(a));
-  var REAL_QUOTES = /* @__PURE__ */ new Set([...QUOTES, "t9bnCGiZVUYsRKvx4d5dPcoDCSyuBM9C33ZNGNULARP"]);
+  var REAL_QUOTES = /* @__PURE__ */ new Set([...QUOTES, "t9bnCGiZVUYsRKvx4d5dPcoDCSyuBM9C33ZNGNULARP", "pumpCmXqMfrsAkQ5r49WcJnRayYRqmXz6ae8H7H9Dfn"]);
   var LAUNCHPADS = /* @__PURE__ */ new Set(["pumpfun", "launchlab", "meteoradbc", "moonshot", "boop", "heaven", "believe", "bags", "moonit", "jupstudio", "flapsh", "fourmeme"]);
   async function getJson(url) {
     for (let i = 0; i < 4; i++) {
@@ -326,8 +326,38 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     // GMEx
     "Xsv9hRk1z5ystj9MhnA7Lq4vjSsLwzL2nxrwmwtD3re",
     // GLDx
-    "Xs3oZwbHvqis4NYcf4YKWmEia2eC84wSiVrcYcTqpH8"
+    "Xs3oZwbHvqis4NYcf4YKWmEia2eC84wSiVrcYcTqpH8",
     // SPCXx
+    // Backpack Securities' tokenized shares, the real mints with $50K+ of their own liquidity (checked 5 Nov 2026); copies of
+    // the names end in "pump" and hold nothing.
+    "DJTu7vi8norVzdVAffgvb39VP7wjKeTsgaMBJrzfxvoF",
+    // DJT
+    "TSLAqBbv4CNCnzWFeB7LmydAyEiNMJtve7DYKLpdK4S",
+    // TSLA
+    "METAaH6MMZZgy2CTEJq3QdNi7AFVTV3NxHFBfFgLEDd",
+    // META
+    "NVDAVuiB7hwd3m5Wa1JuHNovPaPG6BH1QNztbKFxNjv",
+    // NVDA
+    "AMZNw7cwU9L9c7ewZXxTws2PwQYxBGm2Rxg3FLDBJz9B",
+    // AMZN
+    "AAPLEDt8RpzPgXyhvFzkMBofvFSQw9gpeMCoUdPdLnB8",
+    // AAPL
+    "MSFThX899B1DddH5jkyMpdArWXzP85VXLYDrbGGcRJM",
+    // MSFT
+    "GooGLMvZtJZXHdNZy95RUrAMCCKxV6ghK3qE5ddBgVm5",
+    // GOOGL
+    "TTWofwAge91oFhZs7kpQdyrVRkmevgM88xijGvQFbKo",
+    // TTWO
+    "AMD8XwJXgQ9WV45Wyj9yFLejxzf2J6VM1PJY8bJEjeES",
+    // AMD
+    "LULUmT9VMttkfAJE236LXJcYJ2tTP7nunrSWR5G1BdS",
+    // LULU
+    "DNUTsCvKbKwu2RM72cUuW3TD9YpzArzACcqYQssjPLSk",
+    // DNUT
+    "RUMsPfFZFnN1ZmGANwP7FNMJMjKH4m9RiMePrtVtLe7",
+    // RUM
+    "PTNzAfFAB4LvoUQEUUGrFMyUoRLExMYjH6CcfyQfsVP"
+    // PTN
   ]);
   var stockQuote = (p) => p.chainId === "robinhood" && /•\s*Robinhood Token$/i.test(String(p.quoteToken?.name || "").trim()) || p.chainId === "solana" && XSTOCKS.has(p.quoteToken?.address);
   function realLiquidity(p) {

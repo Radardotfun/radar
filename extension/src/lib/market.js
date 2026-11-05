@@ -27,7 +27,8 @@ const QUOTES = new Set([
 // SOL, ETH, dollars: what a coin's pool is normally priced in. A pool priced in anything else is a child of that coin.
 export const isBaseQuote = (a) => QUOTES.has(quoteKey(a));
 // Coins that also back real pools but are memecoins themselves, so they can still be picks: pump.fun pairs coins to $LARPCHECK.
-const REAL_QUOTES = new Set([...QUOTES, 't9bnCGiZVUYsRKvx4d5dPcoDCSyuBM9C33ZNGNULARP']);
+// PUMP, pump.fun's own token ($2.4M of its own liquidity), is real money too, and stays a Family parent.
+const REAL_QUOTES = new Set([...QUOTES, 't9bnCGiZVUYsRKvx4d5dPcoDCSyuBM9C33ZNGNULARP', 'pumpCmXqMfrsAkQ5r49WcJnRayYRqmXz6ae8H7H9Dfn']);
 // Launchpad curves: the pair opens in the same tx the token is born (flapsh: flap.sh on Robinhood Chain and BNB
 // Chain; fourmeme: four.meme on BNB Chain).
 export const LAUNCHPADS = new Set(['pumpfun', 'launchlab', 'meteoradbc', 'moonshot', 'boop', 'heaven', 'believe', 'bags', 'moonit', 'jupstudio', 'flapsh', 'fourmeme']);
@@ -103,6 +104,22 @@ const XSTOCKS = new Set([
   'Xsf9mBktVB9BSU5kf4nHxPq5hCBJ2j2ui3ecFGxPRGc', // GMEx
   'Xsv9hRk1z5ystj9MhnA7Lq4vjSsLwzL2nxrwmwtD3re', // GLDx
   'Xs3oZwbHvqis4NYcf4YKWmEia2eC84wSiVrcYcTqpH8', // SPCXx
+  // Backpack Securities' tokenized shares, the real mints with $50K+ of their own liquidity (checked 5 Nov 2026); copies of
+  // the names end in "pump" and hold nothing.
+  'DJTu7vi8norVzdVAffgvb39VP7wjKeTsgaMBJrzfxvoF', // DJT
+  'TSLAqBbv4CNCnzWFeB7LmydAyEiNMJtve7DYKLpdK4S', // TSLA
+  'METAaH6MMZZgy2CTEJq3QdNi7AFVTV3NxHFBfFgLEDd', // META
+  'NVDAVuiB7hwd3m5Wa1JuHNovPaPG6BH1QNztbKFxNjv', // NVDA
+  'AMZNw7cwU9L9c7ewZXxTws2PwQYxBGm2Rxg3FLDBJz9B', // AMZN
+  'AAPLEDt8RpzPgXyhvFzkMBofvFSQw9gpeMCoUdPdLnB8', // AAPL
+  'MSFThX899B1DddH5jkyMpdArWXzP85VXLYDrbGGcRJM', // MSFT
+  'GooGLMvZtJZXHdNZy95RUrAMCCKxV6ghK3qE5ddBgVm5', // GOOGL
+  'TTWofwAge91oFhZs7kpQdyrVRkmevgM88xijGvQFbKo', // TTWO
+  'AMD8XwJXgQ9WV45Wyj9yFLejxzf2J6VM1PJY8bJEjeES', // AMD
+  'LULUmT9VMttkfAJE236LXJcYJ2tTP7nunrSWR5G1BdS', // LULU
+  'DNUTsCvKbKwu2RM72cUuW3TD9YpzArzACcqYQssjPLSk', // DNUT
+  'RUMsPfFZFnN1ZmGANwP7FNMJMjKH4m9RiMePrtVtLe7', // RUM
+  'PTNzAfFAB4LvoUQEUUGrFMyUoRLExMYjH6CcfyQfsVP', // PTN
 ]);
 const stockQuote = (p) => (p.chainId === 'robinhood' && /•\s*Robinhood Token$/i.test(String(p.quoteToken?.name || '').trim()))
   || (p.chainId === 'solana' && XSTOCKS.has(p.quoteToken?.address));

@@ -681,3 +681,18 @@ const quiet = async () => ({ score: 90, why: 'a dog', name: 'Biscuit' });
   assert.equal(fake.liquidity, 0, 'a copy named like an xStock is no money');
   console.log('PASS bughunt: a pool priced in a real xStock counts as real liquidity');
 }
+
+// 47. Solana pools priced in PUMP (pump.fun's own token, $2.4M of its own liquidity; $321K traded through such pools
+// among the day's new coins) and in Backpack Securities' tokenized shares (AMD, TTWO...) are real money too. PUMP stays a
+// Family parent. A copy named "Nvidia - Backpack Securities" that isn't the real mint counts for nothing.
+{
+  const now = Date.now();
+  const { aggregate, isBaseQuote } = await import('../extension/src/lib/market.js');
+  const pair = (quote) => ({ chainId: 'solana', dexId: 'pumpswap', pairAddress: `P${quote.address.slice(0, 6)}`, baseToken: { address: 'Kid1111111111111111111111111111111111pump', symbol: 'KID', name: 'Kid' }, quoteToken: quote, priceNative: '0.00001', priceUsd: '0.00004', marketCap: 40_000, fdv: 40_000, liquidity: { usd: 20_000, base: 250_000_000, quote: 2_500 }, volume: { h24: 90_000, h1: 3_000 }, txns: { h1: { buys: 30, sells: 25 }, h24: { buys: 600, sells: 500 } }, priceChange: { h1: 4 }, pairCreatedAt: now - 3 * 3600e3 });
+  const PUMP = 'pumpCmXqMfrsAkQ5r49WcJnRayYRqmXz6ae8H7H9Dfn';
+  assert.ok(aggregate([pair({ address: PUMP, name: 'Pump', symbol: 'PUMP' })])[0].liquidity > 10_000, 'priced in PUMP');
+  assert.equal(isBaseQuote(PUMP), false, 'PUMP is still a family parent');
+  assert.ok(aggregate([pair({ address: 'AMD8XwJXgQ9WV45Wyj9yFLejxzf2J6VM1PJY8bJEjeES', name: 'Advanced Micro Devices - Backpack Securities', symbol: 'AMD' })])[0].liquidity > 10_000, 'priced in Backpack AMD');
+  assert.equal(aggregate([pair({ address: 'DhRWZHGd9HzVKC4pGpkQ4LTzFFKCEYKByJPbRLQ8pump', name: 'Nvidia - Backpack Securities', symbol: 'NVDA' })])[0].liquidity, 0, 'a copy of the name');
+  console.log('PASS bughunt: pools priced in PUMP and in Backpack tokenized shares count as real liquidity');
+}
