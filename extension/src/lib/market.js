@@ -83,7 +83,29 @@ const n = (x) => (Number.isFinite(+x) ? +x : 0);
 // One-sided / self-paired pools report huge "liquidity" with almost nothing behind it.
 // Robinhood Chain's tokenized shares ("Alphabet Class A • Robinhood Token") are real money on the other side of a pool
 // too: Recursive Self Inu's only pool is against GOOGL, and its $79K read as unbacked (the user's call, 4 Nov 2026).
-const stockQuote = (p) => p.chainId === 'robinhood' && /•\s*Robinhood Token$/i.test(String(p.quoteToken?.name || '').trim());
+// Solana's tokenized shares (xStocks) are the same kind of money: "origin of memes" ($739K traded) is priced in
+// Microsoft xStock. Only the real mints count, each with $100K+ of its own liquidity (checked 5 Nov 2026): dozens of copies
+// are named "NVIDIA xStock" too.
+const XSTOCKS = new Set([
+  'Xsc9qvGR1efVDFGLrVsmkzv3qi45LTBjeUKSPmx9qEh', // NVDAx
+  'XsDoVfqeBukxuZHWhdvWHBhgEHjGNst4MLodqsJHzoB', // TSLAx
+  'XsoCS1TfEyfFhfvj8EtZ528L3CaKBDBRqRapnBbDF2W', // SPYx
+  'XsueG8BtpquVJX9LVLLEGuViXUungE6WmK5YZ3p3bd1', // CRCLx
+  'Xs8S1uUs1zvS2p7iwtsG3b6fkhpvmwz4GYU3gWAmWHZ', // QQQx
+  'Xsa62P5mvPszXL1krVUnU5ar38bBSVcWAB6fmPCo5Zu', // METAx
+  'XsCPL9dNWBMvFtTmwcCA5v3xWPSMEBCszbQdiLLq6aN', // GOOGLx
+  'XsP7xzNPvEHS1m6qfanPUGjNmdnmsLKEoNAnHjdxxyZ', // MSTRx
+  'Xs7ZdzSHLU9ftNJsii5fCeJhoRWSC32SQGzGQtePxNu', // COINx
+  'XspzcW1PRtgf6Wj92HCiZdjzKCyFekVD8P5Ueh3dRMX', // MSFTx
+  'XsvNBAYkrDRNhA7wPHQfX3ZUXZyZLdnCQDfHZ56bzpg', // HOODx
+  'XsbEhLAtcf6HdfpFZ5xEMdqW8nfAvcsP5bdudRLJzJp', // AAPLx
+  'Xs3eBt7uRfJX8QUs4suhyU8p2M6DoUDrJyWBa8LLZsg', // AMZNx
+  'Xsf9mBktVB9BSU5kf4nHxPq5hCBJ2j2ui3ecFGxPRGc', // GMEx
+  'Xsv9hRk1z5ystj9MhnA7Lq4vjSsLwzL2nxrwmwtD3re', // GLDx
+  'Xs3oZwbHvqis4NYcf4YKWmEia2eC84wSiVrcYcTqpH8', // SPCXx
+]);
+const stockQuote = (p) => (p.chainId === 'robinhood' && /•\s*Robinhood Token$/i.test(String(p.quoteToken?.name || '').trim()))
+  || (p.chainId === 'solana' && XSTOCKS.has(p.quoteToken?.address));
 function realLiquidity(p) {
   if (!REAL_QUOTES.has(quoteKey(p.quoteToken?.address)) && !stockQuote(p)) return 0;
   const quoteUsd = n(p.liquidity?.quote) * (n(p.priceNative) ? n(p.priceUsd) / n(p.priceNative) : 0);

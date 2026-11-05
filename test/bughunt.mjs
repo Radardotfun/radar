@@ -666,3 +666,18 @@ const quiet = async () => ({ score: 90, why: 'a dog', name: 'Biscuit' });
   assert.match(src, /why: clipText\(String\(r\.why \|\| ''\), 120\)/, 'memeScore uses it');
   console.log('PASS bughunt: an alert reason ends on a whole word');
 }
+
+// 46. A Solana pool priced in a real xStock (tokenized shares, like the Robinhood stock tokens counted since 4 Nov) is real
+// money: "origin of memes" ($13K, $739K traded) pairs against Microsoft xStock and read as having no liquidity. A copy
+// named "NVIDIA xStock" that isn't the real mint counts for nothing.
+{
+  const now = Date.now();
+  const { aggregate } = await import('../extension/src/lib/market.js');
+  const pair = (quote) => ({ chainId: 'solana', dexId: 'pumpswap', pairAddress: `P${quote.address.slice(0, 6)}`, baseToken: { address: 'FRAaAZeDEgiRytZ5Mq5ZXuExEeHcoidQ8qRRZPZJpump', symbol: 'mspaint', name: 'origin of memes' }, quoteToken: quote, priceNative: '0.00000002459', priceUsd: '0.00001370', marketCap: 13_115, fdv: 13_115, liquidity: { usd: 9_103, base: 402_215_491, quote: 6.4455 }, volume: { h24: 739_075, h1: 9_000 }, txns: { h1: { buys: 300, sells: 250 }, h24: { buys: 6_000, sells: 5_000 } }, priceChange: { h1: 4 }, pairCreatedAt: now - 3 * 3600e3 });
+  const [real] = aggregate([pair({ address: 'XspzcW1PRtgf6Wj92HCiZdjzKCyFekVD8P5Ueh3dRMX', name: 'Microsoft xStock', symbol: 'MSFTx' })]);
+  assert.ok(real.liquidity > 5_000, `liquidity ${real.liquidity}`);
+  assert.equal(real.mcapBacked, true);
+  const [fake] = aggregate([pair({ address: '2qm7bTeBbifbASj9UTZJY4Fi1gCGqZmdg6B3PmyfsADz', name: 'NVIDIA xStock', symbol: 'NVDAx' })]);
+  assert.equal(fake.liquidity, 0, 'a copy named like an xStock is no money');
+  console.log('PASS bughunt: a pool priced in a real xStock counts as real liquidity');
+}
