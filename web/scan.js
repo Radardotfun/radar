@@ -1,4 +1,4 @@
-// Radar 1.7.119 on the web: built from the extension source at https://tryradar.fun. Not financial advice.
+// Radar 1.7.120 on the web: built from the extension source at https://tryradar.fun. Not financial advice.
 (() => {
   // extension/src/lib/keywords.js
   var STOP = new Set(`a about above after again against all almost also am an and any are aren as at be because been before
@@ -2805,7 +2805,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     // What's said in a video post, as Radar heard it: a coin is often only named out loud.
     heardHtml() {
       const heard = String(this.state.heard || "").replace(/\s+/g, " ").trim();
-      if (!heard) return "";
+      if (!heard || heard.split(" ").length < 4 || /^(?:(?:thank you|thanks|thanks for watching|you|bye|okay|oh|[♪♫\s]+|\[(?:music|applause|silence)\])[\s.!,]*)+$/i.test(heard)) return "";
       const open = this.expanded.has("heard");
       const long = heard.length > 170;
       const shown = open || !long ? heard : `${heard.slice(0, 169).replace(/\s+\S*$/, "")}\u2026`;

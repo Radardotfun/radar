@@ -50,6 +50,15 @@ const radar = await ui.mountInline(new El(), 'dark');
   assert.match(radar.leadEl.innerHTML, /data-act="heard-more"/);
   await radar.scan({ post: { text: 'no video here', author: 'mario', url: 'https://x.com/mario/status/1850000000000000012' } });
   assert.doesNotMatch(radar.leadEl.innerHTML, /Heard in the video/, 'a post without speech shows none');
+  // A silent or music-only clip transcribes as filler the model makes up; that isn't speech.
+  for (const [i, filler] of ['Thank you.', 'Thanks for watching!', '♪ ♪ ♪', 'you you you you', 'Thank you. Thank you. Thank you. Bye.'].entries()) {
+    speech = filler;
+    await radar.scan({ post: { text: 'a clip', author: 'mario', url: `https://x.com/mario/status/18500000000000002${i}`, videoUrl: `https://video.twimg.com/f${i}.mp4`, hasVideo: true } });
+    assert.doesNotMatch(radar.leadEl.innerHTML, /Heard in the video/, `filler "${filler}" is not shown`);
+  }
+  speech = 'so I named my new coin Julia';
+  await radar.scan({ post: { text: 'a clip', author: 'mario', url: 'https://x.com/mario/status/1850000000000000030', videoUrl: 'https://video.twimg.com/g.mp4', hasVideo: true } });
+  assert.match(radar.leadEl.innerHTML, /Heard in the video/, 'real speech still shows');
   console.log('PASS panel: what a video says shows under the story');
 }
 

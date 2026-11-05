@@ -963,7 +963,8 @@ class Radar {
   // What's said in a video post, as Radar heard it: a coin is often only named out loud.
   heardHtml() {
     const heard = String(this.state.heard || '').replace(/\s+/g, ' ').trim();
-    if (!heard) return '';
+    // A silent or music-only clip comes back as a few filler words the speech model makes up ("Thank you.").
+    if (!heard || heard.split(' ').length < 4 || /^(?:(?:thank you|thanks|thanks for watching|you|bye|okay|oh|[♪♫\s]+|\[(?:music|applause|silence)\])[\s.!,]*)+$/i.test(heard)) return '';
     const open = this.expanded.has('heard');
     const long = heard.length > 170;
     const shown = open || !long ? heard : `${heard.slice(0, 169).replace(/\s+\S*$/, '')}…`;
