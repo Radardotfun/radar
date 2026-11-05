@@ -724,3 +724,22 @@ const quiet = async () => ({ score: 90, why: 'a dog', name: 'Biscuit' });
   assert.match(one[0], /On this story/, 'a coin truly alone still claims no title');
   console.log('PASS bughunt: two coins never share one label');
 }
+
+// 50. A coin launched from the post still shows when the reply leads with another coin: "WE RAN BODEN, TREMP NOW THEM"
+// led with $boden ($750K), and the Dumocrat coin whose profile links that very post ($3.9K, $163K traded) was nowhere.
+{
+  const { replyEntries } = await import('../bot/reply.js');
+  const now = Date.now();
+  const coin = (symbol, address, marketCap, vol) => ({ symbol, name: symbol, address, chain: 'solana', marketCap, mcapBacked: true, liquidity: 20_000, createdAt: now - 3600e3, volume: { h24: vol, h1: vol / 20 }, txns: { h1: { buys: 30, sells: 20 }, h24: { buys: 400, sells: 300 } }, priceChange: { h1: 3 } });
+  const boden = coin('boden', 'Boden1111111111111111111111111111111pump', 750_000, 90_000);
+  const dumo = coin('Dumocrat', 'DgZfbGxG8mmpxgxZ5X2nuzdMMxo9pFMMfvkM39nApump', 3_900, 163_000);
+  const res = await botCoins({ mentioned: [boden], picks: [], others: [] }, { text: 'LETS RUN RETARDED VERSION THEN?? WE RAN BODEN, TREMP NOW THEM', url: 'https://x.com/a1lu0n9/status/2118371970353938614' }, { search: async () => [], lookupCa: async () => null, capOf: async () => null, matchImages: async () => [], linkedTo: async (id) => (id === '2118371970353938614' ? [dumo] : []), chains: ['solana'] });
+  assert.equal(res.named?.address, boden.address);
+  assert.equal(res.alsoLinked?.address, dumo.address, 'the coin launched from the post is kept');
+  const labels = replyEntries(res, now).map((e) => `${e.label}: ${e.t.symbol}`);
+  assert.ok(labels.includes('🔗 Launched from this post: Dumocrat'), JSON.stringify(labels));
+  const solo = await botCoins({ mentioned: [], picks: [], others: [] }, { text: 'made a coin', url: 'https://x.com/a/status/2118371970353938615' }, { search: async () => [], lookupCa: async () => null, capOf: async () => null, matchImages: async () => [], linkedTo: async () => [dumo], chains: ['solana'] });
+  assert.equal(solo.how, 'linked');
+  assert.equal(solo.alsoLinked || null, null, 'when it is the named coin, not twice');
+  console.log('PASS bughunt: a coin launched from the post shows beside the coin the reply leads with');
+}

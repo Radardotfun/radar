@@ -289,6 +289,18 @@ export async function botCoins(res, post, { search, lookupCa, lookupBio = lookup
     const linked = leadOf(fresh.filter((t) => t?.address && chains.includes(t.chain) && live(t) && isMemecoin(t) && !isRadarCopy(t) && !MAJORS.has(sym(t))).map((t) => ({ ...t, fromPost: true })));
     if (linked) { named = linked; how = 'linked'; }
   }
+  // A coin launched from this very post still shows when the reply leads with another one: "WE RAN BODEN, TREMP NOW
+  // THEM" led with $boden, and the Dumocrat coin whose profile links that post was nowhere.
+  let alsoLinked = null;
+  if (named && how !== 'linked') {
+    const okLinked = (t) => t?.address && t.address !== named.address && chains.includes(t.chain) && live(t) && isMemecoin(t) && !isRadarCopy(t) && !MAJORS.has(sym(t)) && !sameCoin(t, named);
+    alsoLinked = leadOf(scanned.filter((t) => t.fromPost && okLinked(t)));
+    if (!alsoLinked && linkedTo) {
+      const id = String(post?.url || '').match(/\/status\/(\d+)/)?.[1];
+      const fresh = id ? await linkedTo(id).catch(() => []) : [];
+      alsoLinked = leadOf(fresh.filter(okLinked).map((t) => ({ ...t, fromPost: true })));
+    }
+  }
   if (named && !named.marketCap && capOf) {
     const cap = await capOf(named).catch(() => 0);
     if (cap) named = { ...named, marketCap: cap };
@@ -363,5 +375,5 @@ export async function botCoins(res, post, { search, lookupCa, lookupBio = lookup
   // came up as Newest on a $███ post).
   const newest = [...all.values()].filter((t) => !shown.has(t.address) && tickers.has(sym(t)) && t.createdAt && live(t) && (alive(t) || t.onCurve) && !isMajor(t))
     .sort((a, b) => b.createdAt - a.createdAt)[0] || null;
-  return { named, how, picks, alone: story.length < 2, outranked, postAt, newest, related: all.size };
+  return { named, how, alsoLinked, picks: alsoLinked ? picks.filter((p) => p.token.address !== alsoLinked.address) : picks, alone: story.length < 2, outranked, postAt, newest, related: all.size };
 }

@@ -63,6 +63,9 @@ export function replyEntries(result, now = Date.now()) {
     const roles = won(named.address);
     entries.push({ label: `${result.how === 'picture' ? '🖼 Same picture as the post' : result.how === 'bio' ? '👤 In the poster\'s bio' : result.how === 'linked' ? '🔗 Launched from this post' : '📌 In the post'}${roles.length ? ` (${roles.join(', ')})` : ''}`, t: named, stat: stat(named, usd(named.marketCap)) });
   }
+  // A coin launched from this very post, beside the coin the reply leads with.
+  const linkedToo = result?.alsoLinked?.address && result.alsoLinked.address !== named?.address ? result.alsoLinked : null;
+  if (linkedToo) entries.push({ label: '🔗 Launched from this post', t: linkedToo, stat: stat(linkedToo, usd(linkedToo.marketCap)) });
   for (const [role, label] of ROLES) {
     const t = picks.find((p) => p.role === role)?.token;
     if (!t || t.address === named?.address) continue;
