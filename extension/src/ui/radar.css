@@ -626,6 +626,13 @@ svg { display: block; }
 .nr-btn:hover { background: rgba(255,255,255,.1) !important; color: #fff !important; }
 
 .narrative em { display: block; margin-top: 4px; font-style: normal; font-weight: 500; font-size: 11.5px; color: var(--muted); }
+/* what's said in a video post */
+.heard { margin-top: 8px; padding: 9px 11px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); }
+.heard-k { display: flex; align-items: center; gap: 6px; font: 600 10px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.heard-k svg { width: 12px; height: 12px; color: var(--accent); }
+.heard p { margin: 6px 0 0; font-size: 12.5px; line-height: 1.45; color: var(--text); font-style: italic; overflow-wrap: anywhere; }
+.heard button { margin-top: 6px; padding: 0; border: 0; background: none; color: var(--muted); font: 600 11px var(--mono); cursor: pointer; text-decoration: underline; }
+.heard button:hover { color: var(--text); }
 .trend-list { margin-top: 18px; display: flex; flex-direction: column; gap: 2px; text-align: left; }
 .trend-list span { font: 600 10px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--faint); margin-bottom: 6px; }
 .trend-list button { text-align: left; padding: 8px 0; border-bottom: 1px solid var(--line); color: var(--text); font-weight: 600; }

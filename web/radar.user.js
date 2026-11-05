@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Radar
 // @namespace    https://tryradar.fun
-// @version      1.7.114
+// @version      1.7.115
 // @description  See the coins behind any post on X and instantly reroute to the biggest match that passes available on-chain safety checks.
 // @homepageURL  https://tryradar.fun
 // @supportURL   https://tryradar.fun
@@ -31,7 +31,7 @@
 // @downloadURL  https://tryradar.fun/radar.user.js
 // ==/UserScript==
 
-// Radar 1.7.114: built from the extension source at https://tryradar.fun. Not financial advice.
+// Radar 1.7.115: built from the extension source at https://tryradar.fun. Not financial advice.
 (() => {
   var __defProp = Object.defineProperty;
   var __export = (target, all) => {
@@ -1988,6 +1988,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     mover: { label: "THE MOVER", icon: I.bolt },
     tech: { label: "TECH MATCH", icon: I.spark },
     ca: { label: "MENTIONED CA", icon: I.pin },
+    typed: { label: "TICKER IN THE POST", icon: I.pin },
     bio: { label: "POSTER'S BIO", icon: I.pin },
     more: { label: "MATCH", icon: I.pin },
     new: { label: "NEW PAIR", icon: I.spark }
@@ -2243,7 +2244,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       if (this.view === "stars" || this.view === "feed") this.view = "scan";
       this.stopTimers();
       this.lastPost = post;
-      this.state = { ...this.state, loading: true, early: [], error: null, narrative: null, engineError: null, story: null, source: source ?? this.state.source };
+      this.state = { ...this.state, loading: true, early: [], error: null, narrative: null, heard: "", engineError: null, story: null, source: source ?? this.state.source };
       this.updateLive();
       this.renderFoot();
       this.renderHead();
@@ -2275,7 +2276,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
         if (stale()) return;
         const read = await send("read", { post: p });
         if (stale()) return;
-        this.state = { ...this.state, narrative: read.narrative };
+        this.state = { ...this.state, narrative: read.narrative, heard: read.post?.transcript || "" };
         this.renderHead();
         const res = await send("coins", { post: p });
         if (stale()) return;
@@ -2311,7 +2312,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       const res = await send("coins", { post }).catch(() => null);
       if (id !== this.scanId || !res) return;
       const coinsOf = (r) => [...r.mentioned, ...(r.picks || []).map((p) => p.token)].map((t) => t.address).join();
-      this.state = { ...this.state, narrative: read.narrative };
+      this.state = { ...this.state, narrative: read.narrative, heard: read.post.transcript };
       this.renderHead();
       if (coinsOf(res) === coinsOf(shown)) return;
       this.showCoins(res);
@@ -2583,6 +2584,9 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
         else if ("story" in b.dataset) {
           this.expanded.has("story") ? this.expanded.delete("story") : this.expanded.add("story");
           this.renderHead();
+        } else if (b.dataset.act === "heard-more") {
+          this.expanded.has("heard") ? this.expanded.delete("heard") : this.expanded.add("heard");
+          this.renderHead();
         }
       };
       this.headEl.addEventListener("click", onHeadClick);
@@ -2817,10 +2821,34 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       }
       this.renderHead();
     }
+    // What's said in a video post, as Radar heard it: a coin is often only named out loud.
+    heardHtml() {
+      const heard = String(this.state.heard || "").replace(/\s+/g, " ").trim();
+      if (!heard) return "";
+      const open = this.expanded.has("heard");
+      const long = heard.length > 170;
+      const shown = open || !long ? heard : `${heard.slice(0, 169).replace(/\s+\S*$/, "")}\u2026`;
+      return `<div class="heard"><div class="heard-k">${I.spark}<span>Heard in the video</span></div><p>\u201C${esc2(shown)}\u201D</p>${long ? `<button type="button" data-act="heard-more">${open ? "Less" : "All of it"}</button>` : ""}</div>`;
+    }
+    // The coin a post types with its $ (no address in the post), from the coins the scan found: "Sharing some $meth"
+    // showed $METH among the picks as the Mover, not as the post's own coin.
+    typedCoin() {
+      const { mentioned = [], picks = [], others = [], roleCandidates = [] } = this.state;
+      if (mentioned.length || this.bioCards().length) return null;
+      const text = [this.lastPost?.text, this.lastPost?.quoted].filter(Boolean).join(" ");
+      const typed = [...new Set([...text.matchAll(/(?:^|[^\w$])\$([A-Za-z][A-Za-z0-9]{1,11})\b/g)].map((m) => m[1].toUpperCase()))].slice(0, 3);
+      if (!typed.length) return null;
+      const pool = [...picks.map((p) => p.token), ...others, ...roleCandidates].filter(Boolean).map((t) => this.tokens.get(t.address) || t);
+      for (const tk of typed) {
+        const hit = pool.filter((t) => String(t.symbol || "").toUpperCase() === tk && t.mcapBacked && (t.volume?.h24 || 0) >= 1e3).sort((a, b) => (b.marketCap || 0) - (a.marketCap || 0))[0];
+        if (hit) return hit;
+      }
+      return null;
+    }
     narrativeHtml() {
       const { loading, narrative, engineError } = this.state;
       if (!loading && engineError) return `<div class="narrative"><span>Coin from the post only</span><em>${esc2(engineError)}</em></div>`;
-      if (narrative) return `<div class="narrative"><span>${esc2(narrative)}</span>${loading ? "<em>finding coins\u2026</em>" : ""}</div>${this.storyHtml()}${this.whoHtml()}`;
+      if (narrative) return `<div class="narrative"><span>${esc2(narrative)}</span>${loading ? "<em>finding coins\u2026</em>" : ""}</div>${this.heardHtml()}${this.storyHtml()}${this.whoHtml()}`;
       if (!loading || !this.lastPost) return "";
       const doing = this.watching ? "Watching the video\u2026" : this.lastPost.hasVideo ? "Listening to the video\u2026" : this.lastPost.images?.length ? "Looking at the image\u2026" : "Reading the post\u2026";
       return `<div class="narrative thinking"><span>${doing}</span></div>`;
@@ -2891,6 +2919,8 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       html += `<div class="reroute-bar"><span>Instant reroute</span><button type="button" data-reroute>Open best match</button></div>`;
       if (mentioned.length) html += mentioned.map((t) => this.cardHtml(t, { role: "ca" })).join("");
       if (bio.length) html += bio.map((t) => this.cardHtml(t, { role: "bio" })).join("");
+      const typed = this.typedCoin();
+      if (typed) html += this.cardHtml(typed, { role: "typed" });
       const techIsAlreadyShown = techMatch && (mentioned.some((t) => t.address === techMatch.address) || picks.some((p) => p.token.address === techMatch.address));
       if (techMatch && !techIsAlreadyShown) {
         const t = this.tokens.get(techMatch.address) || techMatch;
@@ -2908,12 +2938,13 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
             <b data-tile-mc="${t.address}">${usd(t.marketCap)}</b>
             <span class="tile-chg ${ch == null ? "" : ch >= 0 ? "up" : "down"}" data-tile-chg="${t.address}">${pct2(ch)}</span>
             ${t.chain === "solana" ? `<span class="tile-b" data-tile-b="${t.address}">bundled \u2026</span>` : ""}</button>`;
-        }).join("")}</div>` + picks.map((p) => this.cardHtml(this.tokens.get(p.token.address) || p.token, p)).join("");
+        }).join("")}</div>` + picks.filter((p) => p.token.address !== typed?.address).map((p) => this.cardHtml(this.tokens.get(p.token.address) || p.token, p)).join("");
       }
       if (others.length) {
         const shown = this.expanded.has("all-matches") ? others : others.slice(0, 5);
         html += `<div class="section-label"><span>More matches</span><span>${others.length}</span></div><div class="list">`;
         for (const o of shown) {
+          if (o.address === typed?.address) continue;
           const t = this.tokens.get(o.address) || o;
           if (this.expanded.has(t.address)) {
             html += `</div>${this.cardHtml(t, { role: "more" })}<div class="list">`;
@@ -4790,6 +4821,13 @@ svg { display: block; }
 .nr-btn:hover { background: rgba(255,255,255,.1) !important; color: #fff !important; }
 
 .narrative em { display: block; margin-top: 4px; font-style: normal; font-weight: 500; font-size: 11.5px; color: var(--muted); }
+/* what's said in a video post */
+.heard { margin-top: 8px; padding: 9px 11px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); }
+.heard-k { display: flex; align-items: center; gap: 6px; font: 600 10px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.heard-k svg { width: 12px; height: 12px; color: var(--accent); }
+.heard p { margin: 6px 0 0; font-size: 12.5px; line-height: 1.45; color: var(--text); font-style: italic; overflow-wrap: anywhere; }
+.heard button { margin-top: 6px; padding: 0; border: 0; background: none; color: var(--muted); font: 600 11px var(--mono); cursor: pointer; text-decoration: underline; }
+.heard button:hover { color: var(--text); }
 .trend-list { margin-top: 18px; display: flex; flex-direction: column; gap: 2px; text-align: left; }
 .trend-list span { font: 600 10px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--faint); margin-bottom: 6px; }
 .trend-list button { text-align: left; padding: 8px 0; border-bottom: 1px solid var(--line); color: var(--text); font-weight: 600; }

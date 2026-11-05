@@ -153,6 +153,7 @@ const ROLE = {
   mover: { label: 'THE MOVER', icon: I.bolt },
   tech: { label: 'TECH MATCH', icon: I.spark },
   ca: { label: 'MENTIONED CA', icon: I.pin },
+  typed: { label: 'TICKER IN THE POST', icon: I.pin },
   bio: { label: "POSTER'S BIO", icon: I.pin },
   more: { label: 'MATCH', icon: I.pin },
   new: { label: 'NEW PAIR', icon: I.spark },
@@ -366,7 +367,7 @@ class Radar {
     if (this.view === 'stars' || this.view === 'feed') this.view = 'scan';
     this.stopTimers();
     this.lastPost = post;
-    this.state = { ...this.state, loading: true, early: [], error: null, narrative: null, engineError: null, story: null, source: source ?? this.state.source };
+    this.state = { ...this.state, loading: true, early: [], error: null, narrative: null, heard: '', engineError: null, story: null, source: source ?? this.state.source };
     this.updateLive();
     this.renderFoot();
     this.renderHead();
@@ -396,7 +397,7 @@ class Radar {
       // Stage 1: show the narrative as soon as it's read.
       const read = await send('read', { post: p });
       if (stale()) return;
-      this.state = { ...this.state, narrative: read.narrative };
+      this.state = { ...this.state, narrative: read.narrative, heard: read.post?.transcript || '' };
       this.renderHead();
       // Stage 2: the coins.
       const res = await send('coins', { post: p });
@@ -434,7 +435,7 @@ class Radar {
     const res = await send('coins', { post }).catch(() => null);
     if (id !== this.scanId || !res) return;
     const coinsOf = (r) => [...r.mentioned, ...(r.picks || []).map((p) => p.token)].map((t) => t.address).join();
-    this.state = { ...this.state, narrative: read.narrative };
+    this.state = { ...this.state, narrative: read.narrative, heard: read.post.transcript };
     this.renderHead();
     if (coinsOf(res) === coinsOf(shown)) return;
     this.showCoins(res);
@@ -708,6 +709,9 @@ class Radar {
       else if ('story' in b.dataset) {
         this.expanded.has('story') ? this.expanded.delete('story') : this.expanded.add('story');
         this.renderHead();
+      } else if (b.dataset.act === 'heard-more') {
+        this.expanded.has('heard') ? this.expanded.delete('heard') : this.expanded.add('heard');
+        this.renderHead();
       }
     };
     this.headEl.addEventListener('click', onHeadClick);
@@ -940,10 +944,37 @@ class Radar {
     this.renderHead();
   }
 
+  // What's said in a video post, as Radar heard it: a coin is often only named out loud.
+  heardHtml() {
+    const heard = String(this.state.heard || '').replace(/\s+/g, ' ').trim();
+    if (!heard) return '';
+    const open = this.expanded.has('heard');
+    const long = heard.length > 170;
+    const shown = open || !long ? heard : `${heard.slice(0, 169).replace(/\s+\S*$/, '')}…`;
+    return `<div class="heard"><div class="heard-k">${I.spark}<span>Heard in the video</span></div><p>“${esc(shown)}”</p>${long ? `<button type="button" data-act="heard-more">${open ? 'Less' : 'All of it'}</button>` : ''}</div>`;
+  }
+
+  // The coin a post types with its $ (no address in the post), from the coins the scan found: "Sharing some $meth"
+  // showed $METH among the picks as the Mover, not as the post's own coin.
+  typedCoin() {
+    const { mentioned = [], picks = [], others = [], roleCandidates = [] } = this.state;
+    if (mentioned.length || this.bioCards().length) return null;
+    const text = [this.lastPost?.text, this.lastPost?.quoted].filter(Boolean).join(' ');
+    const typed = [...new Set([...text.matchAll(/(?:^|[^\w$])\$([A-Za-z][A-Za-z0-9]{1,11})\b/g)].map((m) => m[1].toUpperCase()))].slice(0, 3);
+    if (!typed.length) return null;
+    const pool = [...picks.map((p) => p.token), ...others, ...roleCandidates].filter(Boolean).map((t) => this.tokens.get(t.address) || t);
+    for (const tk of typed) {
+      const hit = pool.filter((t) => String(t.symbol || '').toUpperCase() === tk && t.mcapBacked && (t.volume?.h24 || 0) >= 1000)
+        .sort((a, b) => (b.marketCap || 0) - (a.marketCap || 0))[0];
+      if (hit) return hit;
+    }
+    return null;
+  }
+
   narrativeHtml() {
     const { loading, narrative, engineError } = this.state;
     if (!loading && engineError) return `<div class="narrative"><span>Coin from the post only</span><em>${esc(engineError)}</em></div>`;
-    if (narrative) return `<div class="narrative"><span>${esc(narrative)}</span>${loading ? '<em>finding coins…</em>' : ''}</div>${this.storyHtml()}${this.whoHtml()}`;
+    if (narrative) return `<div class="narrative"><span>${esc(narrative)}</span>${loading ? '<em>finding coins…</em>' : ''}</div>${this.heardHtml()}${this.storyHtml()}${this.whoHtml()}`;
     if (!loading || !this.lastPost) return '';
     const doing = this.watching ? 'Watching the video…' : this.lastPost.hasVideo ? 'Listening to the video…' : this.lastPost.images?.length ? 'Looking at the image…' : 'Reading the post…';
     return `<div class="narrative thinking"><span>${doing}</span></div>`;
@@ -1007,6 +1038,8 @@ class Radar {
     html += `<div class="reroute-bar"><span>Instant reroute</span><button type="button" data-reroute>Open best match</button></div>`;
     if (mentioned.length) html += mentioned.map((t) => this.cardHtml(t, { role: 'ca' })).join('');
     if (bio.length) html += bio.map((t) => this.cardHtml(t, { role: 'bio' })).join('');
+    const typed = this.typedCoin();
+    if (typed) html += this.cardHtml(typed, { role: 'typed' });
     const techIsAlreadyShown = techMatch && (mentioned.some((t) => t.address === techMatch.address) || picks.some((p) => p.token.address === techMatch.address));
     if (techMatch && !techIsAlreadyShown) {
       const t = this.tokens.get(techMatch.address) || techMatch;
@@ -1025,13 +1058,14 @@ class Radar {
             <span class="tile-chg ${ch == null ? '' : ch >= 0 ? 'up' : 'down'}" data-tile-chg="${t.address}">${pct(ch)}</span>
             ${t.chain === 'solana' ? `<span class="tile-b" data-tile-b="${t.address}">bundled …</span>` : ''}</button>`;
         }).join('')}</div>`
-        + picks.map((p) => this.cardHtml(this.tokens.get(p.token.address) || p.token, p)).join('');
+        + picks.filter((p) => p.token.address !== typed?.address).map((p) => this.cardHtml(this.tokens.get(p.token.address) || p.token, p)).join('');
     }
     if (others.length) {
       // The five closest matches; the rest on request.
       const shown = this.expanded.has('all-matches') ? others : others.slice(0, 5);
       html += `<div class="section-label"><span>More matches</span><span>${others.length}</span></div><div class="list">`;
       for (const o of shown) {
+        if (o.address === typed?.address) continue;
         const t = this.tokens.get(o.address) || o;
         if (this.expanded.has(t.address)) { html += `</div>${this.cardHtml(t, { role: 'more' })}<div class="list">`; continue; }
         const ch = +t.priceChange.h1 || +t.priceChange.h24 || 0;
