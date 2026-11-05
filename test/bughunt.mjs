@@ -696,3 +696,16 @@ const quiet = async () => ({ score: 90, why: 'a dog', name: 'Biscuit' });
   assert.equal(aggregate([pair({ address: 'DhRWZHGd9HzVKC4pGpkQ4LTzFFKCEYKByJPbRLQ8pump', name: 'Nvidia - Backpack Securities', symbol: 'NVDA' })])[0].liquidity, 0, 'a copy of the name');
   console.log('PASS bughunt: pools priced in PUMP and in Backpack tokenized shares count as real liquidity');
 }
+
+// 48. A ticker that is a currency sign or another symbol prints as itself: the Pokémon Dollar's "₽" (U+20BD) came out
+// as "🔥 Mover: ? · $11.6K vol 24h". Nothing that could become a mention or a link gets through.
+{
+  const { ticker } = await import('../bot/reply.js');
+  assert.equal(ticker('₽'), '₽');
+  assert.equal(ticker('$€'), '€');
+  assert.equal(ticker('★STAR'), '★STAR');
+  assert.equal(ticker('@elon'), 'elon');
+  assert.equal(ticker('x.com/a'), 'xcoma');
+  assert.equal(ticker(''), '?');
+  console.log('PASS bughunt: a ticker of a currency sign prints as itself');
+}
