@@ -144,6 +144,15 @@ console.log('PASS signals: retries and backlog');
   assert.equal((await tick({ db: dbd, x, read: hot, now: now + 8 * 3600e3, accounts })).signals, 1, 'after 6 hours it can alert again');
   const dup = (await recent(dbd)).find((r) => r.id === '501');
   assert.match(dup.narrative, /same story as 500/);
+  // An account replying to its own alerted post is the same story: Dexerto posted a hawk "too fat to fly" and replied a
+  // minute later ("The Wildlife Center couldn't figure out what was wrong with the bird"), and both alerted.
+  const { sameStory } = await import('../bot/signals.js');
+  const tNow = now + 9 * 3600e3;
+  await dbd.prepare("INSERT INTO signals (id, author, at, kind, post, state, signal) VALUES ('600', 'Dexerto', ?, 'post', ?, 'read', 1)").bind(tNow - 60_000, JSON.stringify({ text: 'A hawk has been diagnosed as too fat to fly after eating too many free-range chickens' })).run();
+  const reply = { id: '601', post: JSON.stringify({ text: "The Wildlife Center couldn't figure out what was wrong with the bird", parent: 'A hawk has been diagnosed as too fat to fly after eating too many free-range chickens' }) };
+  assert.equal(await sameStory(dbd, reply, tNow), '600', 'a reply to an alerted post');
+  const other = { id: '602', post: JSON.stringify({ text: 'Four other robots have been made full-time employees at the store', parent: 'A grocery chain hires a robot' }) };
+  assert.equal(await sameStory(dbd, other, tNow), null, 'another story');
   console.log('PASS signals: one story is one alert');
 }
 

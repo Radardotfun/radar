@@ -106,14 +106,19 @@ const setMeta = (db, k, v) => db.prepare('INSERT INTO signal_meta (k, v) VALUES 
 const storyWords = (text) => new Set(String(text || '').toLowerCase().replace(/https?:\/\/\S+|@\w+/g, ' ').replace(/[’']/g, '').split(/[^\p{L}\p{N}]+/u).filter((w) => w.length >= 3 && !/^(the|and|for|this|that|with|has|have|says|said|just|breaking)$/.test(w)));
 export const SAME_STORY_MS = 6 * 3600e3;
 // An alert in the last 6 hours whose post says the same thing: most of the shorter post's words are in the other (4 at least).
-async function sameStory(db, row, now) {
-  const mine = storyWords(JSON.parse(row.post).text);
-  if (mine.size < 4) return null;
+// A reply is checked with the post it answers too: Dexerto's own reply under its alerted "too fat to fly" hawk post shares
+// no words with it, and alerted again.
+export async function sameStory(db, row, now) {
+  const post = JSON.parse(row.post);
+  const own = [storyWords(post.text), storyWords(post.parent)].filter((w) => w.size >= 4);
+  if (!own.length) return null;
   const earlier = (await db.prepare("SELECT id, post FROM signals WHERE signal = 1 AND kind != 'diamond' AND id != ? AND at > ? ORDER BY at DESC LIMIT 60").bind(row.id, now - SAME_STORY_MS).all()).results || [];
   for (const e of earlier) {
     const theirs = storyWords(JSON.parse(e.post || '{}').text);
-    const shared = [...mine].filter((w) => theirs.has(w)).length;
-    if (shared >= 4 && shared >= 0.6 * Math.min(mine.size, theirs.size)) return e.id;
+    for (const mine of own) {
+      const shared = [...mine].filter((w) => theirs.has(w)).length;
+      if (shared >= 4 && shared >= 0.6 * Math.min(mine.size, theirs.size)) return e.id;
+    }
   }
   return null;
 }
