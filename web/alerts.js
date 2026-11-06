@@ -1,4 +1,4 @@
-// Radar 1.7.126 alerts page, built from webapp/alerts.js: https://github.com/Radardotfun/radar
+// Radar 1.7.127 alerts page, built from webapp/alerts.js: https://github.com/Radardotfun/radar
 (() => {
   // extension/src/lib/keywords.js
   var STOP = new Set(`a about above after again against all almost also am an and any are aren as at be because been before
@@ -573,6 +573,8 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       holders: r.totalHolders ?? null,
       top10Pct: top10,
       topHolder: holders[0] ? { pct: holders[0].pct, insider: !!holders[0].insider } : null,
+      // The top wallets by owner (pools left out), for Bag Guard to notice one of them leaving.
+      top: holders.slice(0, 20).filter((h) => h.owner).map((h) => ({ owner: h.owner, pct: Number(h.pct) || 0 })),
       insiderWallets: r.graphInsidersDetected ?? 0,
       // RugCheck tallies cluster transfers cumulatively; above 100% it isn't a holding figure.
       insiderPct: pct2(insiderHeld) <= 100 ? pct2(insiderHeld) : null,
@@ -1415,7 +1417,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       for (const raw of tickers.slice(0, 2)) {
         const tk = String(raw || "").toUpperCase();
         if (!/^[A-Z][A-Z0-9]{1,11}$/.test(tk) || MAJOR_TICKERS.has(tk)) continue;
-        const found = await cached(`tt:${tk}:${s.chains}`, 6e4, async () => aggregate(await searchPairs(tk).catch(() => [])).filter((t) => s.chains.includes(t.chain) && isMemecoin(t) && String(t.symbol || "").toUpperCase() === tk && t.mcapBacked && alive(t) && (t.volume?.h24 || 0) >= 1e3 && (!STOCK_TICKERS.has(tk) || (t.marketCap || 0) >= 1e5) && (tk !== "RADAR" || t.address === "HyDSdtgiSa5mHqkTVoz8cTFTeVLFKdZ8amPvtNYfpump")).sort((a, b) => (b.marketCap || 0) - (a.marketCap || 0))[0] || null);
+        const found = await cached(`tt:${tk}:${s.chains}`, 6e4, async () => aggregate(await searchPairs(tk).catch(() => [])).filter((t) => s.chains.includes(t.chain) && isMemecoin(t) && String(t.symbol || "").toUpperCase() === tk && t.mcapBacked && alive(t) && (t.volume?.h24 || 0) >= 1e3 && (!STOCK_TICKERS.has(tk) || (t.marketCap || 0) >= 1e5) && (tk !== "RADAR" || t.address === "BTmeAebSh8MaYsTDiBiix79htKckjYQP5fvucFoFpump")).sort((a, b) => (b.marketCap || 0) - (a.marketCap || 0))[0] || null);
         if (found) return found;
       }
       return null;

@@ -6,7 +6,7 @@ import { aggregate } from '../extension/src/lib/market.js';
 import { botReply, familyLine } from '../bot/reply.js';
 
 const LARP = 't9bnCGiZVUYsRKvx4d5dPcoDCSyuBM9C33ZNGNULARP';
-const RADAR = 'HyDSdtgiSa5mHqkTVoz8cTFTeVLFKdZ8amPvtNYfpump';
+const RADAR = 'BTmeAebSh8MaYsTDiBiix79htKckjYQP5fvucFoFpump';
 const GALT = 'FomZeGyfkxa36RARLtBZyrfDRL6hqosjohPiX5E4pump';
 const B58 = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
 const raw = (s) => { let n = 0n; for (const c of s) n = n * 58n + BigInt(B58.indexOf(c)); const out = []; while (n > 0n) { out.unshift(Number(n % 256n)); n /= 256n; } for (const c of s) { if (c !== '1') break; out.unshift(0); } while (out.length < 32) out.unshift(0); return Buffer.from(out).toString('base64'); };

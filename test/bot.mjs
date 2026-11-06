@@ -272,7 +272,7 @@ const uncurved = await botCoins({ mentioned: [curve], picks: [], roleCandidates:
 assert.equal(uncurved.named.address, curve.address, 'no price from elsewhere is no reason to fail');
 console.log('PASS bot: a coin on its launch curve still shows a market cap');
 // Anything else called Radar is a copy of our own coin: an $84K "Radar" on BNB Chain was Highest MC on a post that mentions Radar.
-const radarMint = 'HyDSdtgiSa5mHqkTVoz8cTFTeVLFKdZ8amPvtNYfpump';
+const radarMint = 'BTmeAebSh8MaYsTDiBiix79htKckjYQP5fvucFoFpump';
 const realRadar = tok('RADAR', 'Radar', radarMint, 40_000);
 const radarBnb = tok('RADAR', 'Radar', '0x1111111111111111111111111111111111111111', 84_000, { chain: 'bsc' });
 const radarName = tok('RDR', 'Radar', 'RadarName777777777777777777777777777pump', 300_000);

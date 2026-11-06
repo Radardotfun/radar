@@ -192,7 +192,7 @@ export function makeHandlers(host) {
         .filter((t) => s.chains.includes(t.chain) && isMemecoin(t) && String(t.symbol || '').toUpperCase() === tk && t.mcapBacked && alive(t) && (t.volume?.h24 || 0) >= 1000
           && (!STOCK_TICKERS.has(tk) || (t.marketCap || 0) >= 100_000)
           // $RADAR only ever means the real mint, never a copy.
-          && (tk !== 'RADAR' || t.address === 'HyDSdtgiSa5mHqkTVoz8cTFTeVLFKdZ8amPvtNYfpump'))
+          && (tk !== 'RADAR' || t.address === 'BTmeAebSh8MaYsTDiBiix79htKckjYQP5fvucFoFpump'))
         .sort((a, b) => (b.marketCap || 0) - (a.marketCap || 0))[0] || null);
       if (found) return found;
     }

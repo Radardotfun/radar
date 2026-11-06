@@ -233,12 +233,12 @@ const quiet = async () => ({ score: 90, why: 'a dog', name: 'Biscuit' });
   globalThis.fetch = async (u) => {
     if (String(u).includes('/interpret')) { asked += 1; return new Response(JSON.stringify({ error: 'busy' }), { status: 503 }); }
     // DexScreener knows the coin in the post, so the read gives it with no AI rather than failing outright.
-    const pair = { chainId: 'solana', dexId: 'pumpswap', pairAddress: 'pool1', baseToken: { address: 'HyDSdtgiSa5mHqkTVoz8cTFTeVLFKdZ8amPvtNYfpump', symbol: 'RADAR', name: 'Radar' }, quoteToken: { address: 'So11111111111111111111111111111111111111112' }, priceUsd: '1', priceNative: '1', liquidity: { usd: 9000, quote: 4500 }, marketCap: 10000 };
+    const pair = { chainId: 'solana', dexId: 'pumpswap', pairAddress: 'pool1', baseToken: { address: 'BTmeAebSh8MaYsTDiBiix79htKckjYQP5fvucFoFpump', symbol: 'RADAR', name: 'Radar' }, quoteToken: { address: 'So11111111111111111111111111111111111111112' }, priceUsd: '1', priceNative: '1', liquidity: { usd: 9000, quote: 4500 }, marketCap: 10000 };
     const body = String(u).includes('/latest/dex/search') ? { pairs: [pair] } : /token-pairs|tokens\/v1/.test(String(u)) ? [pair] : {};
     return new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } });
   };
   const h = makeHandlers({ settings: async () => ({ ...DEFAULTS, chains: ['solana'] }), store: { get: async () => null, set: async () => {} }, openWindow: () => {}, rpcUrl: async () => null, ready: Promise.resolve(), inlineImages: false });
-  const post = { text: 'look at this dog on a skateboard HyDSdtgiSa5mHqkTVoz8cTFTeVLFKdZ8amPvtNYfpump' };
+  const post = { text: 'look at this dog on a skateboard BTmeAebSh8MaYsTDiBiix79htKckjYQP5fvucFoFpump' };
   const read = await h.read({ post });
   assert.ok(read.engineError, 'the AI is down in this test');
   const afterRead = asked;

@@ -11,6 +11,7 @@
 // 6 hours per account. With a $1 entry, one wallet could otherwise spend the whole plan, so a wallet gets 30 a day and
 // everyone together HOLDER_DAILY_LOOKUPS (default 250: API Basic's 300,000 credits over a month).
 import { ledgerWho } from './ledger.js';
+import { everHeld, markHeld } from './everheld.js';
 
 const ISSUED_WINDOW = 10 * 60_000;
 const TOKEN_LIFE = 24 * 3600_000;
@@ -24,7 +25,7 @@ const money = (n) => `$${Number.isInteger(n) ? n : n.toFixed(2)}`;
 const coinsOf = (env) => [{ symbol: 'RADAR', mint: env.RADAR_MINT }, ...(env.LARPCHECK_MINT ? [{ symbol: 'LARPCHECK', mint: env.LARPCHECK_MINT }] : [])];
 const tickers = (env) => coinsOf(env).map((c) => `$${c.symbol}`).join(' or ');
 // What the panel tells someone who hasn't checked their wallet. From here, so it stays true when Frontrun is added.
-const pitch = (env) => `Hold ${money(holderMinUsd(env))} of ${tickers(env)} for launch alerts, and to see the coins this account has posted before and which of those posts are gone${env.FRONTRUN_DATA_KEY ? ', plus its smart followers' : ''}.`;
+const pitch = (env) => `Hold ${money(holderMinUsd(env))} of ${tickers(env)}, or have held $RADAR at any point, for launch alerts, and to see the coins this account has posted before and which of those posts are gone${env.FRONTRUN_DATA_KEY ? ', plus its smart followers' : ''}.`;
 
 // The coins' prices in USD, from Jupiter: DexScreener often has none for a coin on its launch curve. A coin with no price is
 // left out, and it throws if none has one.
@@ -95,15 +96,16 @@ async function validSignature({ address, issued, signature }, now) {
   } catch { return false; }
 }
 
-// How much of a coin the wallet holds, across its token accounts. Throws if the chain can't say.
-async function balanceOf(rpcUrl, mint, address) {
+// How much of a coin the wallet holds, across its token accounts, and how many accounts it has for it (an account,
+// even an empty one, means it has held the coin). Throws if the chain can't say.
+async function holdingOf(rpcUrl, mint, address) {
   const r = await fetch(rpcUrl, {
     method: 'POST', headers: { 'content-type': 'application/json' }, signal: AbortSignal.timeout(10_000),
     body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'getTokenAccountsByOwner', params: [address, { mint }, { encoding: 'jsonParsed' }] }),
   });
   const d = await r.json().catch(() => null);
   if (!r.ok || !d || d.error || !Array.isArray(d.result?.value)) throw new Error('rpc');
-  return d.result.value.reduce((sum, a) => sum + Number(a.account?.data?.parsed?.info?.tokenAmount?.uiAmount || 0), 0);
+  return { balance: d.result.value.reduce((sum, a) => sum + Number(a.account?.data?.parsed?.info?.tokenAmount?.uiAmount || 0), 0), accounts: d.result.value.length };
 }
 
 /** { address, issued, signature (hex) } -> { holder, symbol, balance, value, coins, minUsd, token?, exp? }: symbol, balance and value are the wallet's best holding. */
@@ -114,20 +116,31 @@ export async function holderVerify(body, env, rpcUrl, now = Date.now()) {
 }
 
 // What this wallet holds now, and a token if it's enough. The wallet must already be proven: a signature above, or a link made with one.
+// Since the relaunch (6 Nov 2026), a wallet that has ever held $RADAR is in too, whatever it holds now (server/everheld.js).
 export async function holderForWallet(address, env, rpcUrl, now = Date.now()) {
   const busy = { status: 502, body: { error: "Couldn't read your balance right now. Try again in a moment." } };
+  const minUsd = holderMinUsd(env);
+  let onRecord = await everHeld(env, address).catch(() => null);
+  const ever = async (best, coins) => ({ status: 200, body: { holder: true, ever: true, symbol: 'RADAR', balance: best?.symbol === 'RADAR' ? best.balance : 0, value: best?.value || 0, held: onRecord.mint, coins, minUsd, ...await makeToken(env, address, now) } });
   const prices = await coinPrices(env).catch(() => null);
-  if (!prices) return busy;
+  if (!prices) return onRecord ? ever(null, []) : busy;
+  let radarAccounts = 0;
   const reads = await Promise.allSettled(coinsOf(env).map(async (c) => {
     if (!prices.has(c.mint)) throw new Error('no price');
-    const balance = await balanceOf(rpcUrl, c.mint, address);
+    const { balance, accounts } = await holdingOf(rpcUrl, c.mint, address);
+    if (c.mint === env.RADAR_MINT) radarAccounts = accounts;
     return { symbol: c.symbol, balance, value: balance * prices.get(c.mint) };
   }));
   const coins = reads.filter((r) => r.status === 'fulfilled').map((r) => r.value);
-  const minUsd = holderMinUsd(env);
   const best = [...coins].sort((a, b) => b.value - a.value)[0];
   // One coin over the line is enough. Under it, an unread coin could still be the one that passes, so that's no answer.
   if (best?.value >= minUsd) return { status: 200, body: { holder: true, ...best, coins, minUsd, ...await makeToken(env, address, now) } };
+  // A token account for the current $RADAR means it has held it, even if it's empty now: put it on record.
+  if (!onRecord && radarAccounts > 0) {
+    onRecord = { mint: env.RADAR_MINT, at: now };
+    await markHeld(env, [[address, env.RADAR_MINT, now]]).catch(() => {});
+  }
+  if (onRecord) return ever(best, coins);
   if (coins.length < reads.length) return busy;
   return { status: 200, body: { holder: false, ...best, coins, minUsd } };
 }

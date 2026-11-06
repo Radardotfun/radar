@@ -18,7 +18,7 @@ export { tiedToPost, bioCas, tiedToBio };
 const MAJORS = new Set([...'BTC ETH SOL HYPE XRP BNB USDC USDT WBTC WETH WSOL PEPE DOGE SHIB USD'.split(' '), ...MAJOR_TICKERS]);
 // The real $RADAR (RADAR_MINT in the server's wrangler.toml). An $84K "Radar" on BNB Chain was Highest MC on a post
 // that mentions Radar, which sent people to a copy of our own coin.
-const RADAR_MINT = 'HyDSdtgiSa5mHqkTVoz8cTFTeVLFKdZ8amPvtNYfpump';
+const RADAR_MINT = 'BTmeAebSh8MaYsTDiBiix79htKckjYQP5fvucFoFpump';
 // Big stocks' tickers. Typed on a markets post ($META, $SHOP) they mean the share, so a coin under the ticker has to be a
 // runner to count: Kobeissi's Big Tech post had named a $2.7K launchpad "META", a different dead one each scan.
 const STOCKS = STOCK_TICKERS;

@@ -18,7 +18,12 @@ directory = "./dist/web"
 # Launching a coin from a post (server/launch.js): "hidden" keeps the page working by direct link with no button in the
 # extension or on the scanner, "on" shows the button, "off" stops launches. All with no store update.
 LAUNCH_STATE = "on"
-RADAR_MINT ="HyDSdtgiSa5mHqkTVoz8cTFTeVLFKdZ8amPvtNYfpump"
+RADAR_MINT ="BTmeAebSh8MaYsTDiBiix79htKckjYQP5fvucFoFpump"
+# The coin before the relaunch on 6 Nov 2026. Anyone who held it by the cutoff keeps holder perks (server/everheld.js).
+# The relaunch was 19:52:30 UTC; the cutoff is 23:00 so the 2 wallets that bought the old coin by mistake after the
+# relaunch are in too (the user's call). Nothing records the old coin after this, so nobody else can buy their way in.
+RADAR_OLD_MINTS = "HyDSdtgiSa5mHqkTVoz8cTFTeVLFKdZ8amPvtNYfpump"
+RADAR_OLD_CUTOFF = "2026-11-06T23:00:00Z"
 # Sign in with Google for holders. A client id is public by design. Offered to everyone only when GOOGLE_LIVE is "1"; until then, with ?google=1 on /holder.
 GOOGLE_CLIENT_ID = "960012788157-tt36l1joo49n0j3n39lsesa5kfpd1dmr.apps.googleusercontent.com"
 GOOGLE_LIVE = "1"
@@ -30,3 +35,7 @@ HOLDER_MIN_USD = "10"
 binding = "DB"
 database_name = "radar-ledger"
 database_id = "3dcfd367-581e-4f54-9e9d-3f1219d8b37c"
+
+# Every 5 minutes: record who has held the current $RADAR since the last run (server/everheld.js), for holder perks.
+[triggers]
+crons = ["*/5 * * * *"]

@@ -10,6 +10,7 @@ import { holderGoogle } from './google.js';
 import { launchState, launchMeta, launchMetaFile, launchRecord, launchList, launchTaken } from './launch.js';
 import { engine, interpret, memeScore, judge, storyCheck, transcribe, watchVideo, sameImage, sameStory, samePicture, LOGO_HOST } from './narrative.js';
 import { holderOn, holderConfig, holderVerify, holderWho } from './holder.js';
+import { syncEverHeld } from './everheld.js';
 import { recordPost, readStatus } from './ledger.js';
 import { feed } from './feed.js';
 
@@ -202,7 +203,8 @@ async function route(kind, request, env, ctx) {
 // so the Worker never parses multi-megabyte blocks. Only the read methods the scans use are allowed.
 // Reads for the bundle scan, plus what Quick Buy (tryradar.fun/trade) needs: a balance, a simulation, sending the
 // wallet-signed buy and its status. Browsers can't call the public RPC from a website (it refuses an Origin header).
-const RPC_METHODS = new Set(['getSlot', 'getBlockTime', 'getBlock', 'getBlocks', 'getSignaturesForAddress', 'getTokenSupply', 'getTokenLargestAccounts', 'getAccountInfo', 'getMultipleAccounts', 'getTransaction',
+// getTokenAccountsByOwner: Bag Guard reads what the holder's own wallets hold (extension/src/lib/bagguard.js).
+const RPC_METHODS = new Set(['getTokenAccountsByOwner', 'getSlot', 'getBlockTime', 'getBlock', 'getBlocks', 'getSignaturesForAddress', 'getTokenSupply', 'getTokenLargestAccounts', 'getAccountInfo', 'getMultipleAccounts', 'getTransaction',
   'getBalance', 'simulateTransaction', 'sendTransaction', 'getSignatureStatuses', 'getLatestBlockhash']);
 const RPC_MAX = 6000;
 const RPC_PAGES_ONLY = new Set(['simulateTransaction', 'sendTransaction']);
@@ -491,5 +493,10 @@ export default {
       console.error(new URL(request.url).pathname, e?.message);
       return json(503, { error: 'Radar is busy. Try again in a moment.' });
     }
+  },
+  // Holder perks for anyone who has ever held $RADAR: pick up the coin's new transactions (server/everheld.js).
+  async scheduled(event, env, ctx) {
+    const rpcUrl = relayUrl(env) || 'https://api.mainnet-beta.solana.com';
+    ctx.waitUntil(syncEverHeld(env, rpcUrl).then((r) => console.log('ever held', JSON.stringify(r))).catch((e) => console.error('ever held', e?.message)));
   },
 };

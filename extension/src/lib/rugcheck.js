@@ -57,6 +57,8 @@ export async function rugReport(mint, pairAddresses = []) {
     holders: r.totalHolders ?? null,
     top10Pct: top10,
     topHolder: holders[0] ? { pct: holders[0].pct, insider: !!holders[0].insider } : null,
+    // The top wallets by owner (pools left out), for Bag Guard to notice one of them leaving.
+    top: holders.slice(0, 20).filter((h) => h.owner).map((h) => ({ owner: h.owner, pct: Number(h.pct) || 0 })),
     insiderWallets: r.graphInsidersDetected ?? 0,
     // RugCheck tallies cluster transfers cumulatively; above 100% it isn't a holding figure.
     insiderPct: pct(insiderHeld) <= 100 ? pct(insiderHeld) : null,

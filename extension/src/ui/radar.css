@@ -444,6 +444,8 @@ svg { display: block; }
 .al-hit:hover { border-color: var(--line-2); }
 .al-hit span { flex: 1; }
 .al-hit em { font: 700 10.5px var(--mono); font-style: normal; color: var(--muted); white-space: nowrap; }
+/* Bag Guard: a bag whose last look found something */
+.al-hit em.bad { color: var(--down); white-space: normal; text-align: right; max-width: 60%; }
 .empty + .settings { margin-top: 4px; }
 .settings p { margin: 0; font: 500 12.5px/1.45 var(--font); color: var(--muted); }
 .settings p.fine { font-size: 11px; color: var(--faint); }

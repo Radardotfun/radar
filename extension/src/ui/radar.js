@@ -1276,7 +1276,7 @@ class Radar {
     const what = "the post behind a starred coin is gone, Larpcheck's verdict turns bad, or liquidity falls 30%";
     return this.holder.holder
       ? `<div class="guard on">${I.bell}<div><b>Radar Guard is on</b><p>Radar checks every ${GUARD_MINUTES} minutes and alerts you if ${what}.</p></div></div>`
-      : `<div class="guard">${I.bell}<div><b>Radar Guard is for $RADAR and $LARPCHECK holders</b><p>Hold $10 of either and Radar alerts you if ${what}.</p><button type="button" data-holder-connect>Check my wallet</button></div></div>`;
+      : `<div class="guard">${I.bell}<div><b>Radar Guard is for $RADAR and $LARPCHECK holders</b><p>Hold $10 of either, or have held $RADAR at any point, and Radar alerts you if ${what}.</p><button type="button" data-holder-connect>Check my wallet</button></div></div>`;
   }
 
   starsHtml() {
@@ -1711,7 +1711,7 @@ class Radar {
       <button class="fr-btn ghost" data-act="fresh-toggle">New-pair badges on X: ${a.freshBadges === false ? 'Off' : 'On'}</button>
       <p>Radar also watches big accounts like Elon, Polymarket and Kalshi, and alerts $RADAR and $LARPCHECK holders when one posts something people may launch coins off. It's a heads up, not a pick.</p>
       <button class="fr-btn ghost" data-act="big-toggle">Big account alerts: ${a.bigAccounts === false ? 'Off' : 'On'}</button>
-    </section>${this.diamondHtml()}`;
+    </section>${this.diamondHtml()}${this.bagGuardHtml()}`;
   }
 
   // Diamond Hand: Radar's proven early holders, the holder's own wallets, and the switch for both.
@@ -1720,7 +1720,7 @@ class Radar {
     const mine = (a.myWallets || []).map((w) => `<div class="al-w"><div><b>${esc(w.slice(0, 4))}…${esc(w.slice(-4))}</b><span>Your wallet</span></div><em></em><button type="button" data-act="dh-remove" data-address="${esc(w)}">Remove</button></div>`).join('');
     return `<section class="settings">
       <div class="set-head"><h3>Diamond Hand</h3><span class="verdict ${a.holder ? 'ok' : 'neutral'}">${a.holder ? (a.diamond === false ? 'OFF' : 'ON') : 'HOLDERS'}</span></div>
-      <p>Radar watches wallets that bought recent runners in their first hour and still hold. When one buys a coin launched in the last 6 hours, you get an alert here and on X. For $RADAR and $LARPCHECK holders with $10 or more.</p>
+      <p>Radar watches wallets that bought recent runners in their first hour and still hold. When one buys a coin launched in the last 6 hours, you get an alert here and on X. For holders: $10 of $RADAR or $LARPCHECK, or anyone who has held $RADAR.</p>
       <button class="fr-btn ghost" data-act="diamond-toggle">Diamond Hand alerts: ${a.diamond === false ? 'Off' : 'On'}</button>
       <div class="section-label"><span>Your wallets</span></div>
       <p>Add up to 5 Solana wallets. Radar checks them every 2 minutes and alerts you when one buys a coin launched in the last 6 hours. The list stays on this device.</p>
@@ -1728,6 +1728,34 @@ class Radar {
       <div class="fr-connect"><input type="text" data-dh-wallet placeholder="Solana wallet address" autocomplete="off" spellcheck="false"><button class="fr-btn" data-act="dh-add">Track</button></div>
       ${a.holder ? '' : '<p class="fine">Check your wallet at the top of Radar to turn these on.</p>'}
     </section>`;
+  }
+
+  // Bag Guard: the coins in the holder's own wallets, and where each stands.
+  bagGuardHtml() {
+    const a = this.alerts;
+    const on = a.bagGuard !== false;
+    const g = a.bags;
+    const rows = (g?.bags || []).map((b) => `<a class="al-hit" href="${esc(b.url)}" target="_blank" rel="noopener noreferrer"><b>$${esc(String(b.symbol || '').trim())}</b>
+        <span>${esc(usd(b.value))}</span><em class="${b.flagged ? 'bad' : ''}">${esc(b.status)}</em></a>`).join('');
+    const wallets = [a.proved ? 'the wallet you checked' : '', (a.myWallets || []).length ? `${a.myWallets.length} from Diamond Hand` : ''].filter(Boolean).join(' and ');
+    const state = !a.holder || !on ? ''
+      : !g ? '<p class="fine">First look in the next few minutes.</p>'
+        : !g.wallets ? '<p class="fine">No wallets yet. Check your wallet at the top of Radar, or add one under Diamond Hand.</p>'
+          : rows ? `<div class="section-label"><span>Your bags</span></div><div class="al-list">${rows}</div><p class="fine">Last look ${esc(age(g.at))} ago.</p>`
+            : '<p class="fine">No coins worth $5 or more in your wallets right now.</p>';
+    return `<section class="settings">
+      <div class="set-head"><h3>Bag Guard</h3><span class="verdict ${a.holder ? 'ok' : 'neutral'}">${a.holder ? (on ? 'ON' : 'OFF') : 'HOLDERS'}</span></div>
+      <p>Radar watches the coins in your own wallets and alerts you the moment one turns: the dev sells, insiders dump, a top holder exits, the holder check turns serious, Larpcheck's verdict turns bad, or liquidity is pulled. Each alert opens the coin on your terminal. It says what happened; it never tells you to sell.</p>
+      <button class="fr-btn ghost" data-act="bag-toggle">Bag Guard: ${on ? 'On' : 'Off'}</button>
+      ${a.holder && on && wallets ? `<p class="fine">Watching ${esc(wallets)}, every 5 minutes. The wallets stay on this device.</p>` : ''}
+      ${state}
+      ${a.holder ? '' : '<p class="fine">For $RADAR holders. Check your wallet at the top of Radar to turn it on.</p>'}
+    </section>`;
+  }
+
+  async toggleBagGuard() {
+    try { this.alerts = await send('alerts:bagGuard', { on: this.alerts?.bagGuard === false }); } catch (err) { this.toast(err.message, 3000); }
+    this.renderBody();
   }
 
   async toggleDiamond() {
@@ -1976,6 +2004,7 @@ class Radar {
     if (e.target.closest('[data-act="fresh-toggle"]')) { await this.toggleFresh(); return; }
     if (e.target.closest('[data-act="big-toggle"]')) { await this.toggleBig(); return; }
     if (e.target.closest('[data-act="diamond-toggle"]')) { await this.toggleDiamond(); return; }
+    if (e.target.closest('[data-act="bag-toggle"]')) { await this.toggleBagGuard(); return; }
     if (e.target.closest('[data-act="dh-add"]')) { await this.addMyWallet(); return; }
     const dhRemove = e.target.closest('[data-act="dh-remove"]');
     if (dhRemove) { await this.removeMyWallet(dhRemove.dataset.address); return; }

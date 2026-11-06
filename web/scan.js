@@ -1,4 +1,4 @@
-// Radar 1.7.126 on the web: built from the extension source at https://tryradar.fun. Not financial advice.
+// Radar 1.7.127 on the web: built from the extension source at https://tryradar.fun. Not financial advice.
 (() => {
   // extension/src/lib/keywords.js
   var STOP = new Set(`a about above after again against all almost also am an and any are aren as at be because been before
@@ -594,6 +594,8 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       holders: r.totalHolders ?? null,
       top10Pct: top10,
       topHolder: holders[0] ? { pct: holders[0].pct, insider: !!holders[0].insider } : null,
+      // The top wallets by owner (pools left out), for Bag Guard to notice one of them leaving.
+      top: holders.slice(0, 20).filter((h) => h.owner).map((h) => ({ owner: h.owner, pct: Number(h.pct) || 0 })),
       insiderWallets: r.graphInsidersDetected ?? 0,
       // RugCheck tallies cluster transfers cumulatively; above 100% it isn't a holding figure.
       insiderPct: pct3(insiderHeld) <= 100 ? pct3(insiderHeld) : null,
@@ -1448,7 +1450,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       for (const raw of tickers.slice(0, 2)) {
         const tk = String(raw || "").toUpperCase();
         if (!/^[A-Z][A-Z0-9]{1,11}$/.test(tk) || MAJOR_TICKERS.has(tk)) continue;
-        const found = await cached(`tt:${tk}:${s.chains}`, 6e4, async () => aggregate(await searchPairs(tk).catch(() => [])).filter((t) => s.chains.includes(t.chain) && isMemecoin(t) && String(t.symbol || "").toUpperCase() === tk && t.mcapBacked && alive(t) && (t.volume?.h24 || 0) >= 1e3 && (!STOCK_TICKERS.has(tk) || (t.marketCap || 0) >= 1e5) && (tk !== "RADAR" || t.address === "HyDSdtgiSa5mHqkTVoz8cTFTeVLFKdZ8amPvtNYfpump")).sort((a, b) => (b.marketCap || 0) - (a.marketCap || 0))[0] || null);
+        const found = await cached(`tt:${tk}:${s.chains}`, 6e4, async () => aggregate(await searchPairs(tk).catch(() => [])).filter((t) => s.chains.includes(t.chain) && isMemecoin(t) && String(t.symbol || "").toUpperCase() === tk && t.mcapBacked && alive(t) && (t.volume?.h24 || 0) >= 1e3 && (!STOCK_TICKERS.has(tk) || (t.marketCap || 0) >= 1e5) && (tk !== "RADAR" || t.address === "BTmeAebSh8MaYsTDiBiix79htKckjYQP5fvucFoFpump")).sort((a, b) => (b.marketCap || 0) - (a.marketCap || 0))[0] || null);
         if (found) return found;
       }
       return null;
@@ -3118,7 +3120,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     guardHtml() {
       if (!this.alerts || !this.holder?.on) return "";
       const what = "the post behind a starred coin is gone, Larpcheck's verdict turns bad, or liquidity falls 30%";
-      return this.holder.holder ? `<div class="guard on">${I.bell}<div><b>Radar Guard is on</b><p>Radar checks every ${GUARD_MINUTES} minutes and alerts you if ${what}.</p></div></div>` : `<div class="guard">${I.bell}<div><b>Radar Guard is for $RADAR and $LARPCHECK holders</b><p>Hold $10 of either and Radar alerts you if ${what}.</p><button type="button" data-holder-connect>Check my wallet</button></div></div>`;
+      return this.holder.holder ? `<div class="guard on">${I.bell}<div><b>Radar Guard is on</b><p>Radar checks every ${GUARD_MINUTES} minutes and alerts you if ${what}.</p></div></div>` : `<div class="guard">${I.bell}<div><b>Radar Guard is for $RADAR and $LARPCHECK holders</b><p>Hold $10 of either, or have held $RADAR at any point, and Radar alerts you if ${what}.</p><button type="button" data-holder-connect>Check my wallet</button></div></div>`;
     }
     starsHtml() {
       const top = `<div class="recent-top"><span>Watchlist${this.stars.length ? ` \xB7 ${this.stars.length}` : ""}</span><button data-act-back>Back</button></div>${this.guardHtml()}`;
@@ -3536,7 +3538,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       <button class="fr-btn ghost" data-act="fresh-toggle">New-pair badges on X: ${a.freshBadges === false ? "Off" : "On"}</button>
       <p>Radar also watches big accounts like Elon, Polymarket and Kalshi, and alerts $RADAR and $LARPCHECK holders when one posts something people may launch coins off. It's a heads up, not a pick.</p>
       <button class="fr-btn ghost" data-act="big-toggle">Big account alerts: ${a.bigAccounts === false ? "Off" : "On"}</button>
-    </section>${this.diamondHtml()}`;
+    </section>${this.diamondHtml()}${this.bagGuardHtml()}`;
     }
     // Diamond Hand: Radar's proven early holders, the holder's own wallets, and the switch for both.
     diamondHtml() {
@@ -3544,7 +3546,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       const mine = (a.myWallets || []).map((w) => `<div class="al-w"><div><b>${esc2(w.slice(0, 4))}\u2026${esc2(w.slice(-4))}</b><span>Your wallet</span></div><em></em><button type="button" data-act="dh-remove" data-address="${esc2(w)}">Remove</button></div>`).join("");
       return `<section class="settings">
       <div class="set-head"><h3>Diamond Hand</h3><span class="verdict ${a.holder ? "ok" : "neutral"}">${a.holder ? a.diamond === false ? "OFF" : "ON" : "HOLDERS"}</span></div>
-      <p>Radar watches wallets that bought recent runners in their first hour and still hold. When one buys a coin launched in the last 6 hours, you get an alert here and on X. For $RADAR and $LARPCHECK holders with $10 or more.</p>
+      <p>Radar watches wallets that bought recent runners in their first hour and still hold. When one buys a coin launched in the last 6 hours, you get an alert here and on X. For holders: $10 of $RADAR or $LARPCHECK, or anyone who has held $RADAR.</p>
       <button class="fr-btn ghost" data-act="diamond-toggle">Diamond Hand alerts: ${a.diamond === false ? "Off" : "On"}</button>
       <div class="section-label"><span>Your wallets</span></div>
       <p>Add up to 5 Solana wallets. Radar checks them every 2 minutes and alerts you when one buys a coin launched in the last 6 hours. The list stays on this device.</p>
@@ -3552,6 +3554,32 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       <div class="fr-connect"><input type="text" data-dh-wallet placeholder="Solana wallet address" autocomplete="off" spellcheck="false"><button class="fr-btn" data-act="dh-add">Track</button></div>
       ${a.holder ? "" : '<p class="fine">Check your wallet at the top of Radar to turn these on.</p>'}
     </section>`;
+    }
+    // Bag Guard: the coins in the holder's own wallets, and where each stands.
+    bagGuardHtml() {
+      const a = this.alerts;
+      const on = a.bagGuard !== false;
+      const g = a.bags;
+      const rows = (g?.bags || []).map((b) => `<a class="al-hit" href="${esc2(b.url)}" target="_blank" rel="noopener noreferrer"><b>$${esc2(String(b.symbol || "").trim())}</b>
+        <span>${esc2(usd(b.value))}</span><em class="${b.flagged ? "bad" : ""}">${esc2(b.status)}</em></a>`).join("");
+      const wallets = [a.proved ? "the wallet you checked" : "", (a.myWallets || []).length ? `${a.myWallets.length} from Diamond Hand` : ""].filter(Boolean).join(" and ");
+      const state = !a.holder || !on ? "" : !g ? '<p class="fine">First look in the next few minutes.</p>' : !g.wallets ? '<p class="fine">No wallets yet. Check your wallet at the top of Radar, or add one under Diamond Hand.</p>' : rows ? `<div class="section-label"><span>Your bags</span></div><div class="al-list">${rows}</div><p class="fine">Last look ${esc2(age(g.at))} ago.</p>` : '<p class="fine">No coins worth $5 or more in your wallets right now.</p>';
+      return `<section class="settings">
+      <div class="set-head"><h3>Bag Guard</h3><span class="verdict ${a.holder ? "ok" : "neutral"}">${a.holder ? on ? "ON" : "OFF" : "HOLDERS"}</span></div>
+      <p>Radar watches the coins in your own wallets and alerts you the moment one turns: the dev sells, insiders dump, a top holder exits, the holder check turns serious, Larpcheck's verdict turns bad, or liquidity is pulled. Each alert opens the coin on your terminal. It says what happened; it never tells you to sell.</p>
+      <button class="fr-btn ghost" data-act="bag-toggle">Bag Guard: ${on ? "On" : "Off"}</button>
+      ${a.holder && on && wallets ? `<p class="fine">Watching ${esc2(wallets)}, every 5 minutes. The wallets stay on this device.</p>` : ""}
+      ${state}
+      ${a.holder ? "" : '<p class="fine">For $RADAR holders. Check your wallet at the top of Radar to turn it on.</p>'}
+    </section>`;
+    }
+    async toggleBagGuard() {
+      try {
+        this.alerts = await send("alerts:bagGuard", { on: this.alerts?.bagGuard === false });
+      } catch (err) {
+        this.toast(err.message, 3e3);
+      }
+      this.renderBody();
     }
     async toggleDiamond() {
       try {
@@ -3855,6 +3883,10 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       }
       if (e.target.closest('[data-act="diamond-toggle"]')) {
         await this.toggleDiamond();
+        return;
+      }
+      if (e.target.closest('[data-act="bag-toggle"]')) {
+        await this.toggleBagGuard();
         return;
       }
       if (e.target.closest('[data-act="dh-add"]')) {
@@ -4599,6 +4631,8 @@ svg { display: block; }
 .al-hit:hover { border-color: var(--line-2); }
 .al-hit span { flex: 1; }
 .al-hit em { font: 700 10.5px var(--mono); font-style: normal; color: var(--muted); white-space: nowrap; }
+/* Bag Guard: a bag whose last look found something */
+.al-hit em.bad { color: var(--down); white-space: normal; text-align: right; max-width: 60%; }
 .empty + .settings { margin-top: 4px; }
 .settings p { margin: 0; font: 500 12.5px/1.45 var(--font); color: var(--muted); }
 .settings p.fine { font-size: 11px; color: var(--faint); }

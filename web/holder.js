@@ -38,6 +38,8 @@
 
   const usd = (n) => `$${Number(n).toFixed(2)}`;
   const fmt = (n) => Number(n).toLocaleString('en-US', { maximumFractionDigits: 0 });
+  // A pass is either a holding over the line or, since the relaunch, a wallet that has held $RADAR before.
+  const passed = (d) => (d.ever && !(Number(d.value) >= Number(d.minUsd || 10)) ? "This wallet has held $RADAR, so it keeps holder perks. You're in." : `You hold ${usd(d.value)} of $${d.symbol}. You're in.`);
   const holdings = (d) => `This wallet holds ${(d.coins || []).map((c) => `${fmt(c.balance)} $${c.symbol}, worth ${usd(c.value)}`).join(', and ') || 'neither coin'}. Holder features start at ${usd(d.minUsd || 10)}.`;
 
   // Google can't say what a wallet holds, so a Google account is linked once to a wallet that signed. Off until the server has a client id.
@@ -128,16 +130,16 @@
     googleCredential = null;
     remember(null);
     // Signed on this phone for a computer: the token is the computer's to collect.
-    if (pair) { say(`You hold ${usd(d.value)} of $${d.symbol}. You're in. Go back to the page that sent you here. It picks this up by itself.`, 'success'); return; }
+    if (pair) { say(`${passed(d)} Go back to the page that sent you here. It picks this up by itself.`, 'success'); return; }
     // The site's own pages read it from here. A wallet's browser on a phone may have no opener to hand it to.
     try { localStorage.setItem('nr:radarHolder', JSON.stringify({ token: d.token, exp: d.exp })); } catch {}
     if (params.get('next') === 'alerts') {
-      say(`You hold ${usd(d.value)} of $${d.symbol}. You're in.`, 'success');
+      say(passed(d), 'success');
       setTimeout(() => location.replace('/alerts'), 900);
       return;
     }
     if (window.opener) for (const origin of PANELS) { try { window.opener.postMessage({ type: 'radar:holder', token: d.token, exp: d.exp }, origin); } catch {} }
-    say(`You hold ${usd(d.value)} of $${d.symbol}. You're in.${window.opener ? ' This window closes in a moment.' : ''}`, 'success');
+    say(`${passed(d)}${window.opener ? ' This window closes in a moment.' : ''}`, 'success');
     if (window.opener) setTimeout(() => window.close(), 2500);
   }
 

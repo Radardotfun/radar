@@ -85,11 +85,12 @@ assert.equal(ok.body.holder, true);
 assert.equal(await readToken(env, ok.body.token, now), address);
 console.log('PASS holder: a signed wallet with enough $RADAR gets a day\'s token');
 
-// Under $1: told what it's worth, no token. The line follows the price.
+// Under $1 of $RADAR: since the relaunch any $RADAR at all counts (a wallet that holds some has held it), so it's in,
+// marked as an "ever held" pass with what it's worth. test/everheld.mjs covers the rest of that rule.
 balance = 99999;
 const short = await holderVerify(good, env, 'https://rpc.test', now);
-assert.equal(short.body.holder, false);
-assert.equal(short.body.token, undefined);
+assert.equal(short.body.holder, true);
+assert.equal(short.body.ever, true);
 assert.equal(short.body.minUsd, 1);
 assert.ok(short.body.value < 1);
 price = 0.00002;
@@ -118,17 +119,20 @@ console.log('PASS holder: the line is $1 of $RADAR at the current price');
     if (String(url).startsWith('https://lite-api.jup.ag')) return new Response(JSON.stringify(priced));
     const mint = JSON.parse(init.body).params[1].mint;
     if (failing.has(mint)) return new Response(JSON.stringify({ error: { message: 'busy' } }));
-    return new Response(JSON.stringify({ result: { value: [{ account: { data: { parsed: { info: { tokenAmount: { uiAmount: held[mint] } } } } } }] } }));
+    // a wallet that never had the coin has no token account for it
+    return new Response(JSON.stringify({ result: { value: held[mint] > 0 ? [{ account: { data: { parsed: { info: { tokenAmount: { uiAmount: held[mint] } } } } } }] : [] } }));
   };
   const check = () => holderVerify(good, lcEnv, 'https://rpc.test', now);
-  assert.match((await holderConfig(lcEnv)).pitch, /^Hold \$1 of \$RADAR or \$LARPCHECK for/);
+  assert.match((await holderConfig(lcEnv)).pitch, /^Hold \$1 of \$RADAR or \$LARPCHECK, or have held \$RADAR at any point, for/);
   let r = await check();
   assert.equal(r.body.holder, false, 'neither coin');
   assert.deepEqual(r.body.coins.map((c) => c.symbol), ['RADAR', 'LARPCHECK'], 'both are read');
   held[lcEnv.LARPCHECK_MINT] = 999;
   assert.equal((await check()).body.holder, false, '$0.999 of $LARPCHECK is under the line');
   held[env.RADAR_MINT] = 50000;
-  assert.equal((await check()).body.holder, false, '$0.50 + $0.999: part holdings do not add up');
+  r = await check();
+  assert.equal(r.body.holder, true, '$0.50 of $RADAR: any $RADAR counts since the relaunch');
+  assert.equal(r.body.ever, true);
   held[env.RADAR_MINT] = 0;
   held[lcEnv.LARPCHECK_MINT] = 1000;
   r = await check();

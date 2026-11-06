@@ -4,7 +4,7 @@ import { rowView, boardFrom, handleView, holdersView, checkView, hasPlan } from 
 import { verdictTurned, RISK_WORDS } from '../extension/src/lib/alerts.js';
 import { botReply } from '../bot/reply.js';
 
-const A = 'HyDSdtgiSa5mHqkTVoz8cTFTeVLFKdZ8amPvtNYfpump';
+const A = 'BTmeAebSh8MaYsTDiBiix79htKckjYQP5fvucFoFpump';
 const row = (over = {}) => ({ id: 'abc123', url: 'https://larpcheck.app/c/abc123', status: 'done', verdict: 'LIKELY LARP', score: 22, total: 30, title: 'A coin', call: 'One line', coin: A, kind: 'coin', input: A, ...over });
 
 assert.equal(rowView(row()).verdict, 'LIKELY LARP');
@@ -67,7 +67,7 @@ assert.ok(!botReply(result, url, 0, { larp }).includes('Larpcheck'), 'a reply wi
 console.log('PASS lc: a bot reply names the verdict only with its link');
 
 const { bioCas, tiedToBio } = await import('../bot/coins.js');
-const CA = 'HyDSdtgiSa5mHqkTVoz8cTFTeVLFKdZ8amPvtNYfpump';
+const CA = 'BTmeAebSh8MaYsTDiBiix79htKckjYQP5fvucFoFpump';
 assert.deepEqual(bioCas({ bio: `building. CA: ${CA}` }), [CA]);
 assert.deepEqual(bioCas({ bio: 'no address, just vibes 0x12' }), []);
 assert.deepEqual(bioCas({}), []);

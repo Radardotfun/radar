@@ -135,7 +135,7 @@ if (process.argv.includes('--live')) {
 
 // A coin paired to another token goes through pump's own SDK.
 {
-  const RADAR = 'HyDSdtgiSa5mHqkTVoz8cTFTeVLFKdZ8amPvtNYfpump';
+  const RADAR = 'BTmeAebSh8MaYsTDiBiix79htKckjYQP5fvucFoFpump';
   const LARP = 't9bnCGiZVUYsRKvx4d5dPcoDCSyuBM9C33ZNGNULARP';
   const WSOL = 'So11111111111111111111111111111111111111112';
   const pair = (dexId, quote, liq = 1) => ({ chainId: 'solana', dexId, baseToken: { address: RADAR }, quoteToken: { address: quote }, liquidity: { usd: liq } });

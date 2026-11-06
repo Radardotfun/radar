@@ -4,6 +4,7 @@ import { newWatch, newFollow, verdictTurned, checkWatch, buyUrl, chartUrl, MAX_W
 import { GUARD_KEY, GUARD_MINUTES, lookAtStar } from './lib/guard.js';
 import { lookAt, launchFromPairs, isWalletAddress, agoText, MAX_MY_WALLETS } from './lib/diamond.js';
 import { reportBlock } from './ui/holdercheck.js';
+import { BAG_KEY, BAG_ON, BAG_LIST, BAG_MINUTES, REPORTS_PER_RUN, walletHoldings, pickBags, lookAtBag, provedWallet, terminalUrl } from './lib/bagguard.js';
 
 export { API_BASE, DEFAULTS };
 
@@ -185,8 +186,15 @@ handlers['alerts:fresh'] = async ({ on }) => {
 // Diamond Hand's part of the alerts view: its switch, the holder's own wallets, and whether this browser holds.
 async function diamondState() {
   const got = await ext.storage.local.get([DH_KEY, MY_WALLETS, 'radarHolder']);
-  return { diamond: got[DH_KEY] !== false, myWallets: (got[MY_WALLETS] || []).map((w) => w.address), holder: !!(got.radarHolder?.token && got.radarHolder.exp > Date.now()) };
+  const bag = await ext.storage.local.get([BAG_ON, BAG_LIST]);
+  return { diamond: got[DH_KEY] !== false, myWallets: (got[MY_WALLETS] || []).map((w) => w.address), holder: !!(got.radarHolder?.token && got.radarHolder.exp > Date.now()),
+    bagGuard: bag[BAG_ON] !== false, bags: bag[BAG_LIST] || null, proved: provedWallet(got.radarHolder?.token) };
 }
+handlers['alerts:bagGuard'] = async ({ on }) => {
+  await ext.storage.local.set({ [BAG_ON]: !!on });
+  if (on) runBagGuard(true).catch(() => {});
+  return alertList(await loadAlerts());
+};
 handlers['alerts:diamond'] = async ({ on }) => {
   await ext.storage.local.set({ [DH_KEY]: !!on });
   return alertList(await loadAlerts());
@@ -419,6 +427,79 @@ async function runGuard() {
   }
 }
 ext.alarms.onAlarm.addListener((alarm) => { if (alarm.name === GUARD_ALARM) runGuard().catch(() => {}); });
+
+// Bag Guard: every 5 minutes, for holders, the coins in the holder's own wallets (lib/bagguard.js): the wallet proved in the
+// holder check and the ones given to Diamond Hand. The wallets and what they hold never leave this browser; the chain is
+// read through Radar's relay, prices from DexScreener, holder reports the same way the coin cards get them.
+const BAG_ALARM = 'radar-bag-guard';
+ext.alarms.get(BAG_ALARM).then((a) => a || ext.alarms.create(BAG_ALARM, { periodInMinutes: BAG_MINUTES })).catch(() => {});
+let bagging = false;
+async function runBagGuard(now = false) {
+  if (bagging) return;
+  bagging = true;
+  try {
+    const got = await ext.storage.local.get([BAG_ON, MY_WALLETS, 'radarHolder', BAG_KEY, BAG_LIST]);
+    if (got[BAG_ON] === false) return;
+    const holder = got.radarHolder;
+    if (!(holder?.token && holder.exp > Date.now())) return;
+    // Turned on from the panel: run straight away, unless a run just finished.
+    if (now && Date.now() - (got[BAG_LIST]?.at || 0) < 60_000) return;
+    const wallets = [...new Set([provedWallet(holder.token), ...(got[MY_WALLETS] || []).map((w) => w.address)].filter(Boolean))];
+    if (!wallets.length) { await ext.storage.local.set({ [BAG_LIST]: { at: Date.now(), wallets: 0, bags: [] } }); return; }
+    const holdings = new Map();
+    let unread = 0;
+    for (const w of wallets) {
+      try {
+        for (const [mint, amount] of await walletHoldings(w, relay)) {
+          const h = holdings.get(mint) || { amount: 0, wallets: new Set() };
+          h.amount += amount; h.wallets.add(w); holdings.set(mint, h);
+        }
+      } catch { unread++; }
+    }
+    // Nothing could be read: keep the last list rather than show an empty one.
+    if (unread === wallets.length) return;
+    // At most 90 coins priced a run (three DexScreener asks); a wallet full of airdropped dust shouldn't cost more.
+    const mints = [...holdings.keys()].slice(0, 90);
+    const fresh = mints.length ? await handlers.refresh({ tokens: mints.map((address) => ({ chain: 'solana', address })) }).then((r) => r.tokens).catch(() => null) : {};
+    if (!fresh) return;
+    const bags = pickBags(holdings, fresh);
+    const was = got[BAG_KEY] || {};
+    // Holder reports are slow and rate limited: a few bags a run, the ones read longest ago (or never) first.
+    const ask = new Set([...bags].sort((a, b) => (was[a.mint]?.reportAt || 0) - (was[b.mint]?.reportAt || 0)).slice(0, REPORTS_PER_RUN).map((b) => b.mint));
+    const state = {};
+    const items = [];
+    const list = [];
+    for (const bag of bags) {
+      const [report, lc] = ask.has(bag.mint)
+        ? await Promise.all([handlers.safety({ mint: bag.mint, pairs: fresh[bag.mint]?.pairAddresses || [] }).catch(() => null), handlers.larpcheck({ address: bag.mint }).catch(() => null)])
+        : [null, null];
+      const look = lookAtBag(bag, { report, lc }, was[bag.mint]);
+      state[bag.mint] = look.state;
+      const url = terminalUrl(bag);
+      list.push({ mint: bag.mint, symbol: bag.symbol, value: bag.value, status: look.status, flagged: look.status !== 'Quiet', url });
+      for (const e of look.events) {
+        const coin = coinOf(fresh[bag.mint]);
+        const larp = lc?.checked ? { by: 'Larpcheck', word: lc.verdict, score: lc.score ?? null, url: lc.url || lc.page || null } : null;
+        // No buy button: an alert that something went wrong shouldn't offer one. The link opens the coin on the terminal.
+        items.push({ id: `bag:${bag.mint}:${e.reason}:${e.word || e.text.slice(0, 40)}`, at: Date.now(), kind: e.reason === 'verdict' ? 'verdict' : 'guard', text: e.text, watch: { url, author: 'Bag Guard', label: `$${bag.symbol}` }, coin, larp, holders: null, buy: null, chart: url });
+      }
+    }
+    // Only the coins still held keep their state: buy one again later and it starts from a fresh, quiet first look.
+    await ext.storage.local.set({ [BAG_KEY]: state, [BAG_LIST]: { at: Date.now(), wallets: wallets.length, unread, bags: list } });
+    if (!items.length) return;
+    const added = await withAlerts(async (a) => {
+      const newOnes = items.filter((i) => !a.feed.some((f) => f.id === i.id));
+      a.feed = [...newOnes, ...a.feed].slice(0, 30);
+      a.unread += newOnes.length;
+      if (newOnes.length) showBadge(a.unread);
+      return newOnes;
+    });
+    for (const item of added.slice(0, 3)) await notify(item);
+  } finally {
+    bagging = false;
+  }
+}
+ext.alarms.onAlarm.addListener((alarm) => { if (alarm.name === BAG_ALARM) runBagGuard().catch(() => {}); });
 
 // Big account alerts: once a minute, for holders, what the account watcher has flagged since the last look.
 const SIGNAL_ALARM = 'radar-signals';
