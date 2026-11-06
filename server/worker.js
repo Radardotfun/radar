@@ -429,8 +429,8 @@ const app = {
       return json(200, await feed(await jsonOf(request), env));
     }
     // Track record (server/track.js): every coin Radar flagged, then and now. POST with a holder token for the live list;
-    // GET (the site's /track page) gets the public one, 30 minutes behind.
-    if (pathname === '/track' && (request.method === 'POST' || request.method === 'GET')) {
+    // GET (the site's /track page) gets the public one, 30 minutes behind. Not /track: that path is the page, served from assets.
+    if (pathname === '/track-record' && (request.method === 'POST' || request.method === 'GET')) {
       if (limited(`track:${ipOf(request)}`, 120)) return json(429, { error: 'Too many requests. Try again in a few minutes.' });
       const body = request.method === 'POST' ? await jsonOf(request) : { hours: new URL(request.url).searchParams.get('hours') };
       return json(200, await trackRecord(body, env));

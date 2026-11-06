@@ -437,7 +437,7 @@ export function makeHandlers(host) {
   async function track() {
     const h = await holderStored().catch(() => null);
     return cached(`tr:${h?.token ? 'h' : 'p'}`, 60_000, async () => {
-      const res = await fetch(`${API_BASE}/track`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ token: h?.token, hours: 24 }), signal: AbortSignal.timeout(12_000) });
+      const res = await fetch(`${API_BASE}/track-record`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ token: h?.token, hours: 24 }), signal: AbortSignal.timeout(12_000) });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || `Track record ${res.status}`);
       return data;

@@ -1,4 +1,4 @@
-// Radar 1.7.128 alerts page, built from webapp/alerts.js: https://github.com/Radardotfun/radar
+// Radar 1.7.129 alerts page, built from webapp/alerts.js: https://github.com/Radardotfun/radar
 (() => {
   // extension/src/lib/keywords.js
   var STOP = new Set(`a about above after again against all almost also am an and any are aren as at be because been before
@@ -1635,7 +1635,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     async function track() {
       const h = await holderStored().catch(() => null);
       return cached(`tr:${h?.token ? "h" : "p"}`, 6e4, async () => {
-        const res = await fetch(`${API_BASE}/track`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ token: h?.token, hours: 24 }), signal: AbortSignal.timeout(12e3) });
+        const res = await fetch(`${API_BASE}/track-record`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ token: h?.token, hours: 24 }), signal: AbortSignal.timeout(12e3) });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || `Track record ${res.status}`);
         return data;
