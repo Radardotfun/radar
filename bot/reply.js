@@ -61,6 +61,7 @@ export function replyEntries(result, now = Date.now()) {
   const sincePost = (t) => {
     const d = result?.postAt && t?.createdAt ? t.createdAt - result.postAt : null;
     if (d == null || d < -60_000 || d > 3 * 86_400_000) return '';
+    if (d < 0) return 'the same minute as the post';
     if (d < 60_000) return `${Math.max(1, Math.round(d / 1000))}s after the post`;
     return `${ago(result.postAt, t.createdAt)} after the post`;
   };

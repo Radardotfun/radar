@@ -757,5 +757,7 @@ const quiet = async () => ({ score: 90, why: 'a dog', name: 'Biscuit' });
   assert.equal(sec.stat, '$9.0K · 26s after the post');
   const before = replyEntries({ named: coin('Old', 'Old1111111111111111111111111111111111pump', 50_000, postAt - 5 * 86_400_000), how: 'post', postAt, picks: [] }, now)[0];
   assert.equal(before.stat, '$50.0K', 'an older coin keeps just its market cap');
+  const just = replyEntries({ named: coin('Pre', 'Pre1111111111111111111111111111111111pump', 9_000, postAt - 20_000), how: 'linked', postAt, picks: [] }, now)[0];
+  assert.equal(just.stat, '$9.0K · the same minute as the post', '20 s before is not "after"');
   console.log('PASS bughunt: the coin tied to the post says how soon after the post it launched');
 }
