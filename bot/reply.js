@@ -57,15 +57,22 @@ export function replyEntries(result, now = Date.now()) {
   };
   // A coin past its first day that barely trades says so, beside the number that earned its place.
   const stat = (t, s) => [s, quiet(t, now) && tradesLine(t)].filter(Boolean).join(' · ');
+  // How soon after the post a coin tied to it launched, as the panel shows it ("4m after the post"); only within 3 days.
+  const sincePost = (t) => {
+    const d = result?.postAt && t?.createdAt ? t.createdAt - result.postAt : null;
+    if (d == null || d < -60_000 || d > 3 * 86_400_000) return '';
+    if (d < 60_000) return `${Math.max(1, Math.round(d / 1000))}s after the post`;
+    return `${ago(result.postAt, t.createdAt)} after the post`;
+  };
   // Highest MC means it beat something: alone on the story, or with a bigger namesake left out, the title isn't claimed.
   const noTop = alone || result?.outranked;
   if (named) {
     const roles = won(named.address);
-    entries.push({ label: `${result.how === 'picture' ? '🖼 Same picture as the post' : result.how === 'bio' ? '👤 In the poster\'s bio' : result.how === 'linked' ? '🔗 Launched from this post' : '📌 In the post'}${roles.length ? ` (${roles.join(', ')})` : ''}`, t: named, stat: stat(named, usd(named.marketCap)) });
+    entries.push({ label: `${result.how === 'picture' ? '🖼 Same picture as the post' : result.how === 'bio' ? '👤 In the poster\'s bio' : result.how === 'linked' ? '🔗 Launched from this post' : '📌 In the post'}${roles.length ? ` (${roles.join(', ')})` : ''}`, t: named, stat: [stat(named, usd(named.marketCap)), sincePost(named)].filter(Boolean).join(' · ') });
   }
   // A coin launched from this very post, beside the coin the reply leads with.
   const linkedToo = result?.alsoLinked?.address && result.alsoLinked.address !== named?.address ? result.alsoLinked : null;
-  if (linkedToo) entries.push({ label: '🔗 Launched from this post', t: linkedToo, stat: stat(linkedToo, usd(linkedToo.marketCap)) });
+  if (linkedToo) entries.push({ label: '🔗 Launched from this post', t: linkedToo, stat: [stat(linkedToo, usd(linkedToo.marketCap)), sincePost(linkedToo)].filter(Boolean).join(' · ') });
   for (const [role, label] of ROLES) {
     const t = picks.find((p) => p.role === role)?.token;
     if (!t || t.address === named?.address) continue;

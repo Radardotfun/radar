@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Radar",
   "short_name": "Radar",
-  "version": "1.7.124",
+  "version": "1.7.125",
   "description": "See the coins behind any post on X and instantly reroute to the biggest match that passes available on-chain safety checks.",
   "icons": {
     "16": "icons/icon16.png",

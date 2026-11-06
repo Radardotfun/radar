@@ -743,3 +743,19 @@ const quiet = async () => ({ score: 90, why: 'a dog', name: 'Biscuit' });
   assert.equal(solo.alsoLinked || null, null, 'when it is the named coin, not twice');
   console.log('PASS bughunt: a coin launched from the post shows beside the coin the reply leads with');
 }
+
+// 51. The coin tied to the post says how soon after the post it launched, like the panel does: "🔗 Launched from this
+// post: $Dumocrat · $3.1K · 4m after the post". A coin from before the post, or days later, doesn't get the line.
+{
+  const { replyEntries } = await import('../bot/reply.js');
+  const now = Date.now();
+  const postAt = now - 3600e3;
+  const coin = (symbol, address, marketCap, createdAt) => ({ symbol, name: symbol, address, chain: 'solana', marketCap, mcapBacked: true, liquidity: 20_000, createdAt, volume: { h24: 50_000, h1: 900 }, txns: { h1: { buys: 30, sells: 20 }, h24: { buys: 400, sells: 300 } }, priceChange: { h1: 3 } });
+  const after = replyEntries({ named: coin('Dumocrat', 'Dumo111111111111111111111111111111111pump', 3_100, postAt + 4 * 60_000), how: 'linked', postAt, picks: [] }, now)[0];
+  assert.equal(after.stat, '$3.1K · 4m after the post');
+  const sec = replyEntries({ named: coin('Fast', 'Fast111111111111111111111111111111111pump', 9_000, postAt + 26_000), how: 'linked', postAt, picks: [] }, now)[0];
+  assert.equal(sec.stat, '$9.0K · 26s after the post');
+  const before = replyEntries({ named: coin('Old', 'Old1111111111111111111111111111111111pump', 50_000, postAt - 5 * 86_400_000), how: 'post', postAt, picks: [] }, now)[0];
+  assert.equal(before.stat, '$50.0K', 'an older coin keeps just its market cap');
+  console.log('PASS bughunt: the coin tied to the post says how soon after the post it launched');
+}
