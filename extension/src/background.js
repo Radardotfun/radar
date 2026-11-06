@@ -261,7 +261,7 @@ async function notify(item) {
   const opts = {
     type: 'basic',
     iconUrl: ext.runtime.getURL('icons/icon128.png'),
-    title: item.kind === 'guard' ? `Radar Guard: ${item.text}` : item.kind === 'verdict' ? `Larpcheck now says ${item.larp.word}: $${String(c.symbol || '').slice(0, 14)}` : item.watch.word ? `New pair on "${item.watch.word}": $${String(c.symbol || '').slice(0, 14)}` : `New coin off ${item.watch.author ? `@${item.watch.author}'s` : 'a watched'} post: $${String(c.symbol || '').slice(0, 14)}`,
+    title: item.kind === 'guard' ? `${item.watch?.author === 'Bag Guard' ? 'Bag Guard' : 'Radar Guard'}: ${item.text}` : item.kind === 'verdict' ? `Larpcheck now says ${item.larp.word}: $${String(c.symbol || '').slice(0, 14)}` : item.watch.word ? `New pair on "${item.watch.word}": $${String(c.symbol || '').slice(0, 14)}` : `New coin off ${item.watch.author ? `@${item.watch.author}'s` : 'a watched'} post: $${String(c.symbol || '').slice(0, 14)}`,
     message: [line, [larp, item.holders?.text].filter(Boolean).join(' · ')].filter(Boolean).join('\n'),
     priority: 2,
     buttons: [{ title: item.buy ? (c.chain === 'solana' ? 'Buy on Radar' : 'Trade on Uniswap') : 'Open the chart' }, { title: 'Open the post' }],

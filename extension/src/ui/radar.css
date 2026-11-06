@@ -444,6 +444,11 @@ svg { display: block; }
 .al-hit:hover { border-color: var(--line-2); }
 .al-hit span { flex: 1; }
 .al-hit em { font: 700 10.5px var(--mono); font-style: normal; color: var(--muted); white-space: nowrap; }
+/* Track record: a flag that did 2x or more at its peak, and the link to the full list */
+.al-hit em.up { color: var(--text); }
+.track-label { margin-top: 14px; }
+.track-row span { white-space: normal; }
+.track-all { display: block; margin-top: 8px; color: var(--muted); text-decoration: underline; }
 /* Bag Guard: a bag whose last look found something */
 .al-hit em.bad { color: var(--down); white-space: normal; text-align: right; max-width: 60%; }
 .empty + .settings { margin-top: 4px; }

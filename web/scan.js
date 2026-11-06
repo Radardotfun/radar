@@ -1,4 +1,4 @@
-// Radar 1.7.127 on the web: built from the extension source at https://tryradar.fun. Not financial advice.
+// Radar 1.7.128 on the web: built from the extension source at https://tryradar.fun. Not financial advice.
 (() => {
   // extension/src/lib/keywords.js
   var STOP = new Set(`a about above after again against all almost also am an and any are aren as at be because been before
@@ -1665,6 +1665,15 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       await host.store.set(WATCHLIST_KEY, list);
       return list;
     };
+    async function track() {
+      const h = await holderStored().catch(() => null);
+      return cached(`tr:${h?.token ? "h" : "p"}`, 6e4, async () => {
+        const res = await fetch(`${API_BASE}/track`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ token: h?.token, hours: 24 }), signal: AbortSignal.timeout(12e3) });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || `Track record ${res.status}`);
+        return data;
+      });
+    }
     const FEED_DUST = 5e3;
     async function breaking() {
       const h = await holderStored().catch(() => null);
@@ -1692,7 +1701,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       });
     }
     const launchState = () => cached("launch:state", 6e5, async () => (await fetch(`${API_BASE}/launch/settings`, { signal: AbortSignal.timeout(6e3) })).json());
-    const handlers2 = { typedTicker, forgetCoins, breaking, starList, starToggle, videoInfo, tweet: tweet2, read: read2, coins: coins2, fresh, postCoins: postCoins2, mentioned, story, larpcheck, family, refresh, safety, bundle, image, openWindow: openWindow2, reroute: reroute2, holderStatus, holderSave, holderWho, holderActive, recentList, recentAdd, recentClear, launchState, lcHolders, lcBoard, lcSettings, lcStart, lcAsk, lcPoll, settings: () => host.settings() };
+    const handlers2 = { typedTicker, forgetCoins, breaking, track, starList, starToggle, videoInfo, tweet: tweet2, read: read2, coins: coins2, fresh, postCoins: postCoins2, mentioned, story, larpcheck, family, refresh, safety, bundle, image, openWindow: openWindow2, reroute: reroute2, holderStatus, holderSave, holderWho, holderActive, recentList, recentAdd, recentClear, launchState, lcHolders, lcBoard, lcSettings, lcStart, lcAsk, lcPoll, settings: () => host.settings() };
     handlers2.resetBundles = () => memo.forEach((_, k) => k.startsWith("bd:") && memo.delete(k));
     return handlers2;
   }
@@ -3056,7 +3065,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     async loadFeed() {
       clearTimeout(this.feedTimer);
       try {
-        this.feed = await send("breaking");
+        [this.feed, this.track] = await Promise.all([send("breaking"), send("track").catch(() => this.track || null)]);
       } catch (e) {
         if (!this.feed?.stories) this.feed = { error: e.message || "Could not load this" };
       }
@@ -3087,7 +3096,22 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
           ${s.biggest && s.biggest.address !== s.first.address ? chip("Biggest", s.biggest, s.biggest.cap ? usd(s.biggest.cap) : "") : ""}
           ${chip("First", s.first, s.first.cap ? usd(s.first.cap) : "")}
         </div>
-      </div>`).join("")}${fine}</div>`;
+      </div>`).join("")}${fine}${this.trackHtml()}</div>`;
+    }
+    // Track record: every coin Radar flagged in the last day, cap when flagged, at its peak and now. Losers included.
+    trackHtml() {
+      const t = this.track;
+      if (!t?.rows) return "";
+      const s = t.summary || {};
+      const x = (n2) => `${n2 >= 10 ? Math.round(n2) : n2.toFixed(1)}x`;
+      const from2 = { breaking: "Breaking now", diamond: "Diamond Hand" };
+      const rows = [...t.rows].sort((a, b) => b.peakX - a.peakX).slice(0, 8).map((r) => `<a class="al-hit track-row" href="https://dexscreener.com/solana/${esc2(r.mint)}" target="_blank" rel="noopener noreferrer">
+        <b>$${esc2(r.symbol)}</b><span>${esc2(from2[r.source] || "")} \xB7 ${esc2(age(r.at))} ago \xB7 ${esc2(usd(r.mc0))} \u2192 peak ${esc2(usd(r.peak))} \xB7 now ${esc2(usd(r.mc))}</span><em class="${r.peakX >= 2 ? "up" : ""}">${esc2(x(r.peakX))}</em></a>`).join("");
+      const late = t.live ? "" : '<p class="fine">Holders see every flag live. This list leaves out the last 30 minutes, and Diamond Hand.</p>';
+      return `<div class="section-label track-label"><span>Track record \xB7 last 24h</span></div>
+      <p class="new-note">${s.flags ? `${s.flags} coin${s.flags === 1 ? "" : "s"} flagged \xB7 ${s.x2} did 2x \xB7 ${s.x10} did 10x at their peak.` : "No flags in the last 24 hours yet."} Every coin Radar flagged, losers included, measured from its cap when flagged. Not advice.</p>
+      ${rows ? `<div class="al-list">${rows}</div>` : ""}${late}
+      <a class="fine track-all" href="https://tryradar.fun/track" target="_blank" rel="noopener noreferrer">See every flag on tryradar.fun/track</a>`;
     }
     toggleStarsView() {
       this.view = this.view === "stars" ? "scan" : "stars";
@@ -4631,6 +4655,11 @@ svg { display: block; }
 .al-hit:hover { border-color: var(--line-2); }
 .al-hit span { flex: 1; }
 .al-hit em { font: 700 10.5px var(--mono); font-style: normal; color: var(--muted); white-space: nowrap; }
+/* Track record: a flag that did 2x or more at its peak, and the link to the full list */
+.al-hit em.up { color: var(--text); }
+.track-label { margin-top: 14px; }
+.track-row span { white-space: normal; }
+.track-all { display: block; margin-top: 8px; color: var(--muted); text-decoration: underline; }
 /* Bag Guard: a bag whose last look found something */
 .al-hit em.bad { color: var(--down); white-space: normal; text-align: right; max-width: 60%; }
 .empty + .settings { margin-top: 4px; }

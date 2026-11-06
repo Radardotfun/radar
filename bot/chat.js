@@ -6,6 +6,7 @@
 // side stays off. Limits protect the AI credit: DAY_CAP scans a day in all, CHAT_CAP an hour per chat.
 import { scanUrl, ticker, contract } from './reply.js';
 import { readLaunches, findBursts, wireMessage, KEEP_MS, WINDOW_MS, COOLDOWN_MS, MAX_PER_DAY } from './wire.js';
+import { recordStories, refreshTrack } from './track.js';
 
 const DISCORD = 'https://discord.com/api/v10';
 const TELEGRAM = 'https://api.telegram.org';
@@ -247,6 +248,9 @@ export function createChat(deps) {
     const coins = await readLaunches(deps.fetch);
     await env.DB.prepare('INSERT OR REPLACE INTO wire_rows (at, coins) VALUES (?, ?)').bind(now - (now % 60_000), JSON.stringify(coins)).run();
     if (now % 600_000 < 60_000) await env.DB.prepare('DELETE FROM wire_rows WHERE at < ?').bind(now - KEEP_MS).run();
+    // Track record (bot/track.js): Breaking now's flags as they happen, and every other minute the caps of the coins flagged.
+    await recordStories(env.DB, now).catch((e) => console.log('track record failed', e.message));
+    if (Math.floor(now / 60_000) % 2 === 0) await refreshTrack(env.DB, deps.fetch, now).catch((e) => console.log('track refresh failed', e.message));
     const wire = await getKv(env, 'wire', { seen: {} });
     if (!wire.channel) return;
     const bursts = await wireBursts(env, now);

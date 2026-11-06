@@ -5,6 +5,7 @@
 // What a buy is, and the look at a wallet, are shared with the extension (extension/src/lib/diamond.js).
 import list from './diamond-wallets.json' with { type: 'json' };
 import { lookAt, agoText } from '../extension/src/lib/diamond.js';
+import { recordFlag } from './track.js';
 
 export { boughtMints, NEW_MS } from '../extension/src/lib/diamond.js';
 export const WALLETS_PER_RUN = 10;
@@ -49,7 +50,11 @@ export async function tick({ db, rpc: rpc0, launchOf: launchOf0, now = Date.now(
         // 20 alerts for that one coin over three hours (4 Nov). The first watched wallet to buy it is the alert.
         const r = await db.prepare('INSERT OR IGNORE INTO signals (id, author, at, kind, post, state, signal, narrative, terms, read_at) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?)')
           .bind(`dh-coin-${b.mint}`, 'Diamond Hand', b.at, 'diamond', JSON.stringify(post), 'read', `100: ${why}`, JSON.stringify([`$${b.symbol}`]), now + seq++).run();
-        if (r?.meta?.changes) out.alerts += 1;
+        if (r?.meta?.changes) {
+          out.alerts += 1;
+          // On the track record too (bot/track.js), with its cap when flagged.
+          await recordFlag(db, { mint: b.mint, source: 'diamond', at: now, symbol: b.symbol, name: b.symbol, story: `after a $${w.symbol} early holder`, mc0: b.marketCap || 0 }).catch(() => {});
+        }
       }
       // Written only when it changed, or when there are more wallets than one run looks at and the turn order matters.
       if (look.last !== w.last_sig || rotate) await db.prepare('UPDATE diamond_wallets SET last_sig = ?, checked = ? WHERE wallet = ?').bind(look.last, now, w.wallet).run();

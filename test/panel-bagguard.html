@@ -1,0 +1,61 @@
+<!doctype html>
+<!-- Manual check of Bag Guard in the real panel's settings view, with a fake background: no wallet, no chain reads.
+     Serve the repo root and open /test/panel-bagguard.html. ?off shows it switched off, ?out a non-holder, ?empty no bags. -->
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Panel: Bag Guard</title>
+<style>html,body{margin:0;height:100%;background:#000}#root{width:400px;height:100vh;margin:0 auto}</style></head>
+<body><div id="root"></div>
+<script type="module">
+import { makeHandlers, DEFAULTS } from '../extension/src/lib/handlers.js';
+import { useBackend, mountInline } from '../extension/src/ui/radar.js';
+
+const q = new URLSearchParams(location.search);
+const mem = new Map();
+const h = makeHandlers({
+  settings: async () => DEFAULTS,
+  store: { get: async (k) => mem.get(k) ?? null, set: async (k, v) => { mem.set(k, v); } },
+  openWindow: (url) => window.open(url),
+  rpcUrl: async () => null,
+  ready: Promise.resolve(),
+});
+let on = !q.has('off');
+// ?demo: everything quiet, then one bag turns, then another (for the announcement recording). Made-up coins besides $RADAR.
+const demo = q.has('demo');
+const DEV = 'The dev of $TRENCH sold 3.1% of supply (held 4.2%, now 1.1%)';
+const FREEZE = '$MOLE: freeze authority is on';
+const bags = q.has('empty') ? [] : [
+  { mint: 'm1', symbol: demo ? 'BURROW' : 'GROKIUS', value: 55.24, status: 'Quiet', flagged: false, url: 'https://axiom.trade/meme/HUsE3ouq2rL2egjy1hURxYiiQw4uuv4QDdvpYedQ8Rdh?chain=sol' },
+  { mint: 'm2', symbol: 'TRENCH', value: 31.9, status: demo ? 'Quiet' : DEV, flagged: !demo, url: 'https://dexscreener.com/solana/m2' },
+  { mint: 'm3', symbol: 'RADAR', value: 12.06, status: 'Quiet', flagged: false, url: 'https://axiom.trade/meme/99XUZ3Ah4cJWp4a9apNgHPEKpjtHpiSLpWtgbSTkdxYA?chain=sol' },
+  { mint: 'm4', symbol: 'MOLE', value: 8.4, status: demo ? 'Quiet' : 'Watch: freeze authority is on', flagged: !demo, url: 'https://dexscreener.com/solana/m4' },
+];
+const feed = [];
+const state = () => ({ watches: [], feed: feed.slice(), unread: 0, notifications: true, freshBadges: true, bigAccounts: true, diamond: true,
+  myWallets: ['DCXds1aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'], holder: !q.has('out'), bagGuard: on, proved: 'WaLLet1aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+  bags: { at: Date.now() - 3 * 60_000, wallets: 2, unread: 0, bags } });
+h['alerts:list'] = async () => state();
+h['alerts:read'] = async () => state();
+h['alerts:bagGuard'] = async ({ on: v }) => { on = v; return state(); };
+useBackend(h, { css: '../extension/src/ui/radar.css' });
+const radar = await mountInline(document.getElementById('root'), 'dark');
+window.radar = radar;
+radar.view = 'settings';
+await radar.loadAlerts();
+radar.renderBody();
+// scroll Bag Guard into view
+const toBag = () => {
+  const root = document.getElementById('root');
+  const shadow = root.shadowRoot || [...root.querySelectorAll('*')].find((e) => e.shadowRoot)?.shadowRoot;
+  const head = [...(shadow || document).querySelectorAll('h3')].find((x) => x.textContent === 'Bag Guard');
+  head?.scrollIntoView({ block: 'start' });
+};
+setTimeout(toBag, 600);
+if (demo) {
+  const turn = async (mint, status) => {
+    const b = bags.find((x) => x.mint === mint); b.status = status; b.flagged = true;
+    await radar.loadAlerts(); radar.renderBody(); toBag();
+  };
+  setTimeout(() => turn('m2', DEV), 3200);
+  setTimeout(() => turn('m4', FREEZE), 6200);
+}
+</script></body></html>

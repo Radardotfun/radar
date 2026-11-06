@@ -433,6 +433,16 @@ export function makeHandlers(host) {
   };
   // Breaking now (server/feed.js): the stories come from our server, live for holders and 10 minutes behind for everyone else.
   // Their launch-time caps go stale fast, so the numbers shown are read live here, and a story whose coins have all died drops out.
+  // Track record (server/track.js): every coin Radar flagged, then and now. Live for holders, 30 minutes behind otherwise.
+  async function track() {
+    const h = await holderStored().catch(() => null);
+    return cached(`tr:${h?.token ? 'h' : 'p'}`, 60_000, async () => {
+      const res = await fetch(`${API_BASE}/track`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ token: h?.token, hours: 24 }), signal: AbortSignal.timeout(12_000) });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `Track record ${res.status}`);
+      return data;
+    });
+  }
   const FEED_DUST = 5000; // a pump.fun coin starts near $2.7K, so under this nothing much has traded
   async function breaking() {
     const h = await holderStored().catch(() => null);
@@ -462,7 +472,7 @@ export function makeHandlers(host) {
 
   const launchState = () => cached('launch:state', 600_000, async () => (await fetch(`${API_BASE}/launch/settings`, { signal: AbortSignal.timeout(6000) })).json());
 
-  const handlers = { typedTicker, forgetCoins, breaking, starList, starToggle, videoInfo, tweet, read, coins, fresh, postCoins, mentioned, story, larpcheck, family, refresh, safety, bundle, image, openWindow, reroute, holderStatus, holderSave, holderWho, holderActive, recentList, recentAdd, recentClear, launchState, lcHolders, lcBoard, lcSettings, lcStart, lcAsk, lcPoll, settings: () => host.settings() };
+  const handlers = { typedTicker, forgetCoins, breaking, track, starList, starToggle, videoInfo, tweet, read, coins, fresh, postCoins, mentioned, story, larpcheck, family, refresh, safety, bundle, image, openWindow, reroute, holderStatus, holderSave, holderWho, holderActive, recentList, recentAdd, recentClear, launchState, lcHolders, lcBoard, lcSettings, lcStart, lcAsk, lcPoll, settings: () => host.settings() };
   // Changing the RPC drops cached bundle results so they're re-read through the new one.
   handlers.resetBundles = () => memo.forEach((_, k) => k.startsWith('bd:') && memo.delete(k));
   return handlers;

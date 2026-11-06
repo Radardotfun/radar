@@ -1209,7 +1209,7 @@ class Radar {
   async loadFeed() {
     clearTimeout(this.feedTimer);
     try {
-      this.feed = await send('breaking');
+      [this.feed, this.track] = await Promise.all([send('breaking'), send('track').catch(() => this.track || null)]);
     } catch (e) {
       if (!this.feed?.stories) this.feed = { error: e.message || 'Could not load this' };
     }
@@ -1239,7 +1239,23 @@ class Radar {
           ${s.biggest && s.biggest.address !== s.first.address ? chip('Biggest', s.biggest, s.biggest.cap ? usd(s.biggest.cap) : '') : ''}
           ${chip('First', s.first, s.first.cap ? usd(s.first.cap) : '')}
         </div>
-      </div>`).join('')}${fine}</div>`;
+      </div>`).join('')}${fine}${this.trackHtml()}</div>`;
+  }
+
+  // Track record: every coin Radar flagged in the last day, cap when flagged, at its peak and now. Losers included.
+  trackHtml() {
+    const t = this.track;
+    if (!t?.rows) return '';
+    const s = t.summary || {};
+    const x = (n) => `${n >= 10 ? Math.round(n) : n.toFixed(1)}x`;
+    const from = { breaking: 'Breaking now', diamond: 'Diamond Hand' };
+    const rows = [...t.rows].sort((a, b) => b.peakX - a.peakX).slice(0, 8).map((r) => `<a class="al-hit track-row" href="https://dexscreener.com/solana/${esc(r.mint)}" target="_blank" rel="noopener noreferrer">
+        <b>$${esc(r.symbol)}</b><span>${esc(from[r.source] || '')} · ${esc(age(r.at))} ago · ${esc(usd(r.mc0))} → peak ${esc(usd(r.peak))} · now ${esc(usd(r.mc))}</span><em class="${r.peakX >= 2 ? 'up' : ''}">${esc(x(r.peakX))}</em></a>`).join('');
+    const late = t.live ? '' : '<p class="fine">Holders see every flag live. This list leaves out the last 30 minutes, and Diamond Hand.</p>';
+    return `<div class="section-label track-label"><span>Track record · last 24h</span></div>
+      <p class="new-note">${s.flags ? `${s.flags} coin${s.flags === 1 ? '' : 's'} flagged · ${s.x2} did 2x · ${s.x10} did 10x at their peak.` : 'No flags in the last 24 hours yet.'} Every coin Radar flagged, losers included, measured from its cap when flagged. Not advice.</p>
+      ${rows ? `<div class="al-list">${rows}</div>` : ''}${late}
+      <a class="fine track-all" href="https://tryradar.fun/track" target="_blank" rel="noopener noreferrer">See every flag on tryradar.fun/track</a>`;
   }
 
   toggleStarsView() {

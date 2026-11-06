@@ -1,4 +1,4 @@
-// Radar 1.7.127 alerts page, built from webapp/alerts.js: https://github.com/Radardotfun/radar
+// Radar 1.7.128 alerts page, built from webapp/alerts.js: https://github.com/Radardotfun/radar
 (() => {
   // extension/src/lib/keywords.js
   var STOP = new Set(`a about above after again against all almost also am an and any are aren as at be because been before
@@ -1632,6 +1632,15 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       await host.store.set(WATCHLIST_KEY, list);
       return list;
     };
+    async function track() {
+      const h = await holderStored().catch(() => null);
+      return cached(`tr:${h?.token ? "h" : "p"}`, 6e4, async () => {
+        const res = await fetch(`${API_BASE}/track`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ token: h?.token, hours: 24 }), signal: AbortSignal.timeout(12e3) });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || `Track record ${res.status}`);
+        return data;
+      });
+    }
     const FEED_DUST = 5e3;
     async function breaking() {
       const h = await holderStored().catch(() => null);
@@ -1659,7 +1668,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       });
     }
     const launchState = () => cached("launch:state", 6e5, async () => (await fetch(`${API_BASE}/launch/settings`, { signal: AbortSignal.timeout(6e3) })).json());
-    const handlers2 = { typedTicker, forgetCoins, breaking, starList, starToggle, videoInfo, tweet, read, coins: coins2, fresh, postCoins: postCoins2, mentioned, story, larpcheck, family, refresh, safety, bundle, image, openWindow, reroute, holderStatus, holderSave, holderWho, holderActive, recentList, recentAdd, recentClear, launchState, lcHolders, lcBoard, lcSettings, lcStart, lcAsk, lcPoll, settings: () => host.settings() };
+    const handlers2 = { typedTicker, forgetCoins, breaking, track, starList, starToggle, videoInfo, tweet, read, coins: coins2, fresh, postCoins: postCoins2, mentioned, story, larpcheck, family, refresh, safety, bundle, image, openWindow, reroute, holderStatus, holderSave, holderWho, holderActive, recentList, recentAdd, recentClear, launchState, lcHolders, lcBoard, lcSettings, lcStart, lcAsk, lcPoll, settings: () => host.settings() };
     handlers2.resetBundles = () => memo.forEach((_, k) => k.startsWith("bd:") && memo.delete(k));
     return handlers2;
   }
