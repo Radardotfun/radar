@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Radar
 // @namespace    https://tryradar.fun
-// @version      1.7.144
+// @version      1.7.145
 // @description  See the coins behind any post on X and instantly reroute to the biggest match that passes available on-chain safety checks.
 // @homepageURL  https://tryradar.fun
 // @supportURL   https://tryradar.fun
@@ -31,7 +31,7 @@
 // @downloadURL  https://tryradar.fun/radar.user.js
 // ==/UserScript==
 
-// Radar 1.7.144: built from the extension source at https://tryradar.fun. Not financial advice.
+// Radar 1.7.145: built from the extension source at https://tryradar.fun. Not financial advice.
 (() => {
   var __defProp = Object.defineProperty;
   var __export = (target, all) => {
@@ -2821,6 +2821,11 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
         else if (b.dataset.act === "settings") {
           this.view = this.view === "settings" ? "scan" : "settings";
           this.renderBody();
+          if (this.view === "settings" && !this.pings) send("alerts:breakingPings").then((p) => {
+            this.pings = p;
+            if (this.view === "settings") this.renderBody();
+          }).catch(() => {
+          });
         } else if (b.dataset.act === "stars") this.toggleStarsView();
         else if (b.dataset.act === "feed") this.toggleFeedView();
         else if (b.dataset.act === "watch") this.watch();
@@ -3910,10 +3915,36 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       }
       this.renderBody();
     }
+    // Holder perks: everything a holder gets, in one list at the top of the alerts page, each with its state and, where
+    // it has one, its switch (the same buttons as the sections below). Anyone else sees what they'd get and the check.
+    perksHtml() {
+      const a = this.alerts;
+      if (!a || !this.holder?.on) return "";
+      const holder = !!(this.holder.holder || a.holder);
+      const sw = (act, on) => holder ? `<button type="button" class="perk-sw${on ? " on" : ""}" data-act="${act}" aria-pressed="${on}">${on ? "On" : "Off"}</button>` : "";
+      const tag = (text) => holder ? `<em>${esc2(text)}</em>` : "";
+      const watching = a.watches.length;
+      const rows = [
+        ["Launch alerts", "Bell a post or follow a word, and get pinged when a coin launches off it.", tag(watching ? `${watching} WATCHING` : "READY")],
+        ["Big account alerts", "A heads up when Elon, Polymarket, Kalshi and more post something coins may launch off.", sw("big-toggle", a.bigAccounts !== false)],
+        ["Diamond Hand", "When wallets that caught early runners buy a coin under 6 hours old.", sw("diamond-toggle", a.diamond !== false)],
+        ["Bag Guard", "When a coin in your wallets turns, or doubles or halves.", sw("bag-toggle", a.bagGuard !== false)],
+        ["Breaking now pings", "A ping the moment a new story starts breaking.", this.pings ? sw("break-pings", !!this.pings.on) : tag("")],
+        ["Radar Guard", "When a watchlist coin's post is gone, Larpcheck's verdict turns bad, or liquidity falls 30%.", tag("ON")],
+        ["Who posted this", "On any post: the account's past coins, its deleted posts and its past usernames.", tag("ON")],
+        ["Live feeds", "Breaking now and the track record as they happen. Everyone else sees them 10 and 30 minutes late.", tag("ON")]
+      ].map(([name, line, end]) => `<div class="al-w perk"><div><b>${name}</b><span>${line}</span></div>${end}</div>`).join("");
+      return `<section class="settings perks">
+      <div class="set-head"><h3>Holder perks</h3><span class="verdict ${holder ? "ok" : "neutral"}">${holder ? "UNLOCKED" : "LOCKED"}</span></div>
+      <p>${holder ? "Your wallet passed the check. Every perk below is yours." : "Hold $10 of $RADAR or $LARPCHECK, or have held $RADAR at any point, and all of this is yours."}</p>
+      ${holder ? "" : '<button class="fr-btn" data-holder-connect>Check my wallet</button>'}
+      <div class="al-list">${rows}</div>
+    </section>`;
+    }
     settingsHtml() {
       const f = this.frontrun || {};
       const wallets = (f.wallets || []).map((w) => `<div class="fr-w"><b>${esc2(w.name || "Wallet")}</b><span>${short(w.address)}</span><em>~${w.sol.toFixed(3)} SOL</em></div>`).join("");
-      return `${this.alertsHtml()}<section class="settings">
+      return `${this.perksHtml()}${this.alertsHtml()}<section class="settings">
       <div class="set-head"><h3>Frontrun</h3>${f.connected ? '<span class="verdict ok">CONNECTED</span>' : ""}</div>
       <p>Buy with your Frontrun wallet. Radar only sends an order when you press Buy.</p>
       <details class="more"><summary>How it works</summary><p>Buy the coins Radar finds with your Frontrun wallet. Frontrun holds the wallet and signs. Radar sends an order only after you press Buy on a coin card.</p></details>
@@ -4965,6 +4996,12 @@ svg { display: block; }
 .al-w em { font: 600 11px var(--mono); font-style: normal; color: var(--faint); white-space: nowrap; }
 .al-w button { border: 1px solid var(--line-2); border-radius: 7px; padding: 4px 9px; background: transparent; color: var(--muted); font: 600 11px var(--font); cursor: pointer; }
 .al-w button:hover { color: var(--text); }
+/* Holder perks: each line reads in full, and a switch that's on stands out from one that's off. */
+.al-w.perk { align-items: flex-start; }
+.al-w.perk > div span { white-space: normal; line-height: 1.4; }
+.al-w.perk em, .al-w.perk .perk-sw { margin-top: 1px; }
+.al-w .perk-sw { min-width: 38px; }
+.al-w .perk-sw.on { color: var(--text); border-color: var(--text); }
 .al-hit:hover { border-color: var(--line-2); }
 .al-hit span { flex: 1; }
 .al-hit em { font: 700 10.5px var(--mono); font-style: normal; color: var(--muted); white-space: nowrap; }

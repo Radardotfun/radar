@@ -751,7 +751,12 @@ class Radar {
       else if (b.dataset.act === 'close') this.close();
       else if (b.dataset.act === 'rescan') this.rescan();
       else if (b.dataset.act === 'share') this.share();
-      else if (b.dataset.act === 'settings') { this.view = this.view === 'settings' ? 'scan' : 'settings'; this.renderBody(); }
+      else if (b.dataset.act === 'settings') {
+        this.view = this.view === 'settings' ? 'scan' : 'settings';
+        this.renderBody();
+        // Holder perks lists the Breaking now pings switch, which otherwise loads with the feed.
+        if (this.view === 'settings' && !this.pings) send('alerts:breakingPings').then((p) => { this.pings = p; if (this.view === 'settings') this.renderBody(); }).catch(() => {});
+      }
       else if (b.dataset.act === 'stars') this.toggleStarsView();
       else if (b.dataset.act === 'feed') this.toggleFeedView();
       else if (b.dataset.act === 'watch') this.watch();
@@ -1852,10 +1857,37 @@ class Radar {
     this.renderBody();
   }
 
+  // Holder perks: everything a holder gets, in one list at the top of the alerts page, each with its state and, where
+  // it has one, its switch (the same buttons as the sections below). Anyone else sees what they'd get and the check.
+  perksHtml() {
+    const a = this.alerts;
+    if (!a || !this.holder?.on) return '';
+    const holder = !!(this.holder.holder || a.holder);
+    const sw = (act, on) => (holder ? `<button type="button" class="perk-sw${on ? ' on' : ''}" data-act="${act}" aria-pressed="${on}">${on ? 'On' : 'Off'}</button>` : '');
+    const tag = (text) => (holder ? `<em>${esc(text)}</em>` : '');
+    const watching = a.watches.length;
+    const rows = [
+      ['Launch alerts', 'Bell a post or follow a word, and get pinged when a coin launches off it.', tag(watching ? `${watching} WATCHING` : 'READY')],
+      ['Big account alerts', 'A heads up when Elon, Polymarket, Kalshi and more post something coins may launch off.', sw('big-toggle', a.bigAccounts !== false)],
+      ['Diamond Hand', 'When wallets that caught early runners buy a coin under 6 hours old.', sw('diamond-toggle', a.diamond !== false)],
+      ['Bag Guard', 'When a coin in your wallets turns, or doubles or halves.', sw('bag-toggle', a.bagGuard !== false)],
+      ['Breaking now pings', 'A ping the moment a new story starts breaking.', this.pings ? sw('break-pings', !!this.pings.on) : tag('')],
+      ['Radar Guard', "When a watchlist coin's post is gone, Larpcheck's verdict turns bad, or liquidity falls 30%.", tag('ON')],
+      ['Who posted this', "On any post: the account's past coins, its deleted posts and its past usernames.", tag('ON')],
+      ['Live feeds', 'Breaking now and the track record as they happen. Everyone else sees them 10 and 30 minutes late.', tag('ON')],
+    ].map(([name, line, end]) => `<div class="al-w perk"><div><b>${name}</b><span>${line}</span></div>${end}</div>`).join('');
+    return `<section class="settings perks">
+      <div class="set-head"><h3>Holder perks</h3><span class="verdict ${holder ? 'ok' : 'neutral'}">${holder ? 'UNLOCKED' : 'LOCKED'}</span></div>
+      <p>${holder ? 'Your wallet passed the check. Every perk below is yours.' : 'Hold $10 of $RADAR or $LARPCHECK, or have held $RADAR at any point, and all of this is yours.'}</p>
+      ${holder ? '' : '<button class="fr-btn" data-holder-connect>Check my wallet</button>'}
+      <div class="al-list">${rows}</div>
+    </section>`;
+  }
+
   settingsHtml() {
     const f = this.frontrun || {};
     const wallets = (f.wallets || []).map((w) => `<div class="fr-w"><b>${esc(w.name || 'Wallet')}</b><span>${short(w.address)}</span><em>~${w.sol.toFixed(3)} SOL</em></div>`).join('');
-    return `${this.alertsHtml()}<section class="settings">
+    return `${this.perksHtml()}${this.alertsHtml()}<section class="settings">
       <div class="set-head"><h3>Frontrun</h3>${f.connected ? '<span class="verdict ok">CONNECTED</span>' : ''}</div>
       <p>Buy with your Frontrun wallet. Radar only sends an order when you press Buy.</p>
       <details class="more"><summary>How it works</summary><p>Buy the coins Radar finds with your Frontrun wallet. Frontrun holds the wallet and signs. Radar sends an order only after you press Buy on a coin card.</p></details>

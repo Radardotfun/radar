@@ -1,0 +1,41 @@
+<!doctype html>
+<!-- Holder perks at the top of the real panel's alerts page, with a fake background: no wallet, no network.
+     Serve the repo root and open /test/panel-perks.html. ?out shows a non-holder, ?light the light theme. -->
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Panel: Holder perks</title>
+<style>html,body{margin:0;height:100%;background:#000}#root{width:400px;height:100vh;margin:0 auto}</style></head>
+<body><div id="root"></div>
+<script type="module">
+import { makeHandlers, DEFAULTS } from '../extension/src/lib/handlers.js';
+import { useBackend, mountInline } from '../extension/src/ui/radar.js';
+
+const q = new URLSearchParams(location.search);
+const holder = !q.has('out');
+const mem = new Map();
+const h = makeHandlers({
+  settings: async () => DEFAULTS,
+  store: { get: async (k) => mem.get(k) ?? null, set: async (k, v) => { mem.set(k, v); } },
+  openWindow: (url) => window.open(url),
+  rpcUrl: async () => null,
+  ready: Promise.resolve(),
+});
+const sw = { big: true, diamond: true, bag: false, pings: false };
+const state = () => ({ watches: holder ? [{ id: 'w1', author: 'elonmusk', label: 'a post about a dog', until: Date.now() + 9 * 3_600_000 }] : [], feed: [], unread: 0,
+  notifications: true, freshBadges: true, bigAccounts: sw.big, diamond: sw.diamond, myWallets: [], holder, bagGuard: sw.bag, proved: holder ? 'WaLLet1aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' : null, bags: null });
+h.holderStatus = async () => ({ on: true, holder, exp: Date.now() + 86_400_000 });
+h.lcSettings = async () => ({ plan: false });
+h['alerts:list'] = async () => state();
+h['alerts:read'] = async () => state();
+h['alerts:bigAccounts'] = async ({ on }) => { sw.big = on; return state(); };
+h['alerts:diamond'] = async ({ on }) => { sw.diamond = on; return state(); };
+h['alerts:bagGuard'] = async ({ on }) => { sw.bag = on; return state(); };
+h['alerts:breakingPings'] = async (a) => { if (a && 'on' in a) sw.pings = a.on; return { on: sw.pings }; };
+useBackend(h, { css: '../extension/src/ui/radar.css' });
+const radar = await mountInline(document.getElementById('root'), q.has('light') ? 'light' : 'dark');
+window.radar = radar;
+await radar.loadHolder();
+radar.pings = await h['alerts:breakingPings']();
+radar.view = 'settings';
+await radar.loadAlerts();
+radar.renderBody();
+</script></body></html>

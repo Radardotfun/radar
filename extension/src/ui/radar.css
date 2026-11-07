@@ -441,6 +441,12 @@ svg { display: block; }
 .al-w em { font: 600 11px var(--mono); font-style: normal; color: var(--faint); white-space: nowrap; }
 .al-w button { border: 1px solid var(--line-2); border-radius: 7px; padding: 4px 9px; background: transparent; color: var(--muted); font: 600 11px var(--font); cursor: pointer; }
 .al-w button:hover { color: var(--text); }
+/* Holder perks: each line reads in full, and a switch that's on stands out from one that's off. */
+.al-w.perk { align-items: flex-start; }
+.al-w.perk > div span { white-space: normal; line-height: 1.4; }
+.al-w.perk em, .al-w.perk .perk-sw { margin-top: 1px; }
+.al-w .perk-sw { min-width: 38px; }
+.al-w .perk-sw.on { color: var(--text); border-color: var(--text); }
 .al-hit:hover { border-color: var(--line-2); }
 .al-hit span { flex: 1; }
 .al-hit em { font: 700 10.5px var(--mono); font-style: normal; color: var(--muted); white-space: nowrap; }
