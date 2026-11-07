@@ -251,7 +251,7 @@ async function notify(item) {
   if (!ext.notifications || !(await canNotify())) return;
   if (item.kind === 'signal') {
     const cas = (item.coins || []).map((k) => `$${k.symbol} ${k.address}`).join('\n');
-    const big = { type: 'basic', iconUrl: ext.runtime.getURL('icons/icon128.png'), title: `@${item.watch.author}${item.coin.name ? `: ${item.coin.name}` : ' posted something'}`, message: [item.text, cas].filter(Boolean).join('\n'), priority: 2, buttons: [{ title: 'Scan it' }, { title: 'Open the post' }] };
+    const big = { type: 'basic', iconUrl: ext.runtime.getURL('icons/icon128.png'), title: `@${item.watch.author}${item.coin.name ? `: ${item.coin.name}` : ' posted something'}`, message: [item.text, cas].filter(Boolean).join('\n'), priority: 2, buttons: item.buy ? [{ title: 'Buy on Radar' }, { title: 'Open the chart' }] : [{ title: 'Scan it' }, { title: 'Open the post' }] };
     try { await ext.notifications.create(item.id, big); } catch { delete big.buttons; await ext.notifications.create(item.id, big).catch(() => {}); }
     return;
   }
@@ -278,7 +278,8 @@ function wireNotifications() {
     const item = (await loadAlerts()).feed.find((f) => f.id === id);
     if (!item) return;
     const url = which === 'post' ? item.watch.url : item.buy || item.chart;
-    if (/^https:\/\/(tryradar\.fun|app\.uniswap\.org|dexscreener\.com|x\.com)\//.test(url)) ext.tabs.create({ url });
+    // axiom.trade: Bag Guard's alerts open the coin on the holder's terminal.
+    if (/^https:\/\/(tryradar\.fun|app\.uniswap\.org|dexscreener\.com|x\.com|axiom\.trade)\//.test(url)) ext.tabs.create({ url });
     ext.notifications.clear(id).catch(() => {});
   };
   ext.notifications.onClicked.addListener((id) => open(id, 'buy'));
@@ -527,7 +528,12 @@ async function runSignals() {
   // The scan takes a few seconds. If it can't finish, the alert still goes out, without coins.
   const fresh = await Promise.all(waiting.map(async (s) => {
     const found = await Promise.race([handlers.coins({ post: s.post || { text: s.text, author: s.author, url: s.url, images: [] } }), new Promise((r) => setTimeout(r, 20_000, null))]).catch(() => null);
-    return { ...signalItem(s), coins: signalCoins(found) };
+    const item = { ...signalItem(s), coins: signalCoins(found) };
+    // Diamond Hand names one coin, so its alert gets a buy button: Radar's buy page, where the wallet still confirms the
+    // buy. Big account alerts never name a coin and keep none.
+    const mint = s.kind === 'diamond' ? String(s.url || '').match(/dexscreener\.com\/solana\/([1-9A-HJ-NP-Za-km-z]{32,44})/)?.[1] : null;
+    if (mint) Object.assign(item, { buy: buyUrl({ chain: 'solana', address: mint }), chart: `https://dexscreener.com/solana/${mint}` });
+    return item;
   }));
   const added = await withAlerts(async (a) => {
     const newOnes = fresh.filter((i) => !a.feed.some((f) => f.id === i.id));
