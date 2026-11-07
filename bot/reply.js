@@ -197,6 +197,36 @@ export function larpReply(result, check, now = Date.now(), { full = true, coin =
   ].join('\n');
 }
 
+// Larpcheck's own verdict, when their API has one for the coin (server /larpcheck, Radar's key: it reads verdicts someone
+// already ran; new checks are their Pro). Their terms want a link wherever it's shown, so this reply carries their report,
+// credited. Their verdict words are their own scale, so any short capital word is taken; the link must be theirs.
+export const larpcheckOk = (lc) => !!(lc?.checked && /^[A-Z][A-Z ]{1,19}$/.test(lc.verdict || '') && /^https:\/\/larpcheck\.app\/\S+$/.test(lc.url || ''));
+
+/** Larpcheck's verdict on the coin the post names, credited and linked, or null (the bot then runs Radar's own check). */
+export function larpcheckReply(result, lc, now = Date.now(), { full = true } = {}) {
+  const t = result?.named;
+  if (!t?.address || !larpcheckOk(lc)) return null;
+  const at = new Date(now).toISOString().slice(11, 16);
+  const stamp = (id) => (Array.isArray(lc.stamps) ? lc.stamps : []).find((s) => s?.id === id && /^[A-Z][A-Z ]{1,19}$/.test(s.word || ''));
+  const story = stamp('story');
+  const coin = stamp('coin');
+  const n = (x) => (Number.isFinite(x) ? ` ${Math.round(x)}` : '');
+  const scores = [Number.isFinite(lc.total) ? `${Math.round(lc.total)}/100` : '', `story ${story ? `${story.word}${n(story.score)}` : `${lc.verdict}${n(lc.score)}`}`, coin ? `coin ${coin.word}${n(coin.score)}` : ''].filter(Boolean).join(' · ');
+  const call = plain(lc.call, 140);
+  const pin = `📌 In the post: ${ticker(t.symbol)}${usd(t.marketCap) ? ` · ${usd(t.marketCap)}` : ''}${CHAIN_TAG[t.chain] ? ` · ${CHAIN_TAG[t.chain]}` : ''}`;
+  return [
+    `Larpcheck on $${ticker(t.symbol)} (${at} UTC):`,
+    `🧪 ${scores}`,
+    ...(call ? [call] : []),
+    '',
+    full ? pin : `${pin} · ${shortCa(t.address)}`,
+    ...(full ? [contract(t.address)] : []),
+    '',
+    `Larpcheck's full report: ${lc.url}`,
+    'Full scan + Insta Buy: link in bio',
+  ].join('\n');
+}
+
 export const NO_COINS = 'No coins on this one yet.';
 
 // X refuses a reply identical to an earlier one. This makes one different: seconds in its time, or a time when it has none.

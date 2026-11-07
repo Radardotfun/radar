@@ -1,7 +1,7 @@
 // The tag bot's larp check (bot/reply.js larpMode, larpReply; bot/coinscore.js): a post that names its coin gets the
 // story and the coin scored, a narrative post gets the coins. node test/larp-reply.mjs
 import assert from 'node:assert/strict';
-import { larpMode, larpReply, botReply, varied, xLength, LARP_WORDS } from '../bot/reply.js';
+import { larpMode, larpReply, larpcheckReply, larpcheckOk, botReply, varied, xLength, LARP_WORDS } from '../bot/reply.js';
 import { coinScore, totalScore, COIN_WORDS, tokenFromJupiter } from '../bot/coinscore.js';
 import { wantsCoins, climbFrom } from '../bot/trigger.js';
 
@@ -119,6 +119,39 @@ for (const [said, shown] of [
   ['Skip - nothing checkable', 'Nothing checkable'],
   ['Available on the official site, author is the brand', 'Available on the official site, author is the brand'],
 ]) assert.equal(larpReply({ named, how: 'post' }, { ...check, call: said }, now).split('\n')[2], shown, said);
+
+// ---- Larpcheck first: their verdict when their API has one, credited and linked; otherwise Radar's own check
+{
+  // The shape Radar's /larpcheck route returned for $GREY on 7 Nov.
+  const lc = { checked: true, url: 'https://larpcheck.app/c/CQ2HTrific', verdict: 'LIKELY LARP', score: 24, total: 38,
+    headline: 'A long headline that is not shown', call: 'Brand tie unconfirmed, nothing behind the coin; 75 holders, dev holds 0%. See $OTHER @someone https://x.co',
+    stamps: [{ id: 'story', word: 'LIKELY LARP', score: 24 }, { id: 'coin', word: 'NEUTRAL', score: 52 }] };
+  const r = larpcheckReply({ named, how: 'post' }, lc, now);
+  assert.equal(r, [
+    'Larpcheck on $DACITY (15:20 UTC):',
+    '🧪 38/100 · story LIKELY LARP 24 · coin NEUTRAL 52',
+    'Brand tie unconfirmed, nothing behind the coin; 75 holders, dev holds 0%. See OTHER someone',
+    '',
+    '📌 In the post: DACITY · $48.2K',
+    CA,
+    '',
+    "Larpcheck's full report: https://larpcheck.app/c/CQ2HTrific",
+    'Full scan + Insta Buy: link in bio',
+  ].join('\n'));
+  assert.equal((r.match(/\$[A-Za-z]/g) || []).length, 1, 'one cashtag');
+  assert.equal((r.match(/https?:\/\//g) || []).length, 1, 'only their report link');
+  assert.match(varied(r, new Date(now + 4000)), /^Larpcheck on \$DACITY \(15:20:04 UTC\):/);
+  assert.match(larpcheckReply({ named, how: 'post' }, lc, now, { full: false }), /DACITY · \$48\.2K · Daci…pump\n\nLarpcheck's full report/);
+  // Older answers without stamps: their verdict and score.
+  assert.match(larpcheckReply({ named, how: 'post' }, { checked: true, url: 'https://larpcheck.app/c/x1', verdict: 'REAL', score: 81 }, now), /\n🧪 story REAL 81\n/);
+  // Anything else is not their verdict, and Radar's check answers instead.
+  assert.equal(larpcheckOk({ checked: false, page: 'https://larpcheck.app/abc', running: false }), false, 'nobody has checked it');
+  assert.equal(larpcheckOk(null), false, 'no answer in time');
+  assert.equal(larpcheckOk({ ...lc, url: 'https://evil.example/c/x' }), false, 'a link that is not theirs');
+  assert.equal(larpcheckOk({ ...lc, verdict: '<b>rigged</b>' }), false);
+  assert.equal(larpcheckReply({ named: null }, lc, now), null);
+  assert.equal(larpcheckReply({ named, how: 'post' }, { checked: false }, now), null);
+}
 
 // ---- a tag under a checker bot's reply or a bare tag climbs to the coin post above
 assert.equal(climbFrom({ author: 'Larpcheckbot', text: 'Get Pro to check this one: …', parentId: '2119094080030572768' }), true, "Larpcheckbot's paywall reply");

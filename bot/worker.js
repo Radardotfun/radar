@@ -15,7 +15,7 @@
 import { makeHandlers, API_BASE, DEFAULTS } from '../extension/src/lib/handlers.js';
 import { searchPairs, allPairs, aggregate, fullTokens } from '../extension/src/lib/market.js';
 import { latestProfiles } from '../extension/src/lib/alerts.js';
-import { botReply, replyEntries, NO_COINS, xLength, varied, larpReply, larpMode } from './reply.js';
+import { botReply, replyEntries, NO_COINS, xLength, varied, larpReply, larpMode, larpcheckReply } from './reply.js';
 import { botCoins, withMemory } from './coins.js';
 import { oauthHeader } from './oauth.js';
 import { wantsCoins, worthRetry, mergeState, climbFrom } from './trigger.js';
@@ -248,15 +248,20 @@ async function replyFor(postUrl, known = null, fresh = false) {
     // poster's bio or a link back to the post, or a check that can't answer, gets the coins as before.
     if (larpMode(res)) {
       const t = res.named;
+      // Larpcheck first: when their API has a verdict on the coin, the reply is theirs, credited and linked. If it doesn't
+      // answer within 6 s, errors, or says nobody has checked the coin (new checks are their Pro), Radar's own check answers.
+      const lc = await Promise.race([h.larpcheck({ address: t.address }).catch(() => null), new Promise((r) => setTimeout(r, 6000, null))]);
+      const lcText = larpcheckReply(res, lc, Date.now());
+      if (lcText) return { text: lcText, short: larpcheckReply(res, lc, Date.now(), { full: false }), links: lcText, story: res.narrative || '', mode: 'larpcheck', check: { by: 'Larpcheck', word: lc.verdict, score: lc.total ?? lc.score }, scores, guessed, speechLost: !!found.speechLost, entries: replyEntries(res) };
       const coin = { name: t.name, symbol: t.symbol, address: t.address, createdAt: t.createdAt, socials: t.socials, websites: t.websites, fromPost: !!t.fromPost, mentioned: true };
-      // The story and, for a Solana coin, the coin itself (Jupiter's audit: one request), at the same time.
+      // Radar's own check: the story and, for a Solana coin, the coin itself (Jupiter's audit: one request), at the same time.
       const [check, asset] = await Promise.all([
         h.story({ post, narrative: res.narrative || '', coin }).catch((e) => { console.log('larp check failed', e.message); return null; }),
         t.chain === 'solana' ? jupiterAssets(fetch, [t.address]).then((m) => m.get(t.address) || null).catch(() => null) : null,
       ]);
       const coinPart = coinScore(asset);
       const text = larpReply(res, check, Date.now(), { coin: coinPart });
-      if (text) return { text, short: larpReply(res, check, Date.now(), { full: false, coin: coinPart }), links: text, story: res.narrative || '', mode: 'larp', check: { word: check.word, score: check.score, coin: coinPart ? { word: coinPart.word, score: coinPart.score } : null }, scores, guessed, speechLost: !!found.speechLost, entries: replyEntries(res) };
+      if (text) return { text, short: larpReply(res, check, Date.now(), { full: false, coin: coinPart }), links: text, story: res.narrative || '', mode: 'larp', check: { by: 'Radar', word: check.word, score: check.score, coin: coinPart ? { word: coinPart.word, score: coinPart.score } : null }, scores, guessed, speechLost: !!found.speechLost, entries: replyEntries(res) };
     }
     const first = replyEntries(res)[0]?.t;
     const [larp, family] = await Promise.all([
