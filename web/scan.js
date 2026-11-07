@@ -1,4 +1,4 @@
-// Radar 1.7.130 on the web: built from the extension source at https://tryradar.fun. Not financial advice.
+// Radar 1.7.131 on the web: built from the extension source at https://tryradar.fun. Not financial advice.
 (() => {
   // extension/src/lib/keywords.js
   var STOP = new Set(`a about above after again against all almost also am an and any are aren as at be because been before
@@ -3546,12 +3546,12 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       const watches = a.watches.map((w) => `<div class="al-w"><div><b>${w.word ? `\u201C${esc2(w.word)}\u201D` : w.author ? `@${esc2(w.author)}` : "Post"}</b><span>${esc2(w.label)}</span></div>
       <em>${left(w)}</em><button type="button" data-act="unwatch" data-id="${esc2(w.id)}">Stop</button></div>`).join("");
       const hits = a.feed.slice(0, 5).map((f) => {
-        if (f.kind === "signal") return `<a class="al-hit" href="${esc2(f.watch.url)}" target="_blank" rel="noopener noreferrer"><b>${f.watch.author === "Diamond Hand" ? "Diamond Hand" : `@${esc2(f.watch.author)}`}</b><span>${esc2([f.coin.name, age(f.at)].filter(Boolean).join(" \xB7 "))}</span><em>${esc2(f.text)}</em></a>`;
+        if (f.kind === "signal") return `<a class="al-hit" href="${esc2(f.buy || f.watch.url)}" target="_blank" rel="noopener noreferrer"${f.buy ? ` title="${esc2(f.text)}"` : ""}><b>${f.watch.author === "Diamond Hand" ? "Diamond Hand" : `@${esc2(f.watch.author)}`}</b><span>${esc2([f.coin.name, age(f.at)].filter(Boolean).join(" \xB7 "))}</span>${f.buy ? '<em class="up">Buy on Radar</em>' : `<em>${esc2(f.text)}</em>`}</a>`;
         const c = f.coin;
         const larp = f.kind === "guard" ? esc2(f.text) : f.larp ? `${f.larp.by === "Larpcheck" ? "Larpcheck" : "Larp check"} ${esc2(f.larp.word)}${f.larp.score != null ? ` ${esc2(f.larp.score)}` : ""}` : "";
         const link = f.buy || f.chart;
         return `<a class="al-hit" href="${esc2(link)}" target="_blank" rel="noopener noreferrer"><b>$${esc2(String(c.symbol || "").trim())}</b>
-        <span>${esc2([CHAIN_LABEL[c.chain] || c.chain, usd(c.marketCap), age(f.at)].filter(Boolean).join(" \xB7 "))}</span>${larp ? `<em>${larp}</em>` : f.kind === "signal" && f.buy ? "<em>Buy on Radar</em>" : ""}</a>`;
+        <span>${esc2([CHAIN_LABEL[c.chain] || c.chain, usd(c.marketCap), age(f.at)].filter(Boolean).join(" \xB7 "))}</span>${larp ? `<em>${larp}</em>` : ""}</a>`;
       }).join("");
       return `<section class="settings">
       <div class="set-head"><h3>Alerts</h3>${a.watches.length ? `<span class="verdict ok">${a.watches.length} WATCHING</span>` : ""}</div>

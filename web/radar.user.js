@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Radar
 // @namespace    https://tryradar.fun
-// @version      1.7.130
+// @version      1.7.131
 // @description  See the coins behind any post on X and instantly reroute to the biggest match that passes available on-chain safety checks.
 // @homepageURL  https://tryradar.fun
 // @supportURL   https://tryradar.fun
@@ -31,7 +31,7 @@
 // @downloadURL  https://tryradar.fun/radar.user.js
 // ==/UserScript==
 
-// Radar 1.7.130: built from the extension source at https://tryradar.fun. Not financial advice.
+// Radar 1.7.131: built from the extension source at https://tryradar.fun. Not financial advice.
 (() => {
   var __defProp = Object.defineProperty;
   var __export = (target, all) => {
@@ -3655,12 +3655,12 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       const watches = a.watches.map((w) => `<div class="al-w"><div><b>${w.word ? `\u201C${esc2(w.word)}\u201D` : w.author ? `@${esc2(w.author)}` : "Post"}</b><span>${esc2(w.label)}</span></div>
       <em>${left(w)}</em><button type="button" data-act="unwatch" data-id="${esc2(w.id)}">Stop</button></div>`).join("");
       const hits = a.feed.slice(0, 5).map((f) => {
-        if (f.kind === "signal") return `<a class="al-hit" href="${esc2(f.watch.url)}" target="_blank" rel="noopener noreferrer"><b>${f.watch.author === "Diamond Hand" ? "Diamond Hand" : `@${esc2(f.watch.author)}`}</b><span>${esc2([f.coin.name, age(f.at)].filter(Boolean).join(" \xB7 "))}</span><em>${esc2(f.text)}</em></a>`;
+        if (f.kind === "signal") return `<a class="al-hit" href="${esc2(f.buy || f.watch.url)}" target="_blank" rel="noopener noreferrer"${f.buy ? ` title="${esc2(f.text)}"` : ""}><b>${f.watch.author === "Diamond Hand" ? "Diamond Hand" : `@${esc2(f.watch.author)}`}</b><span>${esc2([f.coin.name, age(f.at)].filter(Boolean).join(" \xB7 "))}</span>${f.buy ? '<em class="up">Buy on Radar</em>' : `<em>${esc2(f.text)}</em>`}</a>`;
         const c = f.coin;
         const larp = f.kind === "guard" ? esc2(f.text) : f.larp ? `${f.larp.by === "Larpcheck" ? "Larpcheck" : "Larp check"} ${esc2(f.larp.word)}${f.larp.score != null ? ` ${esc2(f.larp.score)}` : ""}` : "";
         const link = f.buy || f.chart;
         return `<a class="al-hit" href="${esc2(link)}" target="_blank" rel="noopener noreferrer"><b>$${esc2(String(c.symbol || "").trim())}</b>
-        <span>${esc2([CHAIN_LABEL[c.chain] || c.chain, usd(c.marketCap), age(f.at)].filter(Boolean).join(" \xB7 "))}</span>${larp ? `<em>${larp}</em>` : f.kind === "signal" && f.buy ? "<em>Buy on Radar</em>" : ""}</a>`;
+        <span>${esc2([CHAIN_LABEL[c.chain] || c.chain, usd(c.marketCap), age(f.at)].filter(Boolean).join(" \xB7 "))}</span>${larp ? `<em>${larp}</em>` : ""}</a>`;
       }).join("");
       return `<section class="settings">
       <div class="set-head"><h3>Alerts</h3>${a.watches.length ? `<span class="verdict ok">${a.watches.length} WATCHING</span>` : ""}</div>
@@ -5739,7 +5739,7 @@ svg { display: block; }
         }
         document.documentElement.appendChild(stack);
         while (stack.childElementCount >= 3) stack.firstElementChild.remove();
-        const quick = /^https:\/\/tryradar\.fun\/trade\?/.test(item.buy || "");
+        const quick = item.kind !== "signal" && /^https:\/\/tryradar\.fun\/trade\?/.test(item.buy || "");
         const sol = instaSol2();
         const larp = item.larp ? `<div><i class="${toneOf(item.larp.word)}"></i>${item.larp.by === "Larpcheck" ? "Larpcheck" : "Larp check"}: <b>${esc3(item.larp.word)}${item.larp.score != null ? ` ${esc3(item.larp.score)}` : ""}</b></div>` : "<div><i></i>Larp check: not ready yet</div>";
         const holders = item.holders ? `<div><i class="${item.holders.ok ? "ok" : "risk"}"></i>${esc3(item.holders.text)}</div>` : "";
@@ -5748,7 +5748,7 @@ svg { display: block; }
         ${item.coin.name ? `<div class="nr-alert-coin"><b>${esc3(item.coin.name)}</b></div>` : ""}
         <div class="nr-alert-meta">${esc3(item.text)}</div>
         ${item.coins?.length ? `<div class="nr-alert-cas">${item.coins.map((k) => `<button type="button" data-ca="${esc3(k.address)}" title="Copy ${esc3(k.address)}">${k.label ? `<i>${esc3(k.label)}</i>` : ""}<b>$${esc3(k.symbol)}</b><span>${esc3(k.address.slice(0, 6))}\u2026${esc3(k.address.slice(-4))}</span><em>Copy</em></button>`).join("")}</div><div class="nr-alert-note">Found by name and not checked yet. Open in Radar for the checks.</div>` : ""}
-        <div class="nr-alert-acts"><button type="button" data-sig>Open in Radar</button><button type="button" data-post>${diamond ? "Open the chart" : "Open the post"}</button></div>`;
+        <div class="nr-alert-acts">${item.buy ? '<button type="button" class="buy" data-buy>Buy on Radar</button>' : ""}<button type="button" data-sig>Open in Radar</button><button type="button" data-post>${diamond ? "Open the chart" : "Open the post"}</button></div>`;
         const card = document.createElement("div");
         card.className = "nr-alert";
         card.setAttribute("role", "alert");

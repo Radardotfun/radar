@@ -452,7 +452,8 @@
       if (!stack?.isConnected) { stack = document.createElement('div'); stack.className = 'nr-alerts'; }
       document.documentElement.appendChild(stack);
       while (stack.childElementCount >= 3) stack.firstElementChild.remove();
-      const quick = /^https:\/\/tryradar\.fun\/trade\?/.test(item.buy || '');
+      // Insta buy is for coins Radar checked off a watched post. A Diamond Hand alert opens the normal buy page instead.
+      const quick = item.kind !== 'signal' && /^https:\/\/tryradar\.fun\/trade\?/.test(item.buy || '');
       const sol = instaSol();
       const larp = item.larp ? `<div><i class="${toneOf(item.larp.word)}"></i>${item.larp.by === 'Larpcheck' ? 'Larpcheck' : 'Larp check'}: <b>${esc(item.larp.word)}${item.larp.score != null ? ` ${esc(item.larp.score)}` : ''}</b></div>` : '<div><i></i>Larp check: not ready yet</div>';
       const holders = item.holders ? `<div><i class="${item.holders.ok ? 'ok' : 'risk'}"></i>${esc(item.holders.text)}</div>` : '';
@@ -461,7 +462,7 @@
         ${item.coin.name ? `<div class="nr-alert-coin"><b>${esc(item.coin.name)}</b></div>` : ''}
         <div class="nr-alert-meta">${esc(item.text)}</div>
         ${item.coins?.length ? `<div class="nr-alert-cas">${item.coins.map((k) => `<button type="button" data-ca="${esc(k.address)}" title="Copy ${esc(k.address)}">${k.label ? `<i>${esc(k.label)}</i>` : ''}<b>$${esc(k.symbol)}</b><span>${esc(k.address.slice(0, 6))}…${esc(k.address.slice(-4))}</span><em>Copy</em></button>`).join('')}</div><div class="nr-alert-note">Found by name and not checked yet. Open in Radar for the checks.</div>` : ''}
-        <div class="nr-alert-acts"><button type="button" data-sig>Open in Radar</button><button type="button" data-post>${diamond ? 'Open the chart' : 'Open the post'}</button></div>`;
+        <div class="nr-alert-acts">${item.buy ? '<button type="button" class="buy" data-buy>Buy on Radar</button>' : ''}<button type="button" data-sig>Open in Radar</button><button type="button" data-post>${diamond ? 'Open the chart' : 'Open the post'}</button></div>`;
       const card = document.createElement('div');
       card.className = 'nr-alert';
       card.setAttribute('role', 'alert');

@@ -1711,12 +1711,13 @@ class Radar {
     const watches = a.watches.map((w) => `<div class="al-w"><div><b>${w.word ? `“${esc(w.word)}”` : w.author ? `@${esc(w.author)}` : 'Post'}</b><span>${esc(w.label)}</span></div>
       <em>${left(w)}</em><button type="button" data-act="unwatch" data-id="${esc(w.id)}">Stop</button></div>`).join('');
     const hits = a.feed.slice(0, 5).map((f) => {
-      if (f.kind === 'signal') return `<a class="al-hit" href="${esc(f.watch.url)}" target="_blank" rel="noopener noreferrer"><b>${f.watch.author === 'Diamond Hand' ? 'Diamond Hand' : `@${esc(f.watch.author)}`}</b><span>${esc([f.coin.name, age(f.at)].filter(Boolean).join(' · '))}</span><em>${esc(f.text)}</em></a>`;
+      // A Diamond Hand alert names one coin, so its row opens Radar's buy page (the wallet still confirms); the reason stays in the tooltip.
+      if (f.kind === 'signal') return `<a class="al-hit" href="${esc(f.buy || f.watch.url)}" target="_blank" rel="noopener noreferrer"${f.buy ? ` title="${esc(f.text)}"` : ''}><b>${f.watch.author === 'Diamond Hand' ? 'Diamond Hand' : `@${esc(f.watch.author)}`}</b><span>${esc([f.coin.name, age(f.at)].filter(Boolean).join(' · '))}</span>${f.buy ? '<em class="up">Buy on Radar</em>' : `<em>${esc(f.text)}</em>`}</a>`;
       const c = f.coin;
       const larp = f.kind === 'guard' ? esc(f.text) : f.larp ? `${f.larp.by === 'Larpcheck' ? 'Larpcheck' : 'Larp check'} ${esc(f.larp.word)}${f.larp.score != null ? ` ${esc(f.larp.score)}` : ''}` : '';
       const link = f.buy || f.chart;
       return `<a class="al-hit" href="${esc(link)}" target="_blank" rel="noopener noreferrer"><b>$${esc(String(c.symbol || '').trim())}</b>
-        <span>${esc([CHAIN_LABEL[c.chain] || c.chain, usd(c.marketCap), age(f.at)].filter(Boolean).join(' · '))}</span>${larp ? `<em>${larp}</em>` : f.kind === 'signal' && f.buy ? '<em>Buy on Radar</em>' : ''}</a>`;
+        <span>${esc([CHAIN_LABEL[c.chain] || c.chain, usd(c.marketCap), age(f.at)].filter(Boolean).join(' · '))}</span>${larp ? `<em>${larp}</em>` : ''}</a>`;
     }).join('');
     return `<section class="settings">
       <div class="set-head"><h3>Alerts</h3>${a.watches.length ? `<span class="verdict ok">${a.watches.length} WATCHING</span>` : ''}</div>
