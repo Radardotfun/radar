@@ -20,7 +20,8 @@ import { botCoins, withMemory } from './coins.js';
 import { oauthHeader } from './oauth.js';
 import { wantsCoins, worthRetry, mergeState } from './trigger.js';
 import { createChat } from './chat.js';
-import { candidates as signalCandidates, lookup as signalLookup, checkCoin } from './discord-signals.js';
+import { candidates as signalCandidates, lookup as signalLookup, lookup as jupiterAssets, checkCoin } from './discord-signals.js';
+import { coinScore, tokenFromJupiter } from './coinscore.js';
 import { tick as signalsTick, recent as signalsRecent, status as signalsStatus } from './signals.js';
 import { tick as diamondTick } from './diamond.js';
 import { launchFromPairs } from '../extension/src/lib/diamond.js';
@@ -191,6 +192,10 @@ async function jupiterToken(ca) {
   };
 }
 const lookupBio = async (ca) => (await lookupCa(ca).catch(() => null)) || jupiterToken(ca);
+// A contract typed in the post itself, the same way: DexScreener first, then Jupiter's full record for a coin it doesn't
+// list (7 Nov: Raydium LaunchLab coins still on their curve, $GREY and $BRRR in their own launch posts, had no pairs and
+// read as "No coins"). A DexScreener error still throws, so the tag is tried again later.
+const lookupPostCa = async (ca) => (await lookupCa(ca)) || (ca.startsWith('0x') ? null : tokenFromJupiter((await jupiterAssets(realFetch, [ca]).catch(() => new Map())).get(ca)));
 
 // One post, as the bot would answer it. Kept 10 minutes, so a post tagged many times is scanned once.
 const scans = new Map();
@@ -230,16 +235,21 @@ async function replyFor(postUrl, known = null, fresh = false) {
     const found = await h.coins({ post, judge: true }).finally(() => { dexBudget += reserve; });
     if (found.engineError) throw new Error('Radar could not read this post right now');
     const { scan, scores, guessed } = withMemory(found, known);
-    const res = { ...scan, ...await botCoins(scan, post, { search: searchPairs, lookupCa, lookupBio, matchImages, capOf: curveCap, linkedTo, chains: SETTINGS.chains }) };
+    const res = { ...scan, ...await botCoins(scan, post, { search: searchPairs, lookupCa: lookupPostCa, lookupBio, matchImages, capOf: curveCap, linkedTo, chains: SETTINGS.chains }) };
     // A post that names its coin (its CA or $TICKER in the post) gets the larp check on that coin: Radar's read of whether
     // the story holds up (server/story.js, the panel's larp check). A narrative post, a coin found only by its picture, the
     // poster's bio or a link back to the post, or a check that can't answer, gets the coins as before.
     if (larpMode(res)) {
       const t = res.named;
       const coin = { name: t.name, symbol: t.symbol, address: t.address, createdAt: t.createdAt, socials: t.socials, websites: t.websites, fromPost: !!t.fromPost, mentioned: true };
-      const check = await h.story({ post, narrative: res.narrative || '', coin }).catch((e) => { console.log('larp check failed', e.message); return null; });
-      const text = larpReply(res, check, Date.now());
-      if (text) return { text, short: larpReply(res, check, Date.now(), { full: false }), links: text, story: res.narrative || '', mode: 'larp', check: { word: check.word, score: check.score }, scores, guessed, speechLost: !!found.speechLost, entries: replyEntries(res) };
+      // The story and, for a Solana coin, the coin itself (Jupiter's audit: one request), at the same time.
+      const [check, asset] = await Promise.all([
+        h.story({ post, narrative: res.narrative || '', coin }).catch((e) => { console.log('larp check failed', e.message); return null; }),
+        t.chain === 'solana' ? jupiterAssets(fetch, [t.address]).then((m) => m.get(t.address) || null).catch(() => null) : null,
+      ]);
+      const coinPart = coinScore(asset);
+      const text = larpReply(res, check, Date.now(), { coin: coinPart });
+      if (text) return { text, short: larpReply(res, check, Date.now(), { full: false, coin: coinPart }), links: text, story: res.narrative || '', mode: 'larp', check: { word: check.word, score: check.score, coin: coinPart ? { word: coinPart.word, score: coinPart.score } : null }, scores, guessed, speechLost: !!found.speechLost, entries: replyEntries(res) };
     }
     const first = replyEntries(res)[0]?.t;
     const [larp, family] = await Promise.all([

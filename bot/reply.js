@@ -6,6 +6,7 @@
 // With three addresses a reply runs past 280 characters, which @radardotfunn's Premium allows.
 import { quiet, tradesLine } from '../extension/src/ui/holdercheck.js';
 import { parentOf } from '../extension/src/lib/family.js';
+import { totalScore } from './coinscore.js';
 
 const SITE = 'https://tryradar.fun';
 const ROLES = [
@@ -159,28 +160,37 @@ const plain = (s, n) => {
 };
 
 /**
- * The larp check on the coin the post names: Radar's read of the story (server/story.js: word, score, call, findings),
- * then the coin with its contract. null when there is no named coin or no usable read (the bot then sends the coins).
- * full: false gives the short contract, as botReply does.
+ * The larp check on the coin the post names, in two halves that weigh the same: the story (Radar's read of the post,
+ * server/story.js: word, score, call, findings) and, for a Solana coin, the coin itself (bot/coinscore.js: holders, dev,
+ * liquidity from Jupiter's audit). Then the holder numbers and the coin with its contract. null when there is no named
+ * coin or no usable story read (the bot then sends the coins). full: false gives the short contract, as botReply does.
  */
-export function larpReply(result, check, now = Date.now(), { full = true } = {}) {
+export function larpReply(result, check, now = Date.now(), { full = true, coin = null } = {}) {
   const t = result?.named;
   if (!t?.address || !check || !LARP_WORDS.has(check.word)) return null;
   const at = new Date(now).toISOString().slice(11, 16);
-  const coin = `📌 In the post: ${ticker(t.symbol)}${usd(t.marketCap) ? ` · ${usd(t.marketCap)}` : ''}${CHAIN_TAG[t.chain] ? ` · ${CHAIN_TAG[t.chain]}` : ''}`;
+  const story = Number.isFinite(check.score) ? check.score : null;
+  const total = story != null ? totalScore(story, coin) : null;
+  const scores = [total != null ? `${total}/100` : '', `story ${check.word}${story != null ? ` ${story}` : ''}`, coin ? `coin ${coin.word} ${coin.score}` : ''].filter(Boolean).join(' · ');
   const call = plain(check.call, 140);
-  const findings = (Array.isArray(check.findings) ? check.findings : []).map((f) => [FINDING[f?.kind] || '•', plain(f?.text, 120)]).filter(([, x]) => x).slice(0, 3);
+  const of = (kind) => (Array.isArray(check.findings) ? check.findings : []).filter((f) => f?.kind === kind).map((f) => plain(f.text, 110)).filter(Boolean);
+  // Worst first: the story's risks, then what costs the coin points; then one thing not confirmed and one that holds up.
+  const red = [...of('risk'), ...(coin?.flags || [])].slice(0, 3);
+  const lines = [...red.map((x) => `⚠️ ${x}`), ...of('missing').slice(0, 1).map((x) => `❔ ${x}`), ...of('works').slice(0, 1).map((x) => `✅ ${x}`)];
+  const pin = `📌 In the post: ${ticker(t.symbol)}${usd(t.marketCap) ? ` · ${usd(t.marketCap)}` : ''}${CHAIN_TAG[t.chain] ? ` · ${CHAIN_TAG[t.chain]}` : ''}`;
   return [
     `Larp check on $${ticker(t.symbol)} (${at} UTC):`,
-    `🧪 ${check.word}${Number.isFinite(check.score) ? ` · ${check.score}/100` : ''}`,
+    `🧪 ${scores}`,
     ...(call ? [call] : []),
     '',
-    ...findings.map(([mark, x]) => `${mark} ${x}`),
-    ...(findings.length ? [''] : []),
-    full ? coin : `${coin} · ${shortCa(t.address)}`,
+    ...lines,
+    ...(lines.length ? [''] : []),
+    ...(coin?.line ? [`👥 ${coin.line}`, ''] : []),
+    full ? pin : `${pin} · ${shortCa(t.address)}`,
     ...(full ? [contract(t.address)] : []),
     '',
-    "Radar's read of the evidence, not advice. Full scan + Insta Buy: link in bio",
+    coin ? 'Story: do the post\'s claims hold up. Coin: holders, dev, liquidity. A high score is no promise against a rug. Not advice.' : "Radar's read of the evidence, not advice.",
+    'Full scan + Insta Buy: link in bio',
   ].join('\n');
 }
 
