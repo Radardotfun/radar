@@ -1,9 +1,10 @@
 // The tag bot's larp check (bot/reply.js larpMode, larpReply; bot/coinscore.js): a post that names its coin gets the
 // story and the coin scored, a narrative post gets the coins. node test/larp-reply.mjs
 import assert from 'node:assert/strict';
-import { larpMode, larpReply, larpcheckReply, larpcheckOk, botReply, varied, xLength, LARP_WORDS } from '../bot/reply.js';
+import { larpMode, larpReply, larpcheckReply, larpcheckOk, botReply, varied, xLength, LARP_WORDS, postLarpReply } from '../bot/reply.js';
 import { coinScore, totalScore, COIN_WORDS, tokenFromJupiter } from '../bot/coinscore.js';
-import { wantsCoins, climbFrom } from '../bot/trigger.js';
+import { wantsCoins, climbFrom, hasCa } from '../bot/trigger.js';
+import { nameHistory, coinHandle, historyLines, HISTORY_MS } from '../bot/history.js';
 
 const CA = 'Dacity1111111111111111111111111111111111pump';
 const named = { address: CA, symbol: 'DACITY', name: 'Dacity Coin', chain: 'solana', marketCap: 48_200, volume: { h24: 90_000 }, createdAt: Date.now() - 3600e3 };
@@ -11,8 +12,8 @@ const now = Date.parse('2026-11-07T15:20:00Z');
 
 // ---- which posts get the larp check: the coin's CA or $TICKER is in the post itself
 assert.equal(larpMode({ named, how: 'post' }), true);
-for (const how of ['picture', 'bio', 'linked']) assert.equal(larpMode({ named, how }), false, `${how}: a narrative post, the coins`);
-assert.equal(larpMode({ named: null, how: null, picks: [{ role: 'top', token: named }] }), false, 'no named coin: the coins');
+for (const how of ['picture', 'bio', 'linked']) assert.equal(larpMode({ named, how }), true, `${how}: the coin tied to the post gets the larp check too`);
+assert.equal(larpMode({ named: null, how: null, picks: [{ role: 'top', token: named }] }), false, 'no coin tied to the post: the post alone is checked');
 assert.equal(larpMode(null), false);
 
 // ---- the coin half, from Jupiter's audit
@@ -153,6 +154,61 @@ for (const [said, shown] of [
   assert.equal(larpcheckReply({ named, how: 'post' }, { checked: false }, now), null);
 }
 
+// ---- a tag with a contract is a request to check that coin, like a larp check bot
+assert.equal(hasCa(`look ${CA} now`), true);
+assert.equal(hasCa('0x8231fdc77207Ede2455259e2d391Eb4f026581f4'), true);
+assert.equal(hasCa('no address here, just words and a $TICKER'), false);
+{
+  const tag = (text) => ({ text, display_text_range: [0, [...text].length], entities: { mentions: [{ username: 'radardotfunn', start: text.indexOf('@radardotfunn'), end: text.indexOf('@radardotfunn') + 13 }] } });
+  assert.deepEqual(wantsCoins(tag(`@radardotfunn ${CA}`), 'radardotfunn'), { ok: true, ca: true });
+  assert.deepEqual(wantsCoins(tag(`${CA} @radardotfunn what do you think of this one, the dev says it is a game studio`), 'radardotfunn'), { ok: true, ca: true }, 'longer than a bare tag, still a request');
+  assert.equal(wantsCoins(tag('@radardotfunn'), 'radardotfunn').ca, undefined, 'a bare tag still checks the post above');
+}
+
+// ---- past usernames (memory.lol), never slowing the reply
+{
+  let asked = '', opts = null;
+  const fake = (body, ok = true) => async (u, o) => { asked = u; opts = o; return { ok, json: async () => body }; };
+  const h = await nameHistory('@Cl0ne_dev', fake({ accounts: [{ id: 1, screen_names: { newname: ['2026-10-30', '2026-11-07'], oldbrand: ['2024-02-01', '2025-05-01'], first: ['2023-01-01', '2024-01-01'] } }] }));
+  assert.equal(asked, 'https://api.memory.lol/v1/tw/Cl0ne_dev');
+  assert.ok(opts.signal, 'the lookup can be cut off');
+  assert.equal(HISTORY_MS, 2500);
+  assert.deepEqual(h, { handle: 'Cl0ne_dev', names: ['first', 'oldbrand', 'newname'], changes: 2 }, 'oldest first');
+  assert.equal(await nameHistory('x', fake({ accounts: [] })), null, 'an account memory.lol never saw');
+  assert.equal(await nameHistory('x', fake({}, false)), null);
+  assert.equal(await nameHistory('x', async () => { throw new Error('timeout'); }), null, 'too slow: nothing, not an error');
+  assert.equal(await nameHistory('not a handle!', fake({})), null);
+  assert.deepEqual(historyLines([{ who: 'The poster', hist: h }, { who: "The coin's X account", hist: { handle: 'cl0ne_DEV', names: ['a', 'b', 'c'], changes: 2 } }, { who: 'x', hist: { handle: 'one', names: ['one'], changes: 0 } }]),
+    ['⚠️ The poster has gone by 3 usernames: first → oldbrand → newname'], 'the same account once; one name says nothing');
+  assert.deepEqual(historyLines([{ who: 'The poster', hist: { handle: 'z', names: ['old', 'z'], changes: 1 } }]), ['ℹ️ The poster has gone by 2 usernames: old → z']);
+  assert.match(historyLines([{ who: 'The poster', hist: { handle: 'z', names: ['a', 'b', 'c', 'd', 'e', 'z'], changes: 5 } }])[0], /6 usernames: a → b → … → e → z$/);
+  assert.equal(coinHandle({ socials: [{ type: 'twitter', url: 'https://x.com/NeonStudio' }] }), 'NeonStudio');
+  assert.equal(coinHandle({ socials: [], links: ['https://t.me/x', 'https://twitter.com/i/communities/123', 'https://twitter.com/neon_x/status/1'] }), 'neon_x');
+  assert.equal(coinHandle({}), null);
+}
+
+// ---- both replies carry the account history; no coin list anywhere (larp checks only for now)
+{
+  const extra = { history: ['⚠️ The poster has gone by 3 usernames: first → oldbrand → newname'] };
+  const r1 = larpReply({ named, how: 'post' }, check, now, { coin, ...extra });
+  assert.ok(r1.includes('\n\n⚠️ The poster has gone by 3 usernames: first → oldbrand → newname\n\n👥 '), r1);
+  assert.equal((r1.match(/\$[A-Za-z]/g) || []).length, 1, 'still one cashtag');
+  assert.ok(!/Also on this story/.test(r1));
+  const lcv = { checked: true, url: 'https://larpcheck.app/c/x1', verdict: 'REAL', score: 81, total: 70 };
+  const r2 = larpcheckReply({ named, how: 'post' }, lcv, now, extra);
+  assert.ok(r2.includes('\n\n⚠️ The poster has gone by 3 usernames ') || r2.includes('\n\n⚠️ The poster has gone by 3 usernames:'));
+  assert.equal(larpReply({ named, how: 'post' }, check, now, { coin }), larpReply({ named, how: 'post' }, check, now, { coin, history: [] }), 'nothing found, nothing added');
+  // A post with no coin tied to it: the larp check of its story alone. No coin list, no contract.
+  const pr = postLarpReply({ ...check, call: 'Avoid: the account is 3 days old' }, now, extra);
+  assert.ok(pr.startsWith('Larp check on this post (15:20 UTC):\n🧪 story PARTLY REAL 40/100\nThe account is 3 days old\n\n⚠️ Account created 3 days ago'), pr);
+  assert.ok(pr.includes('⚠️ The poster has gone by 3 usernames') && pr.endsWith("No coin is tied to this post. Radar's read of the story, not advice."));
+  assert.ok(!/\$[A-Za-z]|https?:|@\w/.test(pr) && !/\n\n\n/.test(pr), 'no cashtag, link or mention, no empty gaps');
+  assert.equal(postLarpReply(null, now), null);
+  assert.equal(postLarpReply({ word: 'SCAM', score: 1 }, now), null);
+  assert.ok(xLength(pr) < 700);
+
+}
+
 // ---- a tag under a checker bot's reply or a bare tag climbs to the coin post above
 assert.equal(climbFrom({ author: 'Larpcheckbot', text: 'Get Pro to check this one: …', parentId: '2119094080030572768' }), true, "Larpcheckbot's paywall reply");
 assert.equal(climbFrom({ author: 'larpcheckbot', text: '$SUNPEAK · TOTAL 50/100 …', parentId: '1' }), true, 'any reply of theirs: the coin is above');
@@ -174,4 +230,4 @@ assert.equal(wantsCoins(mention('hey is this legit? my friend keeps shilling it 
 assert.equal(wantsCoins(mention('is it real or not, they say the team is doxxed and the game ships friday'), 'radardotfunn').ok, true);
 assert.equal(wantsCoins(mention('i really like what you guys are building over there, keep going and good luck'), 'radardotfunn').ok, false, 'conversation stays conversation');
 
-console.log('PASS larp-reply: story and coin scored for posts naming their coin, coins for narrative posts, nothing from the AI can mention or link');
+console.log('PASS larp-reply: every tag is a larp check (Larpcheck first, Radar backup, the post alone when no coin), CA tags, past usernames, nothing from the AI can mention or link');

@@ -15,13 +15,14 @@
 import { makeHandlers, API_BASE, DEFAULTS } from '../extension/src/lib/handlers.js';
 import { searchPairs, allPairs, aggregate, fullTokens } from '../extension/src/lib/market.js';
 import { latestProfiles } from '../extension/src/lib/alerts.js';
-import { botReply, replyEntries, NO_COINS, xLength, varied, larpReply, larpMode, larpcheckReply } from './reply.js';
+import { botReply, replyEntries, NO_COINS, xLength, varied, larpReply, larpMode, larpcheckReply, postLarpReply } from './reply.js';
 import { botCoins, withMemory } from './coins.js';
 import { oauthHeader } from './oauth.js';
 import { wantsCoins, worthRetry, mergeState, climbFrom } from './trigger.js';
 import { createChat } from './chat.js';
 import { candidates as signalCandidates, lookup as signalLookup, lookup as jupiterAssets, checkCoin } from './discord-signals.js';
 import { coinScore, tokenFromJupiter } from './coinscore.js';
+import { nameHistory, coinHandle, historyLines } from './history.js';
 import { tick as signalsTick, recent as signalsRecent, status as signalsStatus } from './signals.js';
 import { tick as diamondTick } from './diamond.js';
 import { launchFromPairs } from '../extension/src/lib/diamond.js';
@@ -229,7 +230,7 @@ async function replyFor(postUrl, known = null, fresh = false) {
     // A tag under one of @radardotfunn's own posts (people trying the bot under its announcement): no scan of our
     // own words, just how to use it.
     if (String(post.author || '').toLowerCase() === 'radardotfunn') {
-      const tip = `Tag me under a post that names a coin (its CA or $ticker) and I'll larp check it. Under a news post or a meme, I'll reply with the coins behind the story (${new Date().toISOString().slice(11, 16)} UTC).`;
+      const tip = `Tag me with a coin's contract, or under a post that names a coin, and I'll larp check it: the story and the coin (${new Date().toISOString().slice(11, 16)} UTC).`;
       return { text: tip, short: tip, links: tip, story: 'our own post' };
     }
     // The panel skips the AI judge when the read gives anchor words (any coin naming one counts); the bot posts in
@@ -245,14 +246,21 @@ async function replyFor(postUrl, known = null, fresh = false) {
     const res = { ...scan, ...await botCoins(scan, post, { search: searchPairs, lookupCa: lookupPostCa, lookupBio, matchImages, capOf: curveCap, linkedTo, chains: SETTINGS.chains }) };
     // A post that names its coin (its CA or $TICKER in the post) gets the larp check on that coin: Radar's read of whether
     // the story holds up (server/story.js, the panel's larp check). A narrative post, a coin found only by its picture, the
-    // poster's bio or a link back to the post, or a check that can't answer, gets the coins as before.
+    // poster's bio or a link back to the post, gets a note on how to ask (coin lists are off for now).
     if (larpMode(res)) {
       const t = res.named;
       // Larpcheck first: when their API has a verdict on the coin, the reply is theirs, credited and linked. If it doesn't
       // answer within 6 s, errors, or says nobody has checked the coin (new checks are their Pro), Radar's own check answers.
+      // Started now, beside Larpcheck: past usernames of the coin's X account and of the poster (bot/history.js, about 1 s,
+      // capped at 2.5 s), so they never make the reply slower. A tag that is only a contract is the tagger's, not the story's.
+      const ownWords = String(post.text || '').replace(/@\w{1,15}/g, ' ').replace(/https?:\/\/\S+/g, ' ').replace(/[1-9A-HJ-NP-Za-km-z]{32,44}|0x[0-9a-fA-F]{40}/g, ' ').replace(/\s+/g, ' ').trim();
+      const accounts = [{ who: "The coin's X account", handle: coinHandle(t) }, ...(ownWords.length > 15 ? [{ who: 'The poster', handle: post.author }] : [])].filter((a) => a.handle);
+      const historyP = Promise.all(accounts.map(async (a) => ({ who: a.who, hist: await nameHistory(a.handle, realFetch).catch(() => null) })));
       const lc = await Promise.race([h.larpcheck({ address: t.address }).catch(() => null), new Promise((r) => setTimeout(r, 6000, null))]);
-      const lcText = larpcheckReply(res, lc, Date.now());
-      if (lcText) return { text: lcText, short: larpcheckReply(res, lc, Date.now(), { full: false }), links: lcText, story: res.narrative || '', mode: 'larpcheck', check: { by: 'Larpcheck', word: lc.verdict, score: lc.total ?? lc.score }, scores, guessed, speechLost: !!found.speechLost, entries: replyEntries(res) };
+      const history = historyLines(await historyP);
+      const extra = { history };
+      const lcText = larpcheckReply(res, lc, Date.now(), extra);
+      if (lcText) return { text: lcText, short: larpcheckReply(res, lc, Date.now(), { full: false, ...extra }), links: lcText, story: res.narrative || '', mode: 'larpcheck', check: { by: 'Larpcheck', word: lc.verdict, score: lc.total ?? lc.score }, scores, guessed, speechLost: !!found.speechLost, entries: replyEntries(res) };
       const coin = { name: t.name, symbol: t.symbol, address: t.address, createdAt: t.createdAt, socials: t.socials, websites: t.websites, fromPost: !!t.fromPost, mentioned: true };
       // Radar's own check: the story and, for a Solana coin, the coin itself (Jupiter's audit: one request), at the same time.
       const [check, asset] = await Promise.all([
@@ -260,16 +268,22 @@ async function replyFor(postUrl, known = null, fresh = false) {
         t.chain === 'solana' ? jupiterAssets(fetch, [t.address]).then((m) => m.get(t.address) || null).catch(() => null) : null,
       ]);
       const coinPart = coinScore(asset);
-      const text = larpReply(res, check, Date.now(), { coin: coinPart });
-      if (text) return { text, short: larpReply(res, check, Date.now(), { full: false, coin: coinPart }), links: text, story: res.narrative || '', mode: 'larp', check: { by: 'Radar', word: check.word, score: check.score, coin: coinPart ? { word: coinPart.word, score: coinPart.score } : null }, scores, guessed, speechLost: !!found.speechLost, entries: replyEntries(res) };
+      const text = larpReply(res, check, Date.now(), { coin: coinPart, ...extra });
+      if (text) return { text, short: larpReply(res, check, Date.now(), { full: false, coin: coinPart, ...extra }), links: text, story: res.narrative || '', mode: 'larp', check: { by: 'Radar', word: check.word, score: check.score, coin: coinPart ? { word: coinPart.word, score: coinPart.score } : null }, scores, guessed, speechLost: !!found.speechLost, entries: replyEntries(res) };
+      // The check couldn't answer (the AI was busy): the tag is tried again next minute rather than answered with nothing.
+      throw new Error('Radar could not read this post right now (larp check)');
     }
-    const first = replyEntries(res)[0]?.t;
-    const [larp, family] = await Promise.all([
-      first ? h.larpcheck({ address: first.address }).catch(() => null) : null,
-      // The first coin's family, from the engine (server/family.js), which keeps each answer 10 minutes.
-      first?.chain === 'solana' ? h.family({ mint: first.address, quote: first.quote }).catch(() => null) : null,
+    // Every tag is a larp check (the user, 7 Nov: no coin lists). No coin tied to the post: the larp check of its story alone,
+    // with the poster's past usernames read alongside.
+    const ownWords = String(post.text || '').replace(/@\w{1,15}/g, ' ').replace(/https?:\/\/\S+/g, ' ').replace(/\s+/g, ' ').trim();
+    const historyP = ownWords.length > 15 ? nameHistory(post.author, realFetch).then((hist) => historyLines([{ who: 'The poster', hist }])).catch(() => []) : Promise.resolve([]);
+    const [check, history] = await Promise.all([
+      h.story({ post, narrative: res.narrative || '', coin: null }).catch((e) => { console.log('post larp check failed', e.message); return null; }),
+      historyP,
     ]);
-    return { text: botReply(res, postUrl, Date.now(), { family }) || NO_COINS, short: botReply(res, postUrl, Date.now(), { full: false, family }) || NO_COINS, links: botReply(res, postUrl, Date.now(), { links: true, larp, family }) || NO_COINS, story: res.narrative || '', scores, guessed, speechLost: !!found.speechLost, entries: replyEntries(res) };
+    const text = postLarpReply(check, Date.now(), { history });
+    if (!text) throw new Error('Radar could not read this post right now (larp check)');
+    return { text, short: text, links: text, story: res.narrative || '', mode: 'larp post', check: { by: 'Radar', word: check.word, score: check.score }, scores, guessed, speechLost: !!found.speechLost, entries: [] };
   })();
   scans.set(postUrl, { at: Date.now(), p });
   p.catch(() => scans.delete(postUrl));
@@ -346,8 +360,10 @@ async function poll(env) {
   const done = [...mentions].reverse().map((m) => {
     const entry = { at: new Date().toISOString(), mention: m.id, by: m.author_id, tries: 0 };
     const ref = (m.referenced_tweets || []).find((r) => r.type === 'replied_to') || (m.referenced_tweets || []).find((r) => r.type === 'quoted');
-    entry.target = ref?.id || m.id;
     const ask = wantsCoins(m, s.me.username);
+    // A tag with a contract in it asks about that coin: the tag itself is the post to check (the post above is its
+    // context, which the post reader brings along).
+    entry.target = ask.ca ? m.id : ref?.id || m.id;
     if (m.author_id === s.me.id || s.mine.includes(entry.target)) entry.skip = 'own post';
     else if (!ask.ok) entry.skip = ask.why;
     return entry;

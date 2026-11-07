@@ -147,7 +147,9 @@ export function botReply(result, postUrl, now = Date.now(), { full = true, links
 
 // The larp check reply, for a post that names its coin: its CA or $TICKER is in the post itself (coins.js how 'post').
 // A coin found by its picture, the poster's bio or a link back to the post sits under a narrative post, which gets the coins.
-export const larpMode = (result) => !!(result?.named?.address && result.how === 'post');
+// Every tag is a larp check (the user, 7 Nov: no coin lists): on the coin tied to the post however it was found (typed,
+// its picture, the poster's bio, launched from the post), else on the post's story alone (postLarpReply).
+export const larpMode = (result) => !!result?.named?.address;
 
 export const LARP_WORDS = new Set(['REAL', 'LIKELY REAL', 'PARTLY REAL', 'UNCLEAR', 'LIKELY LARP', 'LARP']);
 const FINDING = { works: '✅', risk: '⚠️', missing: '❔', info: 'ℹ️' };
@@ -165,7 +167,34 @@ const plain = (s, n) => {
  * liquidity from Jupiter's audit). Then the holder numbers and the coin with its contract. null when there is no named
  * coin or no usable story read (the bot then sends the coins). full: false gives the short contract, as botReply does.
  */
-export function larpReply(result, check, now = Date.now(), { full = true, coin = null } = {}) {
+// Lines Radar adds to either reply: the account history (bot/history.js).
+const extras = (history) => {
+  const h = (Array.isArray(history) ? history : []).filter(Boolean).map((x) => plain(x, 160));
+  return { h: h.length ? [...h, ''] : [] };
+};
+
+/** The larp check on a post with no coin tied to it: Radar's read of whether its story holds up. null with no usable read. */
+export function postLarpReply(check, now = Date.now(), { history = [] } = {}) {
+  if (!check || !LARP_WORDS.has(check.word)) return null;
+  const at = new Date(now).toISOString().slice(11, 16);
+  const said = plain(String(check.call || '').replace(/^\s*(avoid|skip|pass|ape|buy|sell|fade|dump|run)\b\s*(it|this)?\s*[:,.;—–-]*\s*/i, ''), 140);
+  const call = said ? said[0].toUpperCase() + said.slice(1) : '';
+  const of = (kind) => (Array.isArray(check.findings) ? check.findings : []).filter((f) => f?.kind === kind).map((f) => plain(f.text, 110)).filter(Boolean);
+  const lines = [...of('risk').slice(0, 3).map((x) => `⚠️ ${x}`), ...of('missing').slice(0, 1).map((x) => `❔ ${x}`), ...of('works').slice(0, 1).map((x) => `✅ ${x}`)];
+  const x = extras(history);
+  return [
+    `Larp check on this post (${at} UTC):`,
+    `🧪 story ${check.word}${Number.isFinite(check.score) ? ` ${check.score}/100` : ''}`,
+    ...(call ? [call] : []),
+    '',
+    ...lines,
+    ...(lines.length ? [''] : []),
+    ...x.h,
+    "No coin is tied to this post. Radar's read of the story, not advice.",
+  ].join('\n').replace(/\n{3,}/g, '\n\n');
+}
+
+export function larpReply(result, check, now = Date.now(), { full = true, coin = null, history = [] } = {}) {
   const t = result?.named;
   if (!t?.address || !check || !LARP_WORDS.has(check.word)) return null;
   const at = new Date(now).toISOString().slice(11, 16);
@@ -181,6 +210,7 @@ export function larpReply(result, check, now = Date.now(), { full = true, coin =
   const red = [...of('risk'), ...(coin?.flags || [])].slice(0, 3);
   const lines = [...red.map((x) => `⚠️ ${x}`), ...of('missing').slice(0, 1).map((x) => `❔ ${x}`), ...of('works').slice(0, 1).map((x) => `✅ ${x}`)];
   const pin = `📌 In the post: ${ticker(t.symbol)}${usd(t.marketCap) ? ` · ${usd(t.marketCap)}` : ''}${CHAIN_TAG[t.chain] ? ` · ${CHAIN_TAG[t.chain]}` : ''}`;
+  const x = extras(history);
   return [
     `Larp check on $${ticker(t.symbol)} (${at} UTC):`,
     `🧪 ${scores}`,
@@ -188,6 +218,7 @@ export function larpReply(result, check, now = Date.now(), { full = true, coin =
     '',
     ...lines,
     ...(lines.length ? [''] : []),
+    ...x.h,
     ...(coin?.line ? [`👥 ${coin.line}`, ''] : []),
     full ? pin : `${pin} · ${shortCa(t.address)}`,
     ...(full ? [contract(t.address)] : []),
@@ -203,7 +234,7 @@ export function larpReply(result, check, now = Date.now(), { full = true, coin =
 export const larpcheckOk = (lc) => !!(lc?.checked && /^[A-Z][A-Z ]{1,19}$/.test(lc.verdict || '') && /^https:\/\/larpcheck\.app\/\S+$/.test(lc.url || ''));
 
 /** Larpcheck's verdict on the coin the post names, credited and linked, or null (the bot then runs Radar's own check). */
-export function larpcheckReply(result, lc, now = Date.now(), { full = true } = {}) {
+export function larpcheckReply(result, lc, now = Date.now(), { full = true, history = [] } = {}) {
   const t = result?.named;
   if (!t?.address || !larpcheckOk(lc)) return null;
   const at = new Date(now).toISOString().slice(11, 16);
@@ -214,11 +245,13 @@ export function larpcheckReply(result, lc, now = Date.now(), { full = true } = {
   const scores = [Number.isFinite(lc.total) ? `${Math.round(lc.total)}/100` : '', `story ${story ? `${story.word}${n(story.score)}` : `${lc.verdict}${n(lc.score)}`}`, coin ? `coin ${coin.word}${n(coin.score)}` : ''].filter(Boolean).join(' · ');
   const call = plain(lc.call, 140);
   const pin = `📌 In the post: ${ticker(t.symbol)}${usd(t.marketCap) ? ` · ${usd(t.marketCap)}` : ''}${CHAIN_TAG[t.chain] ? ` · ${CHAIN_TAG[t.chain]}` : ''}`;
+  const x = extras(history);
   return [
     `Larpcheck on $${ticker(t.symbol)} (${at} UTC):`,
     `🧪 ${scores}`,
     ...(call ? [call] : []),
     '',
+    ...x.h,
     full ? pin : `${pin} · ${shortCa(t.address)}`,
     ...(full ? [contract(t.address)] : []),
     '',

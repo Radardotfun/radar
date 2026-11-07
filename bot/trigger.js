@@ -6,6 +6,9 @@
 // "larp check", "legit?" and "is this real" ask for the larp check, which a post that names its coin gets.
 const ASK = /\b(scan|coins?|ca|cas|contract|ticker|tickers|token|radar|what('|’)?s? (the )?(coin|ticker|ca)|which coin|larp|larpcheck|legit|is (this|it) (real|legit))\b/i;
 
+// A Solana or EVM contract address in a text.
+export const hasCa = (text) => /(^|[^1-9A-HJ-NP-Za-km-z])[1-9A-HJ-NP-Za-km-z]{32,44}($|[^1-9A-HJ-NP-Za-km-z])|\b0x[0-9a-fA-F]{40}\b/.test(String(text || ''));
+
 // m: a post from the mentions timeline with tweet.fields text, display_text_range and entities.
 export function wantsCoins(m, username) {
   const text = String(m?.text || '');
@@ -16,6 +19,8 @@ export function wantsCoins(m, username) {
   if (!typed) return { ok: false, why: 'not typed (a reply under one of our posts)' };
   const shown = [...text].slice(from, to).join('');
   const rest = shown.replace(/@\w{1,15}/g, ' ').replace(/https?:\/\/\S+/g, ' ').replace(/\s+/g, ' ').trim();
+  // A contract with the tag is a request to check that coin, the way people use a larp check bot: "@radardotfunn <CA>".
+  if (hasCa(rest) && rest.length <= 280) return { ok: true, ca: true };
   // A real ask is short. A long post that says "radar", "scan" or "token" is talking about Radar, not asking it anything.
   if (rest.length <= 25 || (rest.length <= 100 && ASK.test(rest))) return { ok: true };
   return { ok: false, why: 'conversation, not a coin request' };

@@ -30,6 +30,8 @@ const { default: engine, ipOf, INSIDE } = await import('../server/worker.js');
     const u = new URL(req.url);
     if (u.pathname === '/tweet') return ok({ post: { text: 'my dog biscuit', author: 'someone', url: 'https://x.com/someone/status/150', images: [] }, source: { label: 'x' } });
     if (u.pathname === '/interpret') return ok({ narrative: 'nothing', coinable: false, terms: [], anchors: [], tickers: [], cas: [] });
+    // Every tag is a larp check now (1.7.142): the post's story is read even with no coin.
+    if (u.pathname === '/story') return ok({ word: 'UNCLEAR', score: 30, call: 'Nothing checkable in this post', findings: [] });
     return ok({});
   } };
   const kv = new Map([['state', JSON.stringify({ since: '100', me: { id: '1', username: 'radardotfunn' } })]]);
