@@ -308,8 +308,12 @@ const chatFor = (env) => (chat ||= createChat({
 
 // Bot state in one KV key, written once per round that had mentions (KV's free plan allows 1,000 writes a day).
 async function loadState(env) {
-  return { since: null, me: null, day: '', sent: 0, mine: [], log: [], pending: [], ...((await env.BOT_KV.get('state', 'json')) || {}) };
+  return { since: null, me: null, day: '', sent: 0, mine: [], log: [], pending: [], inflight: [], ...((await env.BOT_KV.get('state', 'json')) || {}) };
 }
+
+// Tags answered per minute, and how long a claimed tag may go unsaved before it's tried again.
+export const PER_ROUND = 5;
+const INFLIGHT_MS = 5 * 60_000;
 
 async function poll(env) {
   if (!hasKeys(env)) return { skipped: 'no X keys yet' };
@@ -341,24 +345,19 @@ async function poll(env) {
     await env.BOT_KV.put('state', JSON.stringify(s));
     return { started: true, since: s.since };
   }
-  // Tags that failed for a passing reason (DexScreener or the AI busy) come back for another try.
-  const retry = (s.pending || []).filter((p) => p.tries < 5);
-  if (!mentions.length && !retry.length) return { mentions: 0 };
+  // Tags that failed for a passing reason (DexScreener or the AI busy) come back for another try. So do the tags of a
+  // round that took its batch and never saved (it was stopped part way, 7 Nov: six tags lost after X's credits came
+  // back): after INFLIGHT_MS each goes back on the list, unless it was answered (handle keeps "r:<tag>" once it posts).
+  const stale = (s.inflight || []).filter((x) => Date.now() - (x.at || 0) > INFLIGHT_MS);
+  const lost = [];
+  for (const x of stale) if (!(await env.BOT_KV.get(`r:${x.mention}`).catch(() => null))) lost.push({ mention: x.mention, by: x.by, target: x.target, tries: (x.tries || 0) + 1 });
+  s.inflight = (s.inflight || []).filter((x) => !stale.includes(x));
+  const retry = [...(s.pending || []), ...lost].filter((p, i, a) => p.tries < 5 && a.findIndex((q) => q.mention === p.mention) === i);
+  if (!mentions.length && !retry.length && !stale.length) return { mentions: 0 };
 
-  // Claim the batch before replying: the new mentions, and the retries (taken off the list now and put back below
-  // only if they fail again). If the state can't be saved, nothing is posted this round: a tag may then wait, but it
-  // can never get two replies.
-  s.since = newest || s.since;
-  s.pending = [];
-  try {
-    await env.BOT_KV.put('state', JSON.stringify(s));
-  } catch (e) {
-    return { error: `could not save the bot's state, so nothing was posted: ${String(e.message || e).slice(0, 120)}` };
-  }
-
-  const live = env.BOT_LIVE === '1';
-  const done = [...mentions].reverse().map((m) => {
-    const entry = { at: new Date().toISOString(), mention: m.id, by: m.author_id, tries: 0 };
+  const at = new Date().toISOString();
+  const fresh = [...mentions].reverse().map((m) => {
+    const entry = { at, mention: m.id, by: m.author_id, tries: 0 };
     const ref = (m.referenced_tweets || []).find((r) => r.type === 'replied_to') || (m.referenced_tweets || []).find((r) => r.type === 'quoted');
     const ask = wantsCoins(m, s.me.username);
     // A tag with a contract in it asks about that coin: the tag itself is the post to check (the post above is its
@@ -367,15 +366,35 @@ async function poll(env) {
     if (m.author_id === s.me.id || s.mine.includes(entry.target)) entry.skip = 'own post';
     else if (!ask.ok) entry.skip = ask.why;
     return entry;
-  }).concat(retry.map((p) => ({ at: new Date().toISOString(), mention: p.mention, by: p.by, target: p.target, tries: p.tries, retry: true })));
+  });
+  // Oldest first, at most PER_ROUND a minute: a backlog all at once (11 tags when the credits came back) gets most of
+  // them refused by DexScreener. The rest wait for the next minute without using up a try.
+  const queue = [...retry.map((p) => ({ at, mention: p.mention, by: p.by, target: p.target, tries: p.tries, retry: true })), ...fresh.filter((e) => !e.skip)];
+  const batch = queue.slice(0, PER_ROUND);
+  const later = queue.slice(PER_ROUND).map((e) => ({ mention: e.mention, by: e.by, target: e.target, tries: e.tries || 0 }));
+
+  // Claim the batch before replying: the new mentions, and the retries (taken off the list now and put back below
+  // only if they fail again). If the state can't be saved, nothing is posted this round: a tag may then wait, but it
+  // can never get two replies. The claimed tags stay in "inflight" until this round saves what came of them.
+  s.since = newest || s.since;
+  s.pending = later;
+  s.inflight = [...s.inflight, ...batch.map((e) => ({ mention: e.mention, by: e.by, target: e.target, tries: e.tries || 0, at: Date.now() }))];
+  try {
+    await env.BOT_KV.put('state', JSON.stringify(s));
+  } catch (e) {
+    return { error: `could not save the bot's state, so nothing was posted: ${String(e.message || e).slice(0, 120)}` };
+  }
+
+  const live = env.BOT_LIVE === '1';
+  const done = [...fresh.filter((e) => e.skip), ...batch];
   // Each tag in its own run of this Worker, all at once.
-  await Promise.all(done.filter((e) => !e.skip).map((entry) => env.SELF.fetch('https://radar-bot/handle', {
+  await Promise.all(batch.map((entry) => env.SELF.fetch('https://radar-bot/handle', {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-bot-token': env.BOT_TOKEN },
     body: JSON.stringify({ mention: entry.mention, target: entry.target, live, tries: entry.tries || 0, scores: s.judged?.[entry.target]?.s || null }),
   }).then((r) => (r.ok ? r.json() : { error: `handle ${r.status}` })).then((r) => Object.assign(entry, r)).catch((e) => { entry.error = String(e.message || e).slice(0, 200); })));
 
-  for (const e of done) if (e.reply || e.dry) s.sent += 1;
+  for (const e of done) if ((e.reply && !e.already) || e.dry) s.sent += 1;
   // Each post's verdicts, for its next tags: kept a day, for the 50 posts tagged last.
   s.judged = s.judged || {};
   for (const e of done) {
@@ -383,12 +402,17 @@ async function poll(env) {
     delete e.scores;
   }
   s.judged = Object.fromEntries(Object.entries(s.judged).filter(([, v]) => Date.now() - v.at < 86_400_000).sort((a, b) => b[1].at - a[1].at).slice(0, 50));
-  s.pending = done.filter((e) => e.error && worthRetry(e.error) && !e.reply)
+  // This run's own failures go back on the list. The tags it put off were saved with the claim, and what's saved now
+  // says whether a later run has taken them since, so they come from there (from here only if nothing could be read).
+  const fails = batch.filter((e) => e.error && worthRetry(e.error) && !e.reply)
     .map((e) => ({ mention: e.mention, by: e.by, target: e.target, tries: (e.tries || 0) + 1 }));
+  const handled = batch.map((e) => e.mention);
   s.mine = [...done.map((e) => e.reply).filter(Boolean), ...s.mine].slice(0, 200);
   s.log = [...done.reverse(), ...s.log].slice(0, 60);
   const saved = await env.BOT_KV.get('state', 'json').catch(() => null);
-  await env.BOT_KV.put('state', JSON.stringify(mergeState(s, saved))).catch(() => {});
+  s.pending = saved ? fails : [...later, ...fails];
+  s.inflight = s.inflight.filter((x) => !handled.includes(x.mention));
+  await env.BOT_KV.put('state', JSON.stringify(mergeState(s, saved, { handled, replied: batch.filter((e) => e.reply).map((e) => e.mention) }))).catch(() => {});
   return { mentions: mentions.length, live, handled: done.map(({ text, ...rest }) => rest) };
 }
 
@@ -397,7 +421,18 @@ async function handle(env, { mention, target, live, scores: known = null, tries 
   dexBudget = DEX_BUDGET;
   dexLastStatus.clear();
   const postUrl = `https://x.com/i/status/${target}`;
-  const post = (t) => xApi(env, 'POST', `${X}/tweets`, { text: t, reply: { in_reply_to_tweet_id: mention } });
+  // One answer per tag: once a reply is up its id is kept for 3 days, so a tag that comes back (a round stopped
+  // before it saved) is never answered twice.
+  const key = live && mention && mention !== '0' ? `r:${mention}` : null;
+  if (key) {
+    const had = await env.BOT_KV.get(key).catch(() => null);
+    if (had) return { reply: had, already: true };
+  }
+  const post = async (t) => {
+    const r = await xApi(env, 'POST', `${X}/tweets`, { text: t, reply: { in_reply_to_tweet_id: mention } });
+    if (key && r?.data?.id) await env.BOT_KV.put(key, r.data.id, { expirationTtl: 3 * 86400 }).catch(() => {});
+    return r;
+  };
   let found;
   try {
     found = await replyFor(postUrl, known, tries > 0);

@@ -35,10 +35,13 @@ const newerId = (a, b) => { try { return BigInt(a || 0) >= BigInt(b || 0) ? a : 
 
 // Runs a minute apart can overlap when a post is slow to read, and whichever saves last would undo the other. So a run merges
 // with what's saved now: a rewound "since" would answer a tag twice, and lost retries would never be answered.
-export function mergeState(s, saved) {
+// handled: the tags this run worked on (no longer in flight); replied: those it answered (no longer pending).
+export function mergeState(s, saved, { handled = [], replied = [] } = {}) {
   if (!saved) return s;
   const pending = [...(s.pending || [])];
-  for (const p of saved.pending || []) if (!pending.some((q) => q.mention === p.mention)) pending.push(p);
+  for (const p of saved.pending || []) if (!pending.some((q) => q.mention === p.mention) && !replied.includes(p.mention)) pending.push(p);
+  // In flight: what's saved now (every run's claims), less what this run worked on.
+  const inflight = (saved.inflight || []).filter((p) => !handled.includes(p.mention));
   const seen = new Set();
   const log = [...(s.log || []), ...(saved.log || [])].filter((e) => { const k = `${e.mention}|${e.at}`; if (seen.has(k)) return false; seen.add(k); return true; })
     .sort((a, b) => String(b.at).localeCompare(String(a.at))).slice(0, 60);
@@ -47,6 +50,7 @@ export function mergeState(s, saved) {
     since: newerId(s.since, saved.since),
     sent: s.day === saved.day ? Math.max(s.sent || 0, saved.sent || 0) : s.sent,
     pending,
+    inflight,
     mine: [...new Set([...(s.mine || []), ...(saved.mine || [])])].slice(0, 200),
     judged: { ...(saved.judged || {}), ...(s.judged || {}) },
     log,
