@@ -15,7 +15,7 @@
 import { makeHandlers, API_BASE, DEFAULTS } from '../extension/src/lib/handlers.js';
 import { searchPairs, allPairs, aggregate, fullTokens } from '../extension/src/lib/market.js';
 import { latestProfiles } from '../extension/src/lib/alerts.js';
-import { botReply, replyEntries, NO_COINS, xLength, varied } from './reply.js';
+import { botReply, replyEntries, NO_COINS, xLength, varied, larpReply, larpMode } from './reply.js';
 import { botCoins, withMemory } from './coins.js';
 import { oauthHeader } from './oauth.js';
 import { wantsCoins, worthRetry, mergeState } from './trigger.js';
@@ -217,7 +217,7 @@ async function replyFor(postUrl, known = null, fresh = false) {
     // A tag under one of @radardotfunn's own posts (people trying the bot under its announcement): no scan of our
     // own words, just how to use it.
     if (String(post.author || '').toLowerCase() === 'radardotfunn') {
-      const tip = `Tag me under a news post, a meme or any post with a story, and I'll reply with the coins behind it (${new Date().toISOString().slice(11, 16)} UTC).`;
+      const tip = `Tag me under a post that names a coin (its CA or $ticker) and I'll larp check it. Under a news post or a meme, I'll reply with the coins behind the story (${new Date().toISOString().slice(11, 16)} UTC).`;
       return { text: tip, short: tip, links: tip, story: 'our own post' };
     }
     // The panel skips the AI judge when the read gives anchor words (any coin naming one counts); the bot posts in
@@ -231,6 +231,16 @@ async function replyFor(postUrl, known = null, fresh = false) {
     if (found.engineError) throw new Error('Radar could not read this post right now');
     const { scan, scores, guessed } = withMemory(found, known);
     const res = { ...scan, ...await botCoins(scan, post, { search: searchPairs, lookupCa, lookupBio, matchImages, capOf: curveCap, linkedTo, chains: SETTINGS.chains }) };
+    // A post that names its coin (its CA or $TICKER in the post) gets the larp check on that coin: Radar's read of whether
+    // the story holds up (server/story.js, the panel's larp check). A narrative post, a coin found only by its picture, the
+    // poster's bio or a link back to the post, or a check that can't answer, gets the coins as before.
+    if (larpMode(res)) {
+      const t = res.named;
+      const coin = { name: t.name, symbol: t.symbol, address: t.address, createdAt: t.createdAt, socials: t.socials, websites: t.websites, fromPost: !!t.fromPost, mentioned: true };
+      const check = await h.story({ post, narrative: res.narrative || '', coin }).catch((e) => { console.log('larp check failed', e.message); return null; });
+      const text = larpReply(res, check, Date.now());
+      if (text) return { text, short: larpReply(res, check, Date.now(), { full: false }), links: text, story: res.narrative || '', mode: 'larp', check: { word: check.word, score: check.score }, scores, guessed, speechLost: !!found.speechLost, entries: replyEntries(res) };
+    }
     const first = replyEntries(res)[0]?.t;
     const [larp, family] = await Promise.all([
       first ? h.larpcheck({ address: first.address }).catch(() => null) : null,

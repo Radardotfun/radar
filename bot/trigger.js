@@ -3,7 +3,8 @@
 // the text people see (display_text_range). The bot answers only a tag someone typed, with little else or with an
 // ask like "coins?" or "scan", and leaves conversation alone.
 
-const ASK = /\b(scan|coins?|ca|cas|contract|ticker|tickers|token|radar|what('|’)?s? (the )?(coin|ticker|ca)|which coin)\b/i;
+// "larp check", "legit?" and "is this real" ask for the larp check, which a post that names its coin gets.
+const ASK = /\b(scan|coins?|ca|cas|contract|ticker|tickers|token|radar|what('|’)?s? (the )?(coin|ticker|ca)|which coin|larp|larpcheck|legit|is (this|it) (real|legit))\b/i;
 
 // m: a post from the mentions timeline with tweet.fields text, display_text_range and entities.
 export function wantsCoins(m, username) {

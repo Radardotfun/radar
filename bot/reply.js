@@ -144,6 +144,46 @@ export function botReply(result, postUrl, now = Date.now(), { full = true, links
   return [head, '', ...lines, ...(more ? [more] : []), 'Full scan + Insta Buy: link in bio'].join('\n');
 }
 
+// The larp check reply, for a post that names its coin: its CA or $TICKER is in the post itself (coins.js how 'post').
+// A coin found by its picture, the poster's bio or a link back to the post sits under a narrative post, which gets the coins.
+export const larpMode = (result) => !!(result?.named?.address && result.how === 'post');
+
+export const LARP_WORDS = new Set(['REAL', 'LIKELY REAL', 'PARTLY REAL', 'UNCLEAR', 'LIKELY LARP', 'LARP']);
+const FINDING = { works: '✅', risk: '⚠️', missing: '❔', info: 'ℹ️' };
+// What the AI wrote is data: it can't mention anyone, post a link, or add a second cashtag (X allows one a post).
+const plain = (s, n) => {
+  const t = String(s || '').replace(/https?:\/\/\S+|www\.\S+/gi, '').replace(/@(?=\w)/g, '').replace(/\$(?=[\p{L}\p{N}])/gu, '').replace(/\s+/g, ' ').trim();
+  if (t.length <= n) return t;
+  const cut = t.slice(0, n - 1);
+  return `${cut.slice(0, Math.max(cut.lastIndexOf(' '), n / 2))}…`;
+};
+
+/**
+ * The larp check on the coin the post names: Radar's read of the story (server/story.js: word, score, call, findings),
+ * then the coin with its contract. null when there is no named coin or no usable read (the bot then sends the coins).
+ * full: false gives the short contract, as botReply does.
+ */
+export function larpReply(result, check, now = Date.now(), { full = true } = {}) {
+  const t = result?.named;
+  if (!t?.address || !check || !LARP_WORDS.has(check.word)) return null;
+  const at = new Date(now).toISOString().slice(11, 16);
+  const coin = `📌 In the post: ${ticker(t.symbol)}${usd(t.marketCap) ? ` · ${usd(t.marketCap)}` : ''}${CHAIN_TAG[t.chain] ? ` · ${CHAIN_TAG[t.chain]}` : ''}`;
+  const call = plain(check.call, 140);
+  const findings = (Array.isArray(check.findings) ? check.findings : []).map((f) => [FINDING[f?.kind] || '•', plain(f?.text, 120)]).filter(([, x]) => x).slice(0, 3);
+  return [
+    `Larp check on $${ticker(t.symbol)} (${at} UTC):`,
+    `🧪 ${check.word}${Number.isFinite(check.score) ? ` · ${check.score}/100` : ''}`,
+    ...(call ? [call] : []),
+    '',
+    ...findings.map(([mark, x]) => `${mark} ${x}`),
+    ...(findings.length ? [''] : []),
+    full ? coin : `${coin} · ${shortCa(t.address)}`,
+    ...(full ? [contract(t.address)] : []),
+    '',
+    "Radar's read of the evidence, not advice. Full scan + Insta Buy: link in bio",
+  ].join('\n');
+}
+
 export const NO_COINS = 'No coins on this one yet.';
 
 // X refuses a reply identical to an earlier one. This makes one different: seconds in its time, or a time when it has none.
