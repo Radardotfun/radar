@@ -466,10 +466,15 @@
       const card = document.createElement('div');
       card.className = 'nr-alert';
       card.setAttribute('role', 'alert');
-      card.innerHTML = item.kind === 'signal' ? signalCard() : `<div class="nr-alert-top">${BELL}<span>${item.kind === 'guard' ? `Radar Guard` : item.kind === 'verdict' ? `Larpcheck now says ${esc(item.larp.word)}` : item.watch.word ? `New pair on “${esc(item.watch.word)}”` : `New coin off ${item.watch.author ? `@${esc(item.watch.author)}'s` : 'a watched'} post`}</span><button type="button" class="nr-alert-x" data-x aria-label="Close">×</button></div>
+      const breakingCard = () => `<div class="nr-alert-top">${BELL}<span>Breaking now: “${esc(item.watch.label)}”</span><button type="button" class="nr-alert-x" data-x aria-label="Close">×</button></div>
+        <div class="nr-alert-coin"><b>$${esc(String(c.symbol || '').trim())}</b><span>${esc(c.name || '')}</span></div>
+        <div class="nr-alert-meta">${esc(item.text)}</div>
+        <div class="nr-alert-checks"><div><i></i>Names only: what launched, not why. Read the checks first.</div></div>
+        <div class="nr-alert-acts"><button type="button" data-open>Open in Radar</button><button type="button" data-chart>Chart</button><button type="button" data-post>Search it on X</button></div>`;
+      card.innerHTML = item.kind === 'signal' ? signalCard() : item.kind === 'breaking' ? breakingCard() : `<div class="nr-alert-top">${BELL}<span>${item.kind === 'guard' ? (item.watch?.author === 'Bag Guard' ? 'Bag Guard' : 'Radar Guard') : item.kind === 'verdict' ? `Larpcheck now says ${esc(item.larp.word)}` : item.watch.word ? `New pair on “${esc(item.watch.word)}”` : `New coin off ${item.watch.author ? `@${esc(item.watch.author)}'s` : 'a watched'} post`}</span><button type="button" class="nr-alert-x" data-x aria-label="Close">×</button></div>
         <div class="nr-alert-coin"><b>$${esc(String(c.symbol || '').trim())}</b><span>${esc(c.name || '')}</span></div>
         <div class="nr-alert-meta">${esc([CHAIN[c.chain] || c.chain, c.marketCap ? `${usd(c.marketCap)} MC` : '', c.createdAt ? `launched ${ageOf(c.createdAt)} ago` : ''].filter(Boolean).join(' · '))}</div>
-        <div class="nr-alert-checks">${item.kind === 'guard' ? `<div><i class="risk"></i><b>${esc(item.text)}</b></div>` : ''}${larp}${holders}</div>
+        <div class="nr-alert-checks">${item.kind === 'guard' ? `<div><i class="${['ok', 'mid'].includes(item.tone) ? item.tone : 'risk'}"></i><b>${esc(item.text)}</b></div>` : ''}${larp}${holders}</div>
         <div class="nr-alert-acts">
           ${item.buy ? `<button type="button" class="buy" data-buy>${quick ? `Insta buy · ${sol} SOL` : 'Trade on Uniswap'}</button>` : ''}
           <button type="button" data-open>Open in Radar</button><button type="button" data-chart>Chart</button>
@@ -488,6 +493,7 @@
         else if ('ca' in b.dataset) { navigator.clipboard?.writeText(b.dataset.ca).then(() => { const em = b.querySelector('em'); if (em) em.textContent = 'Copied'; }).catch(() => {}); }
         else if ('post' in b.dataset) safeOpen(item.watch.url, '_blank', 'noopener');
         else if ('sig' in b.dataset) { card.remove(); launch({ post: { text: item.watch.url }, source: { kind: 'Alert', label: `@${item.watch.author} just posted this` } }); }
+        else if ('open' in b.dataset && item.kind === 'breaking') { card.remove(); launch({ post: { text: item.watch.word }, source: { kind: 'Alert', label: `Breaking now: “${item.watch.label}”` }, tab: 'new' }); }
         else if ('open' in b.dataset && item.watch.word) { card.remove(); launch({ post: { text: item.watch.word }, source: { kind: 'Alert', label: `$${String(c.symbol || '').trim()} is new on “${item.watch.word}”` }, tab: 'new' }); }
         else if ('open' in b.dataset) { card.remove(); launch({ post: { text: item.watch.url }, source: { kind: 'Alert', label: `$${String(c.symbol || '').trim()} launched off this post` } }); }
       }, true);

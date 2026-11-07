@@ -1,0 +1,19 @@
+<!doctype html>
+<!-- The alert cards the extension's content script draws on X (extension/src/content/content.js), with the extension APIs
+     faked. Serve the repo root and open /test/content-alerts.html; window.__alert(item) shows one card. -->
+<html><head><meta charset="utf-8"><title>Content: alert cards</title>
+<style>html,body{margin:0;min-height:100vh;background:#000;color:#e7e9ea;font-family:system-ui}</style></head>
+<body>
+<script>
+  const listeners = [];
+  const opened = [];
+  window.__opened = opened;
+  window.open = (url) => { opened.push(url); return null; };
+  globalThis.chrome = {
+    storage: { onChanged: { addListener: (fn) => listeners.push(fn) }, local: { get: async () => ({}), set: async () => {} } },
+    runtime: { onMessage: { addListener() {} }, getURL: (p) => `../extension/${p}`, sendMessage: async () => ({}), id: 'test' },
+  };
+  window.__alert = (item) => listeners.forEach((fn) => fn({ alerts: { newValue: { feed: [{ at: Date.now() + 1000, ...item }] } } }, 'local'));
+</script>
+<script src="../extension/src/content/content.js"></script>
+</body></html>

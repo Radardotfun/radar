@@ -1240,7 +1240,7 @@ class Radar {
   async loadFeed() {
     clearTimeout(this.feedTimer);
     try {
-      [this.feed, this.track] = await Promise.all([send('breaking'), send('track').catch(() => this.track || null)]);
+      [this.feed, this.track, this.pings] = await Promise.all([send('breaking'), send('track').catch(() => this.track || null), send('alerts:breakingPings').catch(() => null)]);
     } catch (e) {
       if (!this.feed?.stories) this.feed = { error: e.message || 'Could not load this' };
     }
@@ -1258,10 +1258,12 @@ class Radar {
     if (!f) return `<div class="star-list">${top}<div class="empty"><span class="spinner"></span></div></div>`;
     if (f.error) return `<div class="star-list">${top}<div class="empty"><div class="big">Couldn't load this</div><p class="error">${esc(f.error)}</p></div></div>`;
     const late = f.live ? '' : `<div class="holder-line feed-late"><span>Holders see this live. This list is 10 minutes behind.</span>${this.holder?.on ? '<button type="button" data-holder-connect>Check my wallet</button>' : ''}</div>`;
-    if (!f.stories.length) return `<div class="star-list">${top}${late}<div class="empty"><div class="big">Nothing breaking right now</div><p>A story shows up here when many new coins launch under the same word, from different wallets.</p></div></div>`;
+    // Pings live in the extension's background, so the web and the userscript (no handler there) show no switch.
+    const pings = !this.pings || !f.live ? '' : `<div class="holder-line feed-pings"><span>${this.pings.on ? 'Radar pings you when a new story breaks: 8+ coins from 5+ wallets, one past $15K.' : 'Get an alert when a new story breaks: 8+ coins from 5+ wallets, one past $15K.'}</span><button type="button" data-act="break-pings" aria-pressed="${this.pings.on}">${this.pings.on ? 'Pings on' : 'Turn on'}</button></div>`;
+    if (!f.stories.length) return `<div class="star-list">${top}${late}${pings}<div class="empty"><div class="big">Nothing breaking right now</div><p>A story shows up here when many new coins launch under the same word, from different wallets.</p></div></div>`;
     const title = (w) => w.charAt(0).toUpperCase() + w.slice(1);
     const chip = (label, c, value) => `<button type="button" class="feed-coin" data-feed-coin="${esc(c.address)}" data-feed-sym="${esc(c.symbol)}" title="Scan ${esc(c.name || c.symbol)}"><i>${label}</i><b>$${esc(c.symbol)}</b>${value ? `<span>${esc(value)}</span>` : ''}</button>`;
-    return `<div class="star-list">${top}${late}${f.stories.map((s) => `<div class="feed-row">
+    return `<div class="star-list">${top}${late}${pings}${f.stories.map((s) => `<div class="feed-row">
         <button type="button" class="feed-open" data-feed-open="${esc(s.words[0])}" title="Scan this story">
           <span class="feed-title"><b>${esc(s.words.map(title).join(' · '))}</b><em>${s.coins} coins</em></span>
           <span class="feed-sub">${s.wallets} wallets · ${s.recent} in the last 10 min · began ${esc(age(s.startedAt))} ago</span>
@@ -1749,7 +1751,7 @@ class Radar {
       // A Diamond Hand alert names one coin, so its row opens Radar's buy page (the wallet still confirms); the reason stays in the tooltip.
       if (f.kind === 'signal') return `<a class="al-hit" href="${esc(f.buy || f.watch.url)}" target="_blank" rel="noopener noreferrer"${f.buy ? ` title="${esc(f.text)}"` : ''}><b>${f.watch.author === 'Diamond Hand' ? 'Diamond Hand' : `@${esc(f.watch.author)}`}</b><span>${esc([f.coin.name, age(f.at)].filter(Boolean).join(' · '))}</span>${f.buy ? '<em class="up">Buy on Radar</em>' : `<em>${esc(f.text)}</em>`}</a>`;
       const c = f.coin;
-      const larp = f.kind === 'guard' ? esc(f.text) : f.larp ? `${f.larp.by === 'Larpcheck' ? 'Larpcheck' : 'Larp check'} ${esc(f.larp.word)}${f.larp.score != null ? ` ${esc(f.larp.score)}` : ''}` : '';
+      const larp = f.kind === 'breaking' ? `Breaking now: ${esc(f.watch.label)}` : f.kind === 'guard' ? esc(f.text) : f.larp ? `${f.larp.by === 'Larpcheck' ? 'Larpcheck' : 'Larp check'} ${esc(f.larp.word)}${f.larp.score != null ? ` ${esc(f.larp.score)}` : ''}` : '';
       const link = f.buy || f.chart;
       return `<a class="al-hit" href="${esc(link)}" target="_blank" rel="noopener noreferrer"><b>$${esc(String(c.symbol || '').trim())}</b>
         <span>${esc([CHAIN_LABEL[c.chain] || c.chain, usd(c.marketCap), age(f.at)].filter(Boolean).join(' · '))}</span>${larp ? `<em>${larp}</em>` : ''}</a>`;
@@ -1804,6 +1806,12 @@ class Radar {
       ${state}
       ${a.holder ? '' : '<p class="fine">For $RADAR holders. Check your wallet at the top of Radar to turn it on.</p>'}
     </section>`;
+  }
+
+  async toggleBreakingPings() {
+    try { this.pings = await send('alerts:breakingPings', { on: !this.pings?.on }); } catch (err) { this.toast(err.message, 3000); }
+    if (this.pings?.on) this.toast('Pings on. They show on X, on the toolbar icon, and on your desktop if desktop alerts are allowed', 3500);
+    this.renderBody();
   }
 
   async muteBag(mint, on) {
@@ -2063,6 +2071,7 @@ class Radar {
     if (e.target.closest('[data-act="big-toggle"]')) { await this.toggleBig(); return; }
     if (e.target.closest('[data-act="diamond-toggle"]')) { await this.toggleDiamond(); return; }
     if (e.target.closest('[data-act="bag-toggle"]')) { await this.toggleBagGuard(); return; }
+    if (e.target.closest('[data-act="break-pings"]')) { await this.toggleBreakingPings(); return; }
     const bagMute = e.target.closest('[data-act="bag-mute"]');
     if (bagMute) { await this.muteBag(bagMute.dataset.mint, bagMute.dataset.on === '1'); return; }
     if (e.target.closest('[data-act="dh-add"]')) { await this.addMyWallet(); return; }

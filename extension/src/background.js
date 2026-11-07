@@ -4,6 +4,7 @@ import { newWatch, newFollow, verdictTurned, checkWatch, buyUrl, chartUrl, MAX_W
 import { GUARD_KEY, GUARD_MINUTES, lookAtStar } from './lib/guard.js';
 import { lookAt, launchFromPairs, isWalletAddress, agoText, MAX_MY_WALLETS } from './lib/diamond.js';
 import { reportBlock } from './ui/holdercheck.js';
+import { BREAK_KEY, BREAK_SEEN, breakingPings, breakingItem } from './lib/breakingpings.js';
 import { BAG_KEY, BAG_ON, BAG_LIST, BAG_MUTED, BAG_MINUTES, REPORTS_PER_RUN, walletHoldings, pickBags, lookAtBag, provedWallet, terminalUrl, setMuted } from './lib/bagguard.js';
 
 export { API_BASE, DEFAULTS };
@@ -204,6 +205,33 @@ handlers['alerts:bagMute'] = async ({ mint, on }) => {
     ...(list?.bags ? { [BAG_LIST]: { ...list, bags: list.bags.map((b) => (b.mint === mint ? { ...b, muted: !!on } : b)) } } : {}) });
   return alertList(await loadAlerts());
 };
+// Breaking now pings (lib/breakingpings.js): with no argument, the switch's state; turning it on starts from a quiet first look.
+handlers['alerts:breakingPings'] = async ({ on } = {}) => {
+  if (on !== undefined) await ext.storage.local.set({ [BREAK_KEY]: !!on, [BREAK_SEEN]: null });
+  return { on: (await ext.storage.local.get(BREAK_KEY))[BREAK_KEY] === true };
+};
+async function runBreakingPings() {
+  const got = await ext.storage.local.get(['radarHolder', BREAK_KEY, BREAK_SEEN]);
+  if (got[BREAK_KEY] !== true) return;
+  const holder = got.radarHolder;
+  if (!(holder?.token && holder.exp > Date.now())) return;
+  // The live feed is for holders; if it comes back late, a ping would be old news.
+  const feed = await handlers.breaking().catch(() => null);
+  if (!feed?.live || !Array.isArray(feed.stories)) return;
+  const now = Date.now();
+  const { seen, pings } = breakingPings(feed.stories, got[BREAK_SEEN], now);
+  await ext.storage.local.set({ [BREAK_SEEN]: seen });
+  if (!pings.length) return;
+  const items = pings.map((s) => breakingItem(s, now));
+  const added = await withAlerts(async (a) => {
+    const newOnes = items.filter((i) => !a.feed.some((f) => f.id === i.id));
+    a.feed = [...newOnes, ...a.feed].slice(0, 30);
+    a.unread += newOnes.length;
+    if (newOnes.length) showBadge(a.unread);
+    return newOnes;
+  });
+  for (const item of added) await notify(item);
+}
 handlers['alerts:diamond'] = async ({ on }) => {
   await ext.storage.local.set({ [DH_KEY]: !!on });
   return alertList(await loadAlerts());
@@ -258,6 +286,11 @@ const usdShort = (n) => (!(n > 0) ? '' : n >= 999.95e3 ? `$${(n / 1e6).toFixed(2
 const CHAIN_NAME = { solana: 'Solana', robinhood: 'Robinhood Chain', base: 'Base', bsc: 'BNB Chain' };
 async function notify(item) {
   if (!ext.notifications || !(await canNotify())) return;
+  if (item.kind === 'breaking') {
+    const opts = { type: 'basic', iconUrl: ext.runtime.getURL('icons/icon128.png'), title: `Breaking now: “${item.watch.label}”`, message: `${item.text}\n$${item.coin.symbol} is the biggest`, priority: 2, buttons: [{ title: 'Open the chart' }, { title: 'Search it on X' }] };
+    try { await ext.notifications.create(item.id, opts); } catch { delete opts.buttons; await ext.notifications.create(item.id, opts).catch(() => {}); }
+    return;
+  }
   if (item.kind === 'signal') {
     const cas = (item.coins || []).map((k) => `$${k.symbol} ${k.address}`).join('\n');
     const big = { type: 'basic', iconUrl: ext.runtime.getURL('icons/icon128.png'), title: `@${item.watch.author}${item.coin.name ? `: ${item.coin.name}` : ' posted something'}`, message: [item.text, cas].filter(Boolean).join('\n'), priority: 2, buttons: item.buy ? [{ title: 'Buy on Radar' }, { title: 'Open the chart' }] : [{ title: 'Scan it' }, { title: 'Open the post' }] };
@@ -493,7 +526,7 @@ async function runBagGuard(now = false) {
         const coin = coinOf(fresh[bag.mint]);
         const larp = lc?.checked ? { by: 'Larpcheck', word: lc.verdict, score: lc.score ?? null, url: lc.url || lc.page || null } : null;
         // No buy button: an alert that something went wrong shouldn't offer one. The link opens the coin on the terminal.
-        items.push({ id: `bag:${bag.mint}:${e.reason}:${e.word || e.text.slice(0, 40)}`, at: Date.now(), kind: e.reason === 'verdict' ? 'verdict' : 'guard', text: e.text, watch: { url, author: 'Bag Guard', label: `$${bag.symbol}` }, coin, larp, holders: null, buy: null, chart: url });
+        items.push({ id: `bag:${bag.mint}:${e.reason}:${e.word || e.text.slice(0, 40)}`, at: Date.now(), kind: e.reason === 'verdict' ? 'verdict' : 'guard', tone: e.reason === 'up' ? 'ok' : e.reason === 'down' ? 'mid' : 'risk', text: e.text, watch: { url, author: 'Bag Guard', label: `$${bag.symbol}` }, coin, larp, holders: null, buy: null, chart: url });
       }
     }
     // A coin muted while this run was looking counts as muted too (item ids are bag:<mint>:...).
@@ -614,7 +647,7 @@ async function runMyWallets(now = Date.now()) {
   });
   for (const item of added.slice(0, 3)) await notify(item);
 }
-ext.alarms.onAlarm.addListener((alarm) => { if (alarm.name === SIGNAL_ALARM) runSignals().catch(() => {}); });
+ext.alarms.onAlarm.addListener((alarm) => { if (alarm.name === SIGNAL_ALARM) { runSignals().catch(() => {}); runBreakingPings().catch(() => {}); } });
 // The badge lives in memory only: put it back when the worker starts again.
 loadAlerts().then((a) => showBadge(a.unread)).catch(() => {});
 

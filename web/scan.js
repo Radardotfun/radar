@@ -1,4 +1,4 @@
-// Radar 1.7.135 on the web: built from the extension source at https://tryradar.fun. Not financial advice.
+// Radar 1.7.136 on the web: built from the extension source at https://tryradar.fun. Not financial advice.
 (() => {
   // extension/src/lib/keywords.js
   var STOP = new Set(`a about above after again against all almost also am an and any are aren as at be because been before
@@ -3206,7 +3206,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     async loadFeed() {
       clearTimeout(this.feedTimer);
       try {
-        [this.feed, this.track] = await Promise.all([send("breaking"), send("track").catch(() => this.track || null)]);
+        [this.feed, this.track, this.pings] = await Promise.all([send("breaking"), send("track").catch(() => this.track || null), send("alerts:breakingPings").catch(() => null)]);
       } catch (e) {
         if (!this.feed?.stories) this.feed = { error: e.message || "Could not load this" };
       }
@@ -3225,10 +3225,11 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       if (!f) return `<div class="star-list">${top}<div class="empty"><span class="spinner"></span></div></div>`;
       if (f.error) return `<div class="star-list">${top}<div class="empty"><div class="big">Couldn't load this</div><p class="error">${esc2(f.error)}</p></div></div>`;
       const late = f.live ? "" : `<div class="holder-line feed-late"><span>Holders see this live. This list is 10 minutes behind.</span>${this.holder?.on ? '<button type="button" data-holder-connect>Check my wallet</button>' : ""}</div>`;
-      if (!f.stories.length) return `<div class="star-list">${top}${late}<div class="empty"><div class="big">Nothing breaking right now</div><p>A story shows up here when many new coins launch under the same word, from different wallets.</p></div></div>`;
+      const pings = !this.pings || !f.live ? "" : `<div class="holder-line feed-pings"><span>${this.pings.on ? "Radar pings you when a new story breaks: 8+ coins from 5+ wallets, one past $15K." : "Get an alert when a new story breaks: 8+ coins from 5+ wallets, one past $15K."}</span><button type="button" data-act="break-pings" aria-pressed="${this.pings.on}">${this.pings.on ? "Pings on" : "Turn on"}</button></div>`;
+      if (!f.stories.length) return `<div class="star-list">${top}${late}${pings}<div class="empty"><div class="big">Nothing breaking right now</div><p>A story shows up here when many new coins launch under the same word, from different wallets.</p></div></div>`;
       const title = (w) => w.charAt(0).toUpperCase() + w.slice(1);
       const chip = (label, c, value) => `<button type="button" class="feed-coin" data-feed-coin="${esc2(c.address)}" data-feed-sym="${esc2(c.symbol)}" title="Scan ${esc2(c.name || c.symbol)}"><i>${label}</i><b>$${esc2(c.symbol)}</b>${value ? `<span>${esc2(value)}</span>` : ""}</button>`;
-      return `<div class="star-list">${top}${late}${f.stories.map((s) => `<div class="feed-row">
+      return `<div class="star-list">${top}${late}${pings}${f.stories.map((s) => `<div class="feed-row">
         <button type="button" class="feed-open" data-feed-open="${esc2(s.words[0])}" title="Scan this story">
           <span class="feed-title"><b>${esc2(s.words.map(title).join(" \xB7 "))}</b><em>${s.coins} coins</em></span>
           <span class="feed-sub">${s.wallets} wallets \xB7 ${s.recent} in the last 10 min \xB7 began ${esc2(age(s.startedAt))} ago</span>
@@ -3692,7 +3693,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       const hits = a.feed.slice(0, 5).map((f) => {
         if (f.kind === "signal") return `<a class="al-hit" href="${esc2(f.buy || f.watch.url)}" target="_blank" rel="noopener noreferrer"${f.buy ? ` title="${esc2(f.text)}"` : ""}><b>${f.watch.author === "Diamond Hand" ? "Diamond Hand" : `@${esc2(f.watch.author)}`}</b><span>${esc2([f.coin.name, age(f.at)].filter(Boolean).join(" \xB7 "))}</span>${f.buy ? '<em class="up">Buy on Radar</em>' : `<em>${esc2(f.text)}</em>`}</a>`;
         const c = f.coin;
-        const larp = f.kind === "guard" ? esc2(f.text) : f.larp ? `${f.larp.by === "Larpcheck" ? "Larpcheck" : "Larp check"} ${esc2(f.larp.word)}${f.larp.score != null ? ` ${esc2(f.larp.score)}` : ""}` : "";
+        const larp = f.kind === "breaking" ? `Breaking now: ${esc2(f.watch.label)}` : f.kind === "guard" ? esc2(f.text) : f.larp ? `${f.larp.by === "Larpcheck" ? "Larpcheck" : "Larp check"} ${esc2(f.larp.word)}${f.larp.score != null ? ` ${esc2(f.larp.score)}` : ""}` : "";
         const link = f.buy || f.chart;
         return `<a class="al-hit" href="${esc2(link)}" target="_blank" rel="noopener noreferrer"><b>$${esc2(String(c.symbol || "").trim())}</b>
         <span>${esc2([CHAIN_LABEL[c.chain] || c.chain, usd(c.marketCap), age(f.at)].filter(Boolean).join(" \xB7 "))}</span>${larp ? `<em>${larp}</em>` : ""}</a>`;
@@ -3740,6 +3741,15 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       ${state}
       ${a.holder ? "" : '<p class="fine">For $RADAR holders. Check your wallet at the top of Radar to turn it on.</p>'}
     </section>`;
+    }
+    async toggleBreakingPings() {
+      try {
+        this.pings = await send("alerts:breakingPings", { on: !this.pings?.on });
+      } catch (err) {
+        this.toast(err.message, 3e3);
+      }
+      if (this.pings?.on) this.toast("Pings on. They show on X, on the toolbar icon, and on your desktop if desktop alerts are allowed", 3500);
+      this.renderBody();
     }
     async muteBag(mint, on) {
       try {
@@ -4063,6 +4073,10 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       }
       if (e.target.closest('[data-act="bag-toggle"]')) {
         await this.toggleBagGuard();
+        return;
+      }
+      if (e.target.closest('[data-act="break-pings"]')) {
+        await this.toggleBreakingPings();
         return;
       }
       const bagMute = e.target.closest('[data-act="bag-mute"]');
@@ -5229,6 +5243,8 @@ svg { display: block; }
 /* ---------- breaking now ---------- */
 .feed-head.on { color: var(--text); background: var(--card-2); }
 .feed-late { margin: 0; }
+.feed-pings { margin: 0 0 8px; }
+.feed-pings button[aria-pressed="true"] { background: var(--card-2); }
 .feed-row { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
 .feed-open { all: unset; display: block; box-sizing: border-box; width: 100%; padding: 11px 12px 8px; cursor: pointer; }
 .feed-open:hover { background: var(--card-2); }

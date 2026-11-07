@@ -28,7 +28,9 @@
 
   function render() {
     if (!last) return;
-    $('tr-note').textContent = `${SORTS[sort].note}. Updated ${updated}.`;
+    const flags = last.summary?.flags || 0;
+    const cut = flags > (last.rows || []).length ? ` Showing ${(last.rows || []).length} of ${flags}: the newest and the best.` : '';
+    $('tr-note').textContent = `${SORTS[sort].note}. Updated ${updated}.${cut}`;
     const rows = [...(last.rows || [])].sort(SORTS[sort].by);
     const big = (r) => (sort === 'now' ? r.nowX : r.peakX);
     $('tr-empty').hidden = rows.length > 0;

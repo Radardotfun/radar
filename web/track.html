@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&family=Geist+Mono:wght@500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/app.css?v=1.7.135" />
+  <link rel="stylesheet" href="/app.css?v=1.7.136" />
   <style>
     .tr-page { max-width: 760px; margin: 0 auto; padding: clamp(32px, 6vw, 64px) var(--gutter) clamp(48px, 7vw, 80px); }
     .tr-page h1 { margin-top: 14px; font-size: clamp(36px, 7vw, 58px); line-height: 1.02; letter-spacing: -0.035em; font-weight: 800; }
@@ -55,7 +55,7 @@
   <main class="tr-page">
     <p class="eyebrow">Track record</p>
     <h1>Every coin Radar flagged</h1>
-    <p class="lede">Each coin Breaking now put first in a story, with its market cap when Radar flagged it, at its peak since, and now. Losers included: nothing is picked after the fact.</p>
+    <p class="lede">Each coin Breaking now put first or biggest in a story once it had traded past $4K, with its market cap when Radar flagged it, at its peak since, and now. Losers included: nothing is picked after the fact.</p>
     <div class="tr-stats">
       <div class="tr-stat"><b id="tr-flags">–</b><span>coins flagged</span></div>
       <div class="tr-stat"><b id="tr-x2">–</b><span>did 2x at their peak</span></div>
@@ -74,13 +74,13 @@
     <p id="tr-error" hidden>Couldn't load the record. Radar will try again in a moment.</p>
     <p id="tr-empty" hidden>No flags in this range yet.</p>
     <div id="tr-list"></div>
-    <p class="tr-risk">This page leaves out the last 30 minutes. Holders see every flag live in the Radar extension, Diamond Hand's too. A peak is the highest market cap Radar read since the flag, checked every few minutes, so a short spike between checks can be missed. Most new coins go to zero. Not financial advice.</p>
+    <p class="tr-risk">This page leaves out the last 30 minutes. Holders see every flag live in the Radar extension, Diamond Hand's too. Since 7 Nov a coin is flagged only once its cap passes $4K, so fresh copies sitting at pump.fun's launch cap aren't counted; flags from before stay as they were. A peak is the highest market cap Radar read since the flag, checked every few minutes, so a short spike between checks can be missed. Most new coins go to zero. Not financial advice.</p>
   </main>
   <footer class="site-foot">
     <span>Radar</span>
     <span>Not financial advice. Memecoins are extremely risky.</span>
     <span class="foot-links"><a href="https://github.com/Radardotfun/radar" target="_blank" rel="noopener">Source code</a> · <a href="/privacy">Privacy</a></span>
   </footer>
-  <script src="/track.js?v=1.7.135"></script>
+  <script src="/track.js?v=1.7.136"></script>
 </body>
 </html>

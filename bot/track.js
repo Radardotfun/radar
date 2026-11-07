@@ -28,6 +28,11 @@ export async function recordFlag(db, { mint, source, at, symbol, name, story = '
   return !!r?.meta?.changes;
 }
 
+// A coin is flagged once it has traded past this. Under it, the coin is a fresh copy at pump.fun's launch cap (about $2.5K on
+// 7 Nov): of the 145 flags under $3K on 7 Nov none did 2x, and copies at the launch cap took turns as a story's biggest, one
+// a minute (32 DOPA flags in 30 minutes). Every 2x of that day was flagged at $4K or more.
+export const MIN_FLAG_CAP = 4_000;
+
 /** Breaking now's stories from the last half hour of launches: each story's first coin and its biggest, flagged once. */
 export async function recordStories(db, now = Date.now()) {
   const { results } = await db.prepare('SELECT coins FROM wire_rows WHERE at >= ?').bind(now - WINDOW_MS).all();
@@ -39,6 +44,7 @@ export async function recordStories(db, now = Date.now()) {
     for (const c of picks) {
       // The cap Radar saw for the coin when it flagged it: its latest in this window.
       const mc0 = coins.filter((x) => x.a === c.a).reduce((m, x) => Math.max(m, x.m || 0), 0) || c.m;
+      if (mc0 < MIN_FLAG_CAP) continue;
       if (await recordFlag(db, { mint: c.a, source: 'breaking', at: now, symbol: c.s, name: c.n, story, mc0 })) added++;
     }
   }

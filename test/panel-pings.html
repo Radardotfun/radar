@@ -1,0 +1,42 @@
+<!doctype html>
+<!-- The Breaking now view in the real panel with the pings switch, the backend faked (made-up stories). Serve the repo root
+     and open /test/panel-pings.html, then See what's breaking now. ?public: the 10-minutes-late feed (no switch).
+     ?web: no pings handler, as on tryradar.fun (no switch). ?theme=light|dim|dark -->
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Panel: Breaking now pings</title>
+<style>html,body{margin:0;height:100%;background:#000}#root{width:400px;height:100vh;margin:0 auto}</style></head>
+<body><div id="root"></div>
+<script type="module">
+import { makeHandlers, DEFAULTS } from '../extension/src/lib/handlers.js';
+import { useBackend, mountInline } from '../extension/src/ui/radar.js';
+
+const q = new URLSearchParams(location.search);
+const mem = new Map();
+const h = makeHandlers({
+  settings: async () => DEFAULTS,
+  store: { get: async (k) => mem.get(k) ?? null, set: async (k, v) => { mem.set(k, v); } },
+  openWindow: (url) => window.open(url),
+  rpcUrl: async () => null,
+  ready: Promise.resolve(),
+});
+const coin = (a, symbol, cap) => ({ address: `${a}${'1'.repeat(44)}`.slice(0, 44), symbol, name: symbol, cap });
+const now = Date.now();
+const stories = [
+  { words: ['space', 'cat'], coins: 14, wallets: 9, recent: 5, startedAt: now - 22 * 60_000, first: coin('Spc', 'SPACE', 7200), biggest: coin('Sct', 'SCAT', 48000) },
+  { words: ['mole'], coins: 7, wallets: 6, recent: 2, startedAt: now - 40 * 60_000, first: coin('Mol', 'MOLE', 3100), biggest: coin('Mlx', 'MOLEX', 12000) },
+];
+let pingsOn = false;
+Object.assign(h, {
+  breaking: async () => ({ live: !q.has('public'), asOf: now, stories }),
+  track: async () => null,
+});
+if (!q.has('web')) h['alerts:breakingPings'] = async ({ on } = {}) => { if (on !== undefined) pingsOn = !!on; return { on: pingsOn }; };
+else delete h['alerts:breakingPings'];
+useBackend(h, { css: '../extension/src/ui/radar.css' });
+
+const theme = q.get('theme') || 'dark';
+document.body.style.background = theme === 'light' ? '#fff' : theme === 'dim' ? '#15202b' : '#000';
+const radar = await mountInline(document.getElementById('root'), theme);
+window.radar = radar;
+radar.open({});
+</script></body></html>

@@ -861,6 +861,8 @@ svg { display: block; }
 /* ---------- breaking now ---------- */
 .feed-head.on { color: var(--text); background: var(--card-2); }
 .feed-late { margin: 0; }
+.feed-pings { margin: 0 0 8px; }
+.feed-pings button[aria-pressed="true"] { background: var(--card-2); }
 .feed-row { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
 .feed-open { all: unset; display: block; box-sizing: border-box; width: 100%; padding: 11px 12px 8px; cursor: pointer; }
 .feed-open:hover { background: var(--card-2); }
