@@ -1,6 +1,7 @@
 // The radar's backend: everything the panel asks for. The extension runs it in its service worker;
 // the web app runs it in the page. Each host supplies its own storage, window opening and RPC.
 import { familyCounts, familyDetails, parentOf } from './family.js';
+import { devRecord as readDevRecord } from './devrecord.js';
 import { fullTokens, mentionedTokens, typedCashtags, linkedSymbol, LAUNCHPADS, pickThree, searchPairs, aggregate, isMemecoin, alive, MAJOR_TICKERS, STOCK_TICKERS } from './market.js';
 import { rugReport, standInReport } from './rugcheck.js';
 import { readPost, findCoins, postCoins as coinsInPost } from './narrative.js';
@@ -143,6 +144,13 @@ export function makeHandlers(host) {
     const parent = parentOf({ address: mint, quote });
     return cached(`fam:${mint}`, 600_000, async () => familyDetails(await familyCounts(mint, famRpc)))
       .then((f) => ({ ...f, parent }), () => (parent ? { children: 0, parent } : Promise.reject(new Error('Family unavailable'))));
+  }
+
+  // Dev record (lib/devrecord.js): a pump.fun coin's dev wallet and how many coins it has launched there, read from the
+  // same public RPC as Family (a filtered read of pump.fun's curves), kept 10 minutes. null for a coin not from pump.fun.
+  async function devRecord({ mint }) {
+    if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(String(mint || ''))) throw new Error('Not a coin address');
+    return cached(`dev:${mint}`, 600_000, () => readDevRecord(mint, famRpc));
   }
 
   // More of Larpcheck through our server: holder data for chains Radar's own check doesn't cover, its lists, and for
@@ -472,7 +480,7 @@ export function makeHandlers(host) {
 
   const launchState = () => cached('launch:state', 600_000, async () => (await fetch(`${API_BASE}/launch/settings`, { signal: AbortSignal.timeout(6000) })).json());
 
-  const handlers = { typedTicker, forgetCoins, breaking, track, starList, starToggle, videoInfo, tweet, read, coins, fresh, postCoins, mentioned, story, larpcheck, family, refresh, safety, bundle, image, openWindow, reroute, holderStatus, holderSave, holderWho, holderActive, recentList, recentAdd, recentClear, launchState, lcHolders, lcBoard, lcSettings, lcStart, lcAsk, lcPoll, settings: () => host.settings() };
+  const handlers = { typedTicker, forgetCoins, breaking, track, starList, starToggle, videoInfo, tweet, read, coins, fresh, postCoins, mentioned, story, larpcheck, family, devRecord, refresh, safety, bundle, image, openWindow, reroute, holderStatus, holderSave, holderWho, holderActive, recentList, recentAdd, recentClear, launchState, lcHolders, lcBoard, lcSettings, lcStart, lcAsk, lcPoll, settings: () => host.settings() };
   // Changing the RPC drops cached bundle results so they're re-read through the new one.
   handlers.resetBundles = () => memo.forEach((_, k) => k.startsWith('bd:') && memo.delete(k));
   return handlers;

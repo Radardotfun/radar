@@ -747,6 +747,7 @@ svg { display: block; }
 .fam-row { display: flex; justify-content: space-between; gap: 10px; margin-top: 8px; font-size: 12px; color: var(--muted); }
 .fam-row b, .fam-row a { color: var(--text); font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .fam-row a:hover { text-decoration: underline; }
+.fam-row b.warn { color: var(--warn); }
 .fam-note { margin-top: 3px; font-size: 10.5px; color: var(--faint); line-height: 1.4; }
 .coin-check:empty { display: none; }
 .coin-check h4 { all: unset; display: flex; align-items: center; justify-content: space-between; font: 700 10.5px var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--faint); }

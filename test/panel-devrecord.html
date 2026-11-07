@@ -1,0 +1,41 @@
+<!doctype html>
+<!-- The Dev record section in the real panel, on a made-up coin, with the backend's slow parts faked. Serve the repo root
+     and open /test/panel-devrecord.html. ?one: the coin is its dev's only launch. ?none: not a pump.fun coin (no record).
+     Default: a wallet with 33 launches, 6 bonded (the numbers a real copycat launcher had on 7 Nov). ?theme=light|dim|dark -->
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Panel: Dev record</title>
+<style>html,body{margin:0;height:100%;background:#000}#root{width:400px;height:100vh;margin:0 auto}</style></head>
+<body><div id="root"></div>
+<script type="module">
+import { makeHandlers, DEFAULTS } from '../extension/src/lib/handlers.js';
+import { useBackend, mountInline } from '../extension/src/ui/radar.js';
+
+const q = new URLSearchParams(location.search);
+const mem = new Map();
+const h = makeHandlers({
+  settings: async () => DEFAULTS,
+  store: { get: async (k) => mem.get(k) ?? null, set: async (k, v) => { mem.set(k, v); } },
+  openWindow: (url) => window.open(url),
+  rpcUrl: async () => null,
+  ready: Promise.resolve(),
+});
+const CAT = { chain: 'solana', address: 'CopyCat1111111111111111111111111111111pump', name: 'Copy Cat', symbol: 'COPYCAT', marketCap: 4200, liquidity: 0, onCurve: true, mcapBacked: true,
+  priceUsd: 0.0000042, volume: { m5: 120, h1: 1800, h6: 2400, h24: 2400 }, txns: { h1: { buys: 41, sells: 22 }, h24: { buys: 60, sells: 31 } }, priceChange: { m5: 2, h1: -12, h6: -12, h24: -12 },
+  createdAt: Date.now() - 38 * 60_000, links: [], pairAddresses: [] };
+const DEV = 'Dev1Wa11etxxPumpLaunchesAAAAAAAAAAAAAAAAAAAA'.replace(/[^1-9A-HJ-NP-Za-km-z]/g, 'z');
+const fail = () => Promise.reject(new Error('not in this check'));
+Object.assign(h, {
+  read: async ({ post }) => ({ narrative: 'A cat that copies every coin it sees', post }),
+  coins: async () => ({ mode: 'ai', ts: Date.now(), mentioned: [], picks: [{ role: 'top', token: CAT }], others: [] }),
+  refresh: async () => ({ tokens: {} }), story: fail, larpcheck: async () => null, safety: fail, bundle: fail,
+  family: async () => ({ children: 0, parent: null }),
+  devRecord: async () => (q.has('none') ? null : q.has('one') ? { creator: DEV, launches: 1, bonded: 0, thisBonded: false } : { creator: DEV, launches: 33, bonded: 6, thisBonded: false }),
+});
+useBackend(h, { css: '../extension/src/ui/radar.css' });
+
+const theme = q.get('theme') || 'dark';
+document.body.style.background = theme === 'light' ? '#fff' : theme === 'dim' ? '#15202b' : '#000';
+const radar = await mountInline(document.getElementById('root'), theme);
+window.radar = radar;
+radar.scan({ post: { text: `new coin just dropped ${CAT.address}`, author: 'test', url: `https://x.com/test/status/${(BigInt(Date.now() - 45 * 60_000 - 1288834974657) << 22n).toString()}` }, source: { kind: '@test', label: 'Dev record check' } });
+</script></body></html>

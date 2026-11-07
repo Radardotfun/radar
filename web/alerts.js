@@ -1,4 +1,4 @@
-// Radar 1.7.133 alerts page, built from webapp/alerts.js: https://github.com/Radardotfun/radar
+// Radar 1.7.134 alerts page, built from webapp/alerts.js: https://github.com/Radardotfun/radar
 (() => {
   // extension/src/lib/keywords.js
   var STOP = new Set(`a about above after again against all almost also am an and any are aren as at be because been before
@@ -276,7 +276,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       const liquidity = sum(realLiquidity);
       const reportedLiquidity = sum((p) => p.liquidity?.usd);
       const marketCap = n(primary.marketCap) || n(primary.fdv);
-      const onCurve = LAUNCHPADS.has(primary.dexId);
+      const onCurve2 = LAUNCHPADS.has(primary.dexId);
       tokens.push({
         chain: primary.chainId,
         address: primary.baseToken.address,
@@ -304,13 +304,13 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
         // What its main pool is priced in: SOL or a dollar usually, another coin when it was launched under one.
         quote: primary.quoteToken?.address ? { address: primary.quoteToken.address, symbol: String(primary.quoteToken.symbol || "").trim() } : null,
         dexId: primary.dexId,
-        onCurve,
+        onCurve: onCurve2,
         pairAddresses: list.map((p) => p.pairAddress),
         url: primary.url,
         links: [...new Set(list.flatMap((p) => [...p.info?.websites || [], ...p.info?.socials || []].map((x) => x.url)).filter(Boolean))],
         boosts: n(primary.boosts?.active),
         // MC with almost nothing behind it (or a curve with zero trades) is not a real cap.
-        mcapBacked: onCurve ? n(primary.volume?.h24) > 0 : liquidity >= 1e3 && marketCap / Math.max(liquidity, 1) < 150,
+        mcapBacked: onCurve2 ? n(primary.volume?.h24) > 0 : liquidity >= 1e3 && marketCap / Math.max(liquidity, 1) < 150,
         updatedAt: Date.now()
       });
     }
@@ -504,6 +504,99 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     return { ...counts, volume: full.reduce((s, t) => s + (t?.volume?.h24 || 0), 0), biggest };
   }
   var parentOf = (t) => t?.quote?.address && !isBaseQuote(t.quote.address) && t.quote.address !== t.address ? { address: t.quote.address, symbol: String(t.quote.symbol || "").trim() } : null;
+
+  // extension/src/lib/devrecord.js
+  var CURVE_TAG = "4y6pru6YvC7";
+  var B582 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+  function base582(bytes) {
+    let n2 = 0n;
+    for (const b of bytes) n2 = n2 * 256n + BigInt(b);
+    let s = "";
+    while (n2 > 0n) {
+      s = B582[Number(n2 % 58n)] + s;
+      n2 /= 58n;
+    }
+    for (const b of bytes) {
+      if (b) break;
+      s = `1${s}`;
+    }
+    return s;
+  }
+  function unbase58(s) {
+    let n2 = 0n;
+    for (const c of String(s)) {
+      const i = B582.indexOf(c);
+      if (i < 0) throw new Error("Not a Solana address");
+      n2 = n2 * 58n + BigInt(i);
+    }
+    const out = [];
+    while (n2 > 0n) {
+      out.unshift(Number(n2 & 255n));
+      n2 >>= 8n;
+    }
+    for (const c of String(s)) {
+      if (c !== "1") break;
+      out.unshift(0);
+    }
+    return Uint8Array.from(out);
+  }
+  var bytesOf2 = (b64) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+  var P = 2n ** 255n - 19n;
+  var mod = (a) => (a % P + P) % P;
+  function pow(b, e) {
+    let r = 1n;
+    b = mod(b);
+    while (e > 0n) {
+      if (e & 1n) r = r * b % P;
+      b = b * b % P;
+      e >>= 1n;
+    }
+    return r;
+  }
+  var D = mod(-121665n * pow(121666n, P - 2n));
+  function onCurve(bytes) {
+    let y = 0n;
+    for (let i = 31; i >= 0; i--) y = y << 8n | BigInt(bytes[i]);
+    y &= (1n << 255n) - 1n;
+    if (y >= P) return false;
+    const y2 = y * y % P;
+    const x2 = mod(y2 - 1n) * pow(mod(D * y2 + 1n), P - 2n) % P;
+    return x2 === 0n || pow(x2, (P - 1n) / 2n) === 1n;
+  }
+  async function programAddress(seeds, program) {
+    const tail = [...unbase58(program), ...new TextEncoder().encode("ProgramDerivedAddress")];
+    const head = seeds.flatMap((s) => [...s]);
+    for (let bump = 255; bump >= 0; bump--) {
+      const hash = new Uint8Array(await crypto.subtle.digest("SHA-256", Uint8Array.from([...head, bump, ...tail])));
+      if (!onCurve(hash)) return base582(hash);
+    }
+    throw new Error("No program address");
+  }
+  var curveOf = (mint) => programAddress([new TextEncoder().encode("bonding-curve"), unbase58(mint)], PUMP);
+  function readCurve(b64) {
+    const d = bytesOf2(b64);
+    if (d.length < 81) return null;
+    const creator = d.subarray(49, 81);
+    if (creator.every((b) => b === 0)) return null;
+    return { creator: base582(creator), bonded: d[48] === 1 };
+  }
+  async function devRecord(mint, rpc) {
+    const curve = await curveOf(mint);
+    const info = await rpc("getAccountInfo", [curve, { encoding: "base64" }]);
+    const v = info?.value;
+    if (!v || v.owner !== PUMP) return null;
+    const own = readCurve(v.data?.[0] || "");
+    if (!own) return null;
+    const curves = await rpc("getProgramAccounts", [PUMP, {
+      encoding: "base64",
+      dataSlice: { offset: 48, length: 1 },
+      filters: [{ memcmp: { offset: 0, bytes: CURVE_TAG } }, { memcmp: { offset: 49, bytes: own.creator } }]
+    }]);
+    const list = Array.isArray(curves) ? curves : [];
+    const bonded = list.filter((c) => bytesOf2(c.account?.data?.[0] || "")[0] === 1).length;
+    const seen2 = list.some((c) => c.pubkey === curve);
+    return { creator: own.creator, launches: list.length + (seen2 ? 0 : 1), bonded: bonded + (seen2 || !own.bonded ? 0 : 1), thisBonded: own.bonded };
+  }
 
   // extension/src/lib/rugcheck.js
   var RC = "https://api.rugcheck.xyz/v1";
@@ -1382,6 +1475,10 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       const parent = parentOf({ address: mint, quote });
       return cached(`fam:${mint}`, 6e5, async () => familyDetails(await familyCounts(mint, famRpc))).then((f) => ({ ...f, parent }), () => parent ? { children: 0, parent } : Promise.reject(new Error("Family unavailable")));
     }
+    async function devRecord2({ mint }) {
+      if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(String(mint || ""))) throw new Error("Not a coin address");
+      return cached(`dev:${mint}`, 6e5, () => devRecord(mint, famRpc));
+    }
     const lcGet = async (path, ttl) => cached(`lc:${path}`, ttl, async () => {
       const res = await fetch(`${API_BASE}${path}`, { signal: AbortSignal.timeout(12e3) });
       const data = await res.json().catch(() => ({}));
@@ -1668,7 +1765,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       });
     }
     const launchState = () => cached("launch:state", 6e5, async () => (await fetch(`${API_BASE}/launch/settings`, { signal: AbortSignal.timeout(6e3) })).json());
-    const handlers2 = { typedTicker, forgetCoins, breaking, track, starList, starToggle, videoInfo, tweet, read, coins: coins2, fresh, postCoins: postCoins2, mentioned, story, larpcheck, family, refresh, safety, bundle, image, openWindow, reroute, holderStatus, holderSave, holderWho, holderActive, recentList, recentAdd, recentClear, launchState, lcHolders, lcBoard, lcSettings, lcStart, lcAsk, lcPoll, settings: () => host.settings() };
+    const handlers2 = { typedTicker, forgetCoins, breaking, track, starList, starToggle, videoInfo, tweet, read, coins: coins2, fresh, postCoins: postCoins2, mentioned, story, larpcheck, family, devRecord: devRecord2, refresh, safety, bundle, image, openWindow, reroute, holderStatus, holderSave, holderWho, holderActive, recentList, recentAdd, recentClear, launchState, lcHolders, lcBoard, lcSettings, lcStart, lcAsk, lcPoll, settings: () => host.settings() };
     handlers2.resetBundles = () => memo.forEach((_, k) => k.startsWith("bd:") && memo.delete(k));
     return handlers2;
   }

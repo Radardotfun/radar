@@ -2,6 +2,7 @@ import { TERMINAL_ICONS } from './terminal-icons.js';
 import { coinCheck } from './coincheck.js';
 import { marketBlock, reportBlock, reportSource, since, quiet, tradesLine, seriousWarning } from './holdercheck.js';
 import { recentItem } from './recent.js';
+import { devSummary } from './devrecord.js';
 import { MAX_STARS, starOf, toggleStar, sinceStar } from './watchlist.js';
 
 const GUARD_MINUTES = 5; // lib/guard.js; the panel can only load files from ui/
@@ -578,7 +579,12 @@ class Radar {
       .then((f) => { a.family = f; })
       .catch(() => {})
       .finally(() => this.renderFamily(t.address));
-    await Promise.allSettled([rug, bundle, fam]);
+    // Dev record: the pump.fun dev wallet's launches, kept 10 minutes by the handler. Nothing shows for other launchpads.
+    const dev = send('devRecord', { mint: t.address })
+      .then((d) => { a.dev = d; })
+      .catch(() => {})
+      .finally(() => this.renderDev(t.address));
+    await Promise.allSettled([rug, bundle, fam, dev]);
     a.loading = false;
   }
 
@@ -603,6 +609,31 @@ class Radar {
       if (f.biggest?.address) rows.push(`<div class="fam-row"><span>Biggest child</span><a href="${dex(f.biggest.address)}" target="_blank" rel="noopener noreferrer">$${esc(String(f.biggest.symbol || '').trim())} · ${usd(f.biggest.marketCap)}</a></div>`);
     }
     el.innerHTML = `<h4>Family <em>pump.fun pairs</em></h4>${rows.join('')}`;
+  }
+
+  // The dev wallet pump.fun records for the coin, and how many coins it has launched there. Numbers only.
+  renderDev(addr) {
+    const el = this.bodyEl.querySelector(`.card[data-addr="${addr}"] [data-k="dev"]`);
+    if (!el) return;
+    const d = this.audits.get(addr)?.dev;
+    const s = devSummary(d);
+    // A wallet with many launches also shows on the card's top line, so it's seen without opening the card.
+    const top = el.closest('.card')?.querySelector('.card-top');
+    let tag = top?.querySelector('[data-devtag]');
+    if (s?.level === 'warn' && top) {
+      if (!tag) {
+        tag = document.createElement('span');
+        tag.className = 'tag';
+        tag.dataset.devtag = '';
+        top.insertBefore(tag, top.querySelector('.cc') || top.querySelector('.star-btn'));
+      }
+      tag.textContent = `dev made ${num(d.launches)} coins`;
+    } else tag?.remove();
+    if (!s) { el.innerHTML = ''; return; }
+    el.innerHTML = `<h4>Dev record <em>pump.fun</em></h4>
+      <div class="fam-row"><span>Dev wallet</span><a href="https://gmgn.ai/sol/address/${esc(d.creator)}" target="_blank" rel="noopener noreferrer" title="${esc(d.creator)}">${esc(short(d.creator))}</a></div>
+      <div class="fam-row"><span>${esc(s.head)}</span><b class="${s.level === 'warn' ? 'warn' : ''}">${esc(s.sub)}</b></div>
+      ${s.level === 'warn' ? `<div class="fam-note">${num(d.launches)} launches from one wallet. Its other coins are on GMGN.</div>` : ''}`;
   }
 
   /* ----- live updates ----- */
@@ -1447,6 +1478,7 @@ class Radar {
             ${t.chain === 'solana' ? `<div class="supply" data-k="supply">${this.supplyHtml(null)}</div>` : ''}
             ${t.chain === 'solana' ? '<section class="coin-check" data-k="check"></section>' : ''}
             ${t.chain === 'solana' ? '<section class="family" data-k="family"></section>' : ''}
+            ${t.chain === 'solana' ? '<section class="family" data-k="dev"></section>' : ''}
             <section class="audit">
               <h4>Launch audit</h4>
               <div class="rows" data-k="audit"></div>
@@ -1484,6 +1516,9 @@ class Radar {
     this.renderLcHolders(addr);
     const card = this.bodyEl.querySelector(`.card[data-addr="${addr}"]`);
     if (!card) return;
+    // A re-drawn card comes back empty; these come from the last look, kept on the audit.
+    this.renderFamily(addr);
+    this.renderDev(addr);
     const t = this.tokens.get(addr);
     const rowsEl = card.querySelector('[data-k="audit"]');
     if (t?.chain !== 'solana') {
