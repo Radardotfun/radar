@@ -228,6 +228,6 @@ const mention = (text) => ({ text: `@radardotfunn ${text}`, display_text_range: 
 assert.equal(wantsCoins(mention('larp check this one please, the dev says it is a real game studio'), 'radardotfunn').ok, true);
 assert.equal(wantsCoins(mention('hey is this legit? my friend keeps shilling it in the group chat all day'), 'radardotfunn').ok, true);
 assert.equal(wantsCoins(mention('is it real or not, they say the team is doxxed and the game ships friday'), 'radardotfunn').ok, true);
-assert.equal(wantsCoins(mention('i really like what you guys are building over there, keep going and good luck'), 'radardotfunn').ok, false, 'conversation stays conversation');
+assert.equal(wantsCoins(mention('i really like what you guys are building over there, keep going and good luck'), 'radardotfunn').ok, true, 'every typed tag gets a larp check');
 
 console.log('PASS larp-reply: every tag is a larp check (Larpcheck first, Radar backup, the post alone when no coin), CA tags, past usernames, nothing from the AI can mention or link');

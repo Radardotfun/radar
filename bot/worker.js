@@ -15,7 +15,7 @@
 import { makeHandlers, API_BASE, DEFAULTS } from '../extension/src/lib/handlers.js';
 import { searchPairs, allPairs, aggregate, fullTokens } from '../extension/src/lib/market.js';
 import { latestProfiles } from '../extension/src/lib/alerts.js';
-import { botReply, replyEntries, NO_COINS, xLength, varied, larpReply, larpMode, larpcheckReply, postLarpReply } from './reply.js';
+import { replyEntries, xLength, varied, larpReply, larpMode, larpcheckReply, postLarpReply } from './reply.js';
 import { botCoins, withMemory } from './coins.js';
 import { oauthHeader } from './oauth.js';
 import { wantsCoins, worthRetry, mergeState, climbFrom } from './trigger.js';
@@ -410,9 +410,9 @@ async function handle(env, { mention, target, live, scores: known = null, tries 
     return { busy: String(e.message || e).slice(0, 200), chars: xLength(busy), text: busy, reply: sent.data?.id };
   }
   const { text, short, links, story, scores, guessed, speechLost } = found;
-  // The video's speech never came (the transcription failed or timed out) and nothing was found without it: the speech
-  // may name the coin, so try again next minute rather than answer "No coins". The last try answers with what there is.
-  if (speechLost && text === NO_COINS && tries < 4) {
+  // The video's speech never came (the transcription failed or timed out) and no coin was found without it: the speech
+  // may name the coin, so try again next minute rather than larp check the post alone. The last try answers with that.
+  if (speechLost && found.mode === 'larp post' && tries < 4) {
     scans.delete(postUrl);
     throw new Error("The video's speech could not be read, trying again next minute");
   }

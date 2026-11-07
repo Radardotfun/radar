@@ -16,14 +16,16 @@ export function wantsCoins(m, username) {
   const name = String(username || '').toLowerCase();
   // Mention offsets are in characters (code points), like display_text_range.
   const typed = (m?.entities?.mentions || []).some((x) => String(x.username || '').toLowerCase() === name && x.start >= from && x.end <= to);
-  if (!typed) return { ok: false, why: 'not typed (a reply under one of our posts)' };
   const shown = [...text].slice(from, to).join('');
   const rest = shown.replace(/@\w{1,15}/g, ' ').replace(/https?:\/\/\S+/g, ' ').replace(/\s+/g, ' ').trim();
   // A contract with the tag is a request to check that coin, the way people use a larp check bot: "@radardotfunn <CA>".
+  // That holds under our own posts too, where X adds the tag by itself.
   if (hasCa(rest) && rest.length <= 280) return { ok: true, ca: true };
-  // A real ask is short. A long post that says "radar", "scan" or "token" is talking about Radar, not asking it anything.
-  if (rest.length <= 25 || (rest.length <= 100 && ASK.test(rest))) return { ok: true };
-  return { ok: false, why: 'conversation, not a coin request' };
+  // A reply under one of our posts carries the tag without anyone typing it: that's someone talking to us, and a
+  // larp check of our own post would answer nothing.
+  if (!typed) return { ok: false, why: 'not typed (a reply under one of our posts)' };
+  // Everyone who types the tag gets a larp check (the user's call, 7 Nov 2026), whatever else the post says.
+  return { ok: true };
 }
 
 // A busy DexScreener, AI, post reader or X is worth another try next minute; anything else is not.

@@ -4,6 +4,7 @@
 //   POST /match     { post, logos }                  -> { same: [i] }: coin logos showing the post's own picture
 //   GET  /larpcheck?address=<CA>                     -> Larpcheck's verdict on the coin (see below)
 import { lcBoard, lcHolders, lcSettings, lcStart, lcPoll, lcAsk, lcHandle } from './lc.js';
+import { nameHistory } from '../bot/history.js';
 import { signalFeed } from './signals.js';
 import { savePair, takePair } from './holderpair.js';
 import { holderGoogle } from './google.js';
@@ -463,7 +464,10 @@ const app = {
       // Signed on a phone for a computer that showed a QR code: it collects the answer from here.
       if (pathname === '/holder/verify' && r.status === 200 && body.pair) await savePair(env.DB, body.pair, r.body).catch((e) => console.error('pair', e?.message));
       // Larpcheck's record of this account's posts, added to Radar's own for holders.
-      if (pathname === '/holder/who' && r.status === 200 && r.body?.handle) r.body.lc = await lcHandle(r.body.handle, env, ctx).catch(() => null);
+      // And the account's past usernames (memory.lol, bot/history.js: about 1 s, capped at 2.5 s), read at the same time.
+      if (pathname === '/holder/who' && r.status === 200 && r.body?.handle) {
+        [r.body.lc, r.body.names] = await Promise.all([lcHandle(r.body.handle, env, ctx).catch(() => null), nameHistory(r.body.handle, fetch).catch(() => null)]);
+      }
       return json(r.status, r.body);
     }
     if (pathname === '/health') return json(200, {

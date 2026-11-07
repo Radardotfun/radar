@@ -1,0 +1,43 @@
+<!doctype html>
+<!-- The terminal additions in the real panel, backend faked, made-up coin: Larpcheck's holder check on a Solana card beside
+     Radar's own, and past usernames in Who posted this. Serve the repo root, open /test/panel-terminal.html. ?theme=light|dim|dark -->
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Panel: terminal additions</title>
+<style>html,body{margin:0;height:100%;background:#000}#root{width:400px;height:100vh;margin:0 auto}</style></head>
+<body><div id="root"></div>
+<script type="module">
+import { makeHandlers, DEFAULTS } from '../extension/src/lib/handlers.js';
+import { useBackend, mountInline } from '../extension/src/ui/radar.js';
+
+const q = new URLSearchParams(location.search);
+const mem = new Map();
+const h = makeHandlers({
+  settings: async () => DEFAULTS,
+  store: { get: async (k) => mem.get(k) ?? null, set: async (k, v) => { mem.set(k, v); } },
+  openWindow: (url) => window.open(url),
+  rpcUrl: async () => null,
+  ready: Promise.resolve(),
+});
+const CAT = { chain: 'solana', address: 'CopyCat1111111111111111111111111111111pump', name: 'Copy Cat', symbol: 'COPYCAT', marketCap: 42000, liquidity: 12000, onCurve: false, mcapBacked: true,
+  priceUsd: 0.000042, volume: { m5: 120, h1: 1800, h6: 2400, h24: 24000 }, txns: { h1: { buys: 41, sells: 22 }, h24: { buys: 600, sells: 310 } }, priceChange: { m5: 2, h1: -12, h6: -12, h24: -12 },
+  createdAt: Date.now() - 3 * 3600e3, links: [], pairAddresses: [] };
+const fail = () => Promise.reject(new Error('not in this check'));
+const rug = { holders: 812, top10Pct: 21, topHolder: { pct: 4 }, insiderWallets: 0, mintAuthority: null, freezeAuthority: null, authorityKnown: true, lpLockedPct: 100, risks: [], score: 5, readAt: Date.now(), source: 'rugcheck' };
+Object.assign(h, {
+  read: async ({ post }) => ({ narrative: 'A cat that copies every coin it sees', post }),
+  coins: async () => ({ mode: 'ai', ts: Date.now(), mentioned: [], picks: [{ role: 'top', token: CAT }], others: [] }),
+  refresh: async () => ({ tokens: {} }), story: fail, larpcheck: async () => null, bundle: fail,
+  safety: async () => rug,
+  family: async () => ({ children: 0, parent: null }),
+  devRecord: async () => null,
+  lcHolders: async () => (q.has('nolc') ? { ready: false } : { ready: true, holders: 640, top10: 28, verdict: 'clustered', line: '2 linked wallet groups hold 9%, snipers 4%', ok: false, page: `https://larpcheck.app/${CAT.address}`, at: Date.now() }),
+  holderStatus: async () => ({ on: true, holder: true }),
+  holderWho: async ({ handle }) => ({ handle, names: { handle, names: q.has('one') ? [handle] : ['oldbrand', 'midname', handle], changes: q.has('one') ? 0 : 2 } }),
+});
+useBackend(h, { css: '../extension/src/ui/radar.css' });
+const theme = q.get('theme') || 'dark';
+document.body.style.background = theme === 'light' ? '#fff' : theme === 'dim' ? '#15202b' : '#000';
+const radar = await mountInline(document.getElementById('root'), theme);
+window.radar = radar;
+radar.scan({ post: { text: `new coin just dropped ${CAT.address}`, author: 'catdev', url: `https://x.com/catdev/status/${(BigInt(Date.now() - 45 * 60_000 - 1288834974657) << 22n).toString()}` }, source: { kind: '@catdev', label: 'Terminal check' } });
+</script></body></html>

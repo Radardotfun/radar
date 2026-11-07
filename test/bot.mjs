@@ -54,13 +54,15 @@ assert.equal(wantsCoins(post('@radardotfunn what is the ticker on this one, I ne
 // A reply under one of our posts: X's automatic "@radardotfunn " prefix sits before the visible text.
 assert.equal(wantsCoins(post('@radardotfunn when is the next update coming out guys', [14, 53], [['radardotfunn', 0]]), me).ok, false);
 assert.equal(wantsCoins(post('@radardotfunn gm', [14, 16], [['radardotfunn', 0]]), me).ok, false);
-// Typed, but a conversation rather than a request.
-assert.equal(wantsCoins(post('@Bob honestly @radardotfunn has been my favourite tool this week, great work all', [5, 81], [['Bob', 0], ['radardotfunn', 14]]), me).ok, false);
-// A long post that says radar, scan or token is talking about Radar. It isn't asking for coins.
+// Everyone who types the tag gets a larp check, a long post or a chatty one included.
+assert.equal(wantsCoins(post('@Bob honestly @radardotfunn has been my favourite tool this week, great work all', [5, 81], [['Bob', 0], ['radardotfunn', 14]]), me).ok, true);
 const praise = '@radardotfunn is a great tool that a lot of people use. The dev is hardworking. I recommend trying it out if you wanted a browser extension. The radar token is paired with another coin';
-assert.equal(wantsCoins(post(praise, [0, [...praise].length], [['radardotfunn', 0]]), me).ok, false);
+assert.equal(wantsCoins(post(praise, [0, [...praise].length], [['radardotfunn', 0]]), me).ok, true);
 const pitch = 'Then you should try scan em on https://tryradar.fun @radardotfunn tek helps you scan and save you stress of buying copycats and getting rugged. So what you say, ape in and lock in right now fam';
-assert.equal(wantsCoins(post(pitch, [0, [...pitch].length], [['radardotfunn', 52]]), me).ok, false);
+assert.equal(wantsCoins(post(pitch, [0, [...pitch].length], [['radardotfunn', 52]]), me).ok, true);
+// A contract under one of our posts is still a request, though X added the tag.
+const caUnder = '@radardotfunn 7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU';
+assert.deepEqual(wantsCoins(post(caUnder, [14, [...caUnder].length], [['radardotfunn', 0]]), me), { ok: true, ca: true });
 // A busy service is tried again; anything else isn't.
 import { worthRetry, mergeState } from '../bot/trigger.js';
 import { varied } from '../bot/reply.js';

@@ -550,18 +550,22 @@ class Radar {
     const v = this.lcHolderData?.get(addr);
     const card = v && this.bodyEl.querySelector(`[data-addr="${addr}"]`);
     if (!card) return;
+    // On Solana, Radar's own holder check owns the holder count and the card's warning; Larpcheck's sits beside it.
+    const own = this.tokens.get(addr)?.chain === 'solana';
     const h = card.querySelector('[data-k="holders"]');
-    if (h && v.holders != null) h.textContent = num(v.holders);
+    if (!own && h && v.holders != null) h.textContent = num(v.holders);
     const el = card.querySelector(`[data-lch="${addr}"]`);
     if (!el || !v.line) return;
     el.hidden = false;
     el.className = `hc ${v.ok ? 'ok' : 'no'}`;
-    card.classList.toggle('danger', !v.ok && seriousWarning(v.line));
+    if (!own) card.classList.toggle('danger', !v.ok && seriousWarning(v.line));
     el.innerHTML = `<span class="hc-mark">${v.ok ? '✓' : '✕'}</span><span class="hc-text">${esc(v.line)}<small>${esc(['Larpcheck', since(v.at)].filter(Boolean).join(' · '))}</small></span><a class="hc-by" href="${esc(v.page)}" target="_blank" rel="noopener noreferrer">Larpcheck ↗</a>`;
   }
 
   async loadAudit(t, { force = false } = {}) {
     if (t.chain !== 'solana') return this.loadLcHolders(t);
+    // Larpcheck's holder check on Solana cards too, beside Radar's own (kept 5 minutes by the handler and the server).
+    this.loadLcHolders(t).catch(() => {});
     const a = this.audits.get(t.address) || {};
     if (a.loading && !force) return;
     a.loading = true;
@@ -851,6 +855,9 @@ class Radar {
     const lcRows = (w.lc?.rows || []).map((r) => `<a class="who-row" href="${esc(r.url)}" target="_blank" rel="noopener noreferrer"><b>${esc(r.verdict)}${r.total == null ? '' : ` ${r.total}`}</b><span>${esc(r.title || 'Post')}</span><span>Larpcheck ↗</span><span></span></a>`).join('');
     const rows = (w.own?.recent || []).map((r) => `<a class="who-row" href="https://x.com/${esc(handle)}/status/${esc(r.id)}" target="_blank" rel="noopener noreferrer">
         <b>${r.symbol ? `$${esc(r.symbol)}` : esc(`${r.ca.slice(0, 4)}…${r.ca.slice(-4)}`)}</b><span>${r.mc ? usd(r.mc) : 'no market'}</span><span>${age(r.at)} ago</span><span class="who-gone">${r.gone ? 'post gone' : ''}</span></a>`).join('');
+    // Past usernames (memory.lol, read by the server with the rest): an account that keeps renaming itself is worth knowing.
+    const names = (w.names?.names || []).filter((n) => /^\w{1,15}$/.test(n));
+    if (names.length > 1) lines.push(`Has gone by <b class="${names.length > 2 ? 'who-gone' : ''}">${names.length}</b> usernames: ${(names.length > 4 ? [...names.slice(0, 2), '…', ...names.slice(-2)] : names).map((n) => esc(n)).join(' → ')}`);
     if (w.smartCount != null) lines.push(`<b>${w.smartCount}</b> smart follower${w.smartCount === 1 ? '' : 's'}${w.smartFinal ? '' : ' so far'}${w.smart?.length ? `: ${w.smart.map((s) => `@${esc(s)}`).join(', ')}` : ''}`);
     if (w.coins) lines.push(`Frontrun: posted <b>${w.coins.live + w.coins.deleted}</b> coin${w.coins.live + w.coins.deleted === 1 ? '' : 's'}${w.coins.deleted ? `, <b>${w.coins.deleted}</b> in deleted posts` : ''}`);
     return `<div class="story who">${head}
@@ -1059,7 +1066,6 @@ class Radar {
       const recent = this.inline ? this.recent || [] : [];
       this.bodyEl.innerHTML = `<div class="empty"><div class="big">Scan any post on X</div>
         <p>${esc(this.hint || (this.inline ? 'Search a narrative, a ticker or a CA above.' : 'Tap the radar under any post or trend.'))}</p>
-        <button type="button" class="feed-entry" data-act="feed">${I.bolt}<span>See what's breaking now</span></button>
         ${recent.length ? `<div class="recent-list"><div class="recent-top"><span>Recent</span><button data-recent-clear>Clear</button></div>${recent.map((r, i) => `<button class="recent-row" data-recent="${i}"><b>$${esc(r.c)}</b><span>${esc(r.l)}</span><em>${age(r.t)}</em></button>`).join('')}</div>` : ''}
         ${this.inline ? this.boardHtml() : ''}
         ${trends.length ? `<div class="trend-list"><span>Trending</span>${trends.map((t) => `<button data-trend="${esc(t)}">${esc(t)}</button>`).join('')}</div>` : ''}</div>
@@ -1460,7 +1466,7 @@ class Radar {
           <div><span>Age</span><b data-k="age" title="${t.createdAt ? new Date(t.createdAt).toLocaleString() : ''}">${age(t.createdAt)}</b></div>
           <div><span>Vol 24h</span><b data-k="vol">${usd(t.volume.h24)}</b></div>
         </div>
-        ${t.chain === 'solana' ? `<div class="hc" data-hc="${t.address}"><span class="hc-mark wait"></span><span>Checking holders…</span></div>` : `<div class="hc" data-lch="${t.address}" hidden></div>`}
+        ${t.chain === 'solana' ? `<div class="hc" data-hc="${t.address}"><span class="hc-mark wait"></span><span>Checking holders…</span></div>` : ''}<div class="hc" data-lch="${t.address}" hidden></div>
         <div class="actions" data-actions="${t.address}">${this.actionsHtml(t)}</div>
         <div class="chart-box" data-chart-box="${t.address}">${this.chartHtml(t)}</div>
         <div class="card-body" aria-hidden="${!open}">
@@ -1758,12 +1764,13 @@ class Radar {
     }).join('');
     return `<section class="settings">
       <div class="set-head"><h3>Alerts</h3>${a.watches.length ? `<span class="verdict ok">${a.watches.length} WATCHING</span>` : ''}</div>
-      <p>Tap the bell under a post in the Radar panel. For the next 24 hours Radar checks every minute for a coin launched off it, runs the larp check, and pings you with a buy button. On a scan's New tab you can follow a word for 3 days instead.</p>
+      <p>Bell a post and Radar pings you when a coin launches off it.</p>
+      <details class="more"><summary>How it works</summary><p>Tap the bell under a post in the Radar panel. For the next 24 hours Radar checks every minute for a coin launched off it, runs the larp check, and pings you with a buy button. On a scan's New tab you can follow a word for 3 days instead.</p></details>
       ${watches ? `<div class="al-list">${watches}</div>` : ''}
       ${hits ? `<div class="section-label"><span>Latest alerts</span></div><div class="al-list">${hits}</div>` : ''}
       ${a.notifications ? '<p class="fine">Desktop alerts are on.</p>' : '<button class="fr-btn" data-alerts-notify>Turn on desktop alerts</button><p class="fine">Without them, alerts show on any open X tab and as a number on the Radar icon.</p>'}
       <button class="fr-btn ghost" data-act="fresh-toggle">New-pair badges on X: ${a.freshBadges === false ? 'Off' : 'On'}</button>
-      <p>Radar also watches big accounts like Elon, Polymarket and Kalshi, and alerts $RADAR and $LARPCHECK holders when one posts something people may launch coins off. It's a heads up, not a pick.</p>
+      <p class="fine">Big accounts like Elon, Polymarket and Kalshi: a heads up when one posts something coins may launch off. For holders. Not a pick.</p>
       <button class="fr-btn ghost" data-act="big-toggle">Big account alerts: ${a.bigAccounts === false ? 'Off' : 'On'}</button>
     </section>${this.diamondHtml()}${this.bagGuardHtml()}`;
   }
@@ -1774,10 +1781,11 @@ class Radar {
     const mine = (a.myWallets || []).map((w) => `<div class="al-w"><div><b>${esc(w.slice(0, 4))}…${esc(w.slice(-4))}</b><span>Your wallet</span></div><em></em><button type="button" data-act="dh-remove" data-address="${esc(w)}">Remove</button></div>`).join('');
     return `<section class="settings">
       <div class="set-head"><h3>Diamond Hand</h3><span class="verdict ${a.holder ? 'ok' : 'neutral'}">${a.holder ? (a.diamond === false ? 'OFF' : 'ON') : 'HOLDERS'}</span></div>
-      <p>Radar watches wallets that bought recent runners in their first hour and still hold. When one buys a coin launched in the last 6 hours, you get an alert here and on X. For holders: $10 of $RADAR or $LARPCHECK, or anyone who has held $RADAR.</p>
+      <p>Alerts when wallets that caught early runners buy a coin under 6 hours old.</p>
+      <details class="more"><summary>How it works</summary><p>Radar watches wallets that bought recent runners in their first hour and still hold. When one buys a coin launched in the last 6 hours, you get an alert here and on X. For holders: $10 of $RADAR or $LARPCHECK, or anyone who has held $RADAR.</p></details>
       <button class="fr-btn ghost" data-act="diamond-toggle">Diamond Hand alerts: ${a.diamond === false ? 'Off' : 'On'}</button>
       <div class="section-label"><span>Your wallets</span></div>
-      <p>Add up to 5 Solana wallets. Radar checks them every 2 minutes and alerts you when one buys a coin launched in the last 6 hours. The list stays on this device.</p>
+      <p class="fine">Up to 5 Solana wallets, checked every 2 minutes. The list stays on this device.</p>
       ${mine ? `<div class="al-list">${mine}</div>` : ''}
       <div class="fr-connect"><input type="text" data-dh-wallet placeholder="Solana wallet address" autocomplete="off" spellcheck="false"><button class="fr-btn" data-act="dh-add">Track</button></div>
       ${a.holder ? '' : '<p class="fine">Check your wallet at the top of Radar to turn these on.</p>'}
@@ -1800,7 +1808,8 @@ class Radar {
             : '<p class="fine">No coins worth $5 or more in your wallets right now.</p>';
     return `<section class="settings">
       <div class="set-head"><h3>Bag Guard</h3><span class="verdict ${a.holder ? 'ok' : 'neutral'}">${a.holder ? (on ? 'ON' : 'OFF') : 'HOLDERS'}</span></div>
-      <p>Radar watches the coins in your own wallets and alerts you the moment one turns: the dev sells, insiders dump, a top holder exits, the holder check turns serious, Larpcheck's verdict turns bad, or liquidity is pulled. It also tells you when a bag doubles or halves. Each alert opens the coin on your terminal. It says what happened; it never tells you to buy or sell.</p>
+      <p>Alerts when a coin in your wallets turns, or doubles or halves.</p>
+      <details class="more"><summary>How it works</summary><p>Radar watches the coins in your own wallets and alerts you the moment one turns: the dev sells, insiders dump, a top holder exits, the holder check turns serious, Larpcheck's verdict turns bad, or liquidity is pulled. It also tells you when a bag doubles or halves. Each alert opens the coin on your terminal. It says what happened; it never tells you to buy or sell.</p></details>
       <button class="fr-btn ghost" data-act="bag-toggle">Bag Guard: ${on ? 'On' : 'Off'}</button>
       ${a.holder && on && wallets ? `<p class="fine">Watching ${esc(wallets)}, every 5 minutes. The wallets stay on this device.</p>` : ''}
       ${state}
@@ -1848,7 +1857,8 @@ class Radar {
     const wallets = (f.wallets || []).map((w) => `<div class="fr-w"><b>${esc(w.name || 'Wallet')}</b><span>${short(w.address)}</span><em>~${w.sol.toFixed(3)} SOL</em></div>`).join('');
     return `${this.alertsHtml()}<section class="settings">
       <div class="set-head"><h3>Frontrun</h3>${f.connected ? '<span class="verdict ok">CONNECTED</span>' : ''}</div>
-      <p>Buy the coins Radar finds with your Frontrun wallet. Frontrun holds the wallet and signs. Radar sends an order only after you press Buy on a coin card.</p>
+      <p>Buy with your Frontrun wallet. Radar only sends an order when you press Buy.</p>
+      <details class="more"><summary>How it works</summary><p>Buy the coins Radar finds with your Frontrun wallet. Frontrun holds the wallet and signs. Radar sends an order only after you press Buy on a coin card.</p></details>
       ${f.connected
     ? `<div class="fr-wallets">${wallets || '<div class="fr-w"><span>No Frontrun wallets yet. Create one on frontrun.pro.</span></div>'}</div>
         <button class="fr-btn ghost" data-fr-disconnect>Disconnect</button>`
