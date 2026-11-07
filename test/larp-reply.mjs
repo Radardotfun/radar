@@ -80,7 +80,7 @@ assert.ok(!short.includes(CA));
 
 // ---- the story alone (a coin on another chain, or no audit)
 const alone = larpReply({ named: { ...named, chain: 'bsc' }, how: 'post' }, { word: 'REAL', score: 90, call: 'word '.repeat(60), findings: [] }, now);
-assert.match(alone, /^Larp check on \$DACITY \(15:20 UTC\):\n🧪 90\/100 · story REAL 90\n(word ){20,}word…\n\n📌 In the post: DACITY · \$48\.2K · BNB\n/);
+assert.match(alone, /^Larp check on \$DACITY \(15:20 UTC\):\n🧪 90\/100 · story REAL 90\nWord (word ){20,}word…\n\n📌 In the post: DACITY · \$48\.2K · BNB\n/);
 assert.ok(alone.endsWith("Radar's read of the evidence, not advice.\nFull scan + Insta Buy: link in bio"));
 assert.ok(!/\n\n\n/.test(alone) && !alone.includes('👥'));
 assert.deepEqual([...LARP_WORDS], ['REAL', 'LIKELY REAL', 'PARTLY REAL', 'UNCLEAR', 'LIKELY LARP', 'LARP']);
@@ -110,6 +110,15 @@ assert.ok(botReply({ named, how: 'post', picks: [] }, 'https://x.com/a/status/1'
   assert.ok(greyReply.startsWith('Larp check on $GREY (15:20 UTC):'));
   assert.ok(greyReply.includes('\n📌 In the post: GREY · $13.8K\n'));
 }
+
+// ---- the call says what the evidence shows, never what to do
+for (const [said, shown] of [
+  ["Avoid: 0-day-old unverified author, no coin website or X link.", '0-day-old unverified author, no coin website or X link.'],
+  ['avoid this, the account is 4 days old', 'The account is 4 days old'],
+  ['Ape: the dev is the official account', 'The dev is the official account'],
+  ['Skip - nothing checkable', 'Nothing checkable'],
+  ['Available on the official site, author is the brand', 'Available on the official site, author is the brand'],
+]) assert.equal(larpReply({ named, how: 'post' }, { ...check, call: said }, now).split('\n')[2], shown, said);
 
 // ---- asking for it counts as a request
 const mention = (text) => ({ text: `@radardotfunn ${text}`, display_text_range: [0, [...`@radardotfunn ${text}`].length], entities: { mentions: [{ username: 'radardotfunn', start: 0, end: 13 }] } });

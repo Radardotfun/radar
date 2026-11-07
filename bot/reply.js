@@ -172,7 +172,10 @@ export function larpReply(result, check, now = Date.now(), { full = true, coin =
   const story = Number.isFinite(check.score) ? check.score : null;
   const total = story != null ? totalScore(story, coin) : null;
   const scores = [total != null ? `${total}/100` : '', `story ${check.word}${story != null ? ` ${story}` : ''}`, coin ? `coin ${coin.word} ${coin.score}` : ''].filter(Boolean).join(' · ');
-  const call = plain(check.call, 140);
+  // A public reply under someone's post says what the evidence shows, not what to do: an order at the start of the call
+  // ("Avoid: 0-day-old author…" on 7 Nov) comes off, and the evidence after it stays.
+  const said = plain(String(check.call || '').replace(/^\s*(avoid|skip|pass|ape|buy|sell|fade|dump|run)\b\s*(it|this)?\s*[:,.;—–-]*\s*/i, ''), 140);
+  const call = said ? said[0].toUpperCase() + said.slice(1) : '';
   const of = (kind) => (Array.isArray(check.findings) ? check.findings : []).filter((f) => f?.kind === kind).map((f) => plain(f.text, 110)).filter(Boolean);
   // Worst first: the story's risks, then what costs the coin points; then one thing not confirmed and one that holds up.
   const red = [...of('risk'), ...(coin?.flags || [])].slice(0, 3);
