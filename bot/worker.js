@@ -20,6 +20,7 @@ import { botCoins, withMemory } from './coins.js';
 import { oauthHeader } from './oauth.js';
 import { wantsCoins, worthRetry, mergeState } from './trigger.js';
 import { createChat } from './chat.js';
+import { candidates as signalCandidates, lookup as signalLookup, checkCoin } from './discord-signals.js';
 import { tick as signalsTick, recent as signalsRecent, status as signalsStatus } from './signals.js';
 import { tick as diamondTick } from './diamond.js';
 import { launchFromPairs } from '../extension/src/lib/diamond.js';
@@ -438,6 +439,17 @@ export default {
     if (u.pathname === '/wire-preview') {
       const bursts = await chatFor(env).wireBursts(env);
       return json(200, { bursts: bursts.slice(0, 15).map((b) => ({ word: b.word, coins: b.list.length, wallets: b.devs, biggest: `${b.top.s} ${b.top.m}`, first: b.first.s })) });
+    }
+    // What Radar signals would look at right now (Breaking now's flags 10 to 60 minutes old) and how each does on the checks.
+    if (u.pathname === '/signals-preview') {
+      const now = Date.now();
+      const rows = await signalCandidates(env.DB, {}, now);
+      const assets = await signalLookup(fetch, rows.map((r) => r.mint));
+      const coins = rows.map((r) => {
+        const c = assets.has(r.mint) ? checkCoin(assets.get(r.mint)) : null;
+        return { symbol: r.symbol, story: r.story, minutesAgo: Math.round((now - r.at) / 60_000), pass: !!c?.pass, failed: c ? c.failed : ['no data'], checks: c ? c.lines : [] };
+      });
+      return json(200, { looked: coins.length, passing: coins.filter((c) => c.pass).length, coins, posting: (await chatFor(env).status(env)).signals });
     }
     if (u.pathname === '/log') return json(200, (await loadState(env)).log);
     // X's full answer to "who am I" with these keys (status, its body and the headers that explain a refusal).

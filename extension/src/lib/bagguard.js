@@ -20,7 +20,9 @@ export const TOKEN_PROGRAMS = ['TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA', 'T
 const SKIP = new Set(['So11111111111111111111111111111111111111112', 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB', 'USD1ttGY1N17NEEHLmELoaybftRBUSErhqYiQzvEmuB']);
 
 // Thresholds. A dev or insider group has to have held a real share to begin with, and to have let go of at least half of it.
-export const T = { devMin: 0.5, insiderMin: 3, whaleMin: 3, dropShare: 0.5, whaleKeeps: 0.3, liqBase: 3000, liqMin: 500 };
+export const T = { devMin: 0.5, insiderMin: 3, whaleMin: 3, dropShare: 0.5, whaleKeeps: 0.3, liqBase: 3000, liqMin: 500, moveUp: 2, moveDown: 0.5 };
+// Price moves are news, not warnings: they never mark a bag as flagged.
+export const MOVES = new Set(['up', 'down']);
 
 const name = (b) => `$${String(b.symbol || '').trim() || '?'}`;
 const pct = (v) => `${v < 10 ? Number(v).toFixed(1) : Math.round(v)}%`;
@@ -133,8 +135,27 @@ export function lookAtBag(bag, { report = null, lc = null } = {}, was = {}) {
     }
   } else if (bag.onCurve) { state.liqBase = 0; state.priceBase = 0; }
 
-  const status = events[0]?.text || (state.serious ? `Watch: ${state.serious}` : state.devSent ? 'The dev sold' : state.insiderSent ? 'Insiders sold' : state.liqSent ? 'Liquidity looks pulled' : 'Quiet');
-  return { state, events, status };
+  // Price moves: the price doubling, or halving, since Bag Guard first saw the bag or last told you it moved. Each alert
+  // measures from there, so the next is at 4x (or a quarter), and the same move is never told twice.
+  if (bag.priceUsd > 0) {
+    if (!(was.moveBase > 0)) state.moveBase = bag.priceUsd;
+    else {
+      const x = bag.priceUsd / was.moveBase;
+      if (x >= T.moveUp || x <= T.moveDown) {
+        const since = was.moveTold ? 'the last move Bag Guard told you about' : 'Bag Guard first saw it';
+        events.push(x > 1
+          ? { reason: 'up', word: `up-${was.moveBase}`, text: `${name(bag)} is up ${x >= 10 ? Math.round(x) : x.toFixed(1)}x since ${since}` }
+          : { reason: 'down', word: `down-${was.moveBase}`, text: `${name(bag)} is down ${Math.round((1 - x) * 100)}% since ${since}` });
+        state.moveBase = bag.priceUsd;
+        state.moveTold = true;
+      }
+    }
+  }
+
+  const risk = events.find((e) => !MOVES.has(e.reason));
+  const warn = risk?.text || (state.serious ? `Watch: ${state.serious}` : state.devSent ? 'The dev sold' : state.insiderSent ? 'Insiders sold' : state.liqSent ? 'Liquidity looks pulled' : '');
+  const status = warn || events.find((e) => MOVES.has(e.reason))?.text || 'Quiet';
+  return { state, events, status, flagged: !!warn };
 }
 
 // The holder wallet the holder check proved, from the token's payload (it is signed by the server; reading it here only

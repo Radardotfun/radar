@@ -67,3 +67,19 @@ Then POST /chat-setup with the x-bot-token header. It registers the Discord comm
 - **Discord:** turn on Message Content Intent for /watch. In a channel, /watch turns automatic scans on or off, and /wire makes it the narrative wire.
 - **Telegram:** in BotFather, /setprivacy to Disable, or the bot only sees commands in groups.
 - **Wire check:** GET /wire-preview shows what the wire would post right now.
+
+### Radar signals (bot/discord-signals.js)
+
+Coins Breaking now flagged that then pass every Radar check (Jupiter's audit: mint and freeze off, 75+ holders, top holders
+30% or less, bots and snipers 20% or less, the dev holding 10% or less and with fewer than 10 launches, organic trading
+medium or high, a $15K+ cap with $5K+ liquidity, more bought than sold in the last hour). Looked at 10 to 60 minutes after
+the flag (holders see Breaking now live in the extension), one post a minute at most, 24 a day, one coin per story every
+6 hours. Diamond Hand is never posted. Two ways to turn it on, whichever is easier:
+
+- **A channel webhook (no bot needed):** in Discord, the channel's settings > Integrations > Webhooks > New Webhook, name it
+  Radar, copy its URL, then from the bot/ folder: `npx wrangler secret put DISCORD_SIGNALS_WEBHOOK` and paste it.
+- **The bot:** with the Discord secrets above set and the bot in the server, type /signals in the channel (people who can
+  manage channels only). /signals again turns it off.
+
+GET /signals-preview shows the flags it would look at right now and how each does on the checks. GET /health (chat.signals)
+shows where it posts and how many went out today.

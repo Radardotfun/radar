@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Radar
 // @namespace    https://tryradar.fun
-// @version      1.7.134
+// @version      1.7.135
 // @description  See the coins behind any post on X and instantly reroute to the biggest match that passes available on-chain safety checks.
 // @homepageURL  https://tryradar.fun
 // @supportURL   https://tryradar.fun
@@ -31,7 +31,7 @@
 // @downloadURL  https://tryradar.fun/radar.user.js
 // ==/UserScript==
 
-// Radar 1.7.134: built from the extension source at https://tryradar.fun. Not financial advice.
+// Radar 1.7.135: built from the extension source at https://tryradar.fun. Not financial advice.
 (() => {
   var __defProp = Object.defineProperty;
   var __export = (target, all) => {
@@ -3843,7 +3843,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       const state = !a.holder || !on ? "" : !g ? '<p class="fine">First look in the next few minutes.</p>' : !g.wallets ? '<p class="fine">No wallets yet. Check your wallet at the top of Radar, or add one under Diamond Hand.</p>' : rows ? `<div class="section-label"><span>Your bags</span></div><div class="al-list">${rows}</div><p class="fine">Last look ${esc2(age(g.at))} ago. Mute a coin to keep it on the list without alerts.</p>` : '<p class="fine">No coins worth $5 or more in your wallets right now.</p>';
       return `<section class="settings">
       <div class="set-head"><h3>Bag Guard</h3><span class="verdict ${a.holder ? "ok" : "neutral"}">${a.holder ? on ? "ON" : "OFF" : "HOLDERS"}</span></div>
-      <p>Radar watches the coins in your own wallets and alerts you the moment one turns: the dev sells, insiders dump, a top holder exits, the holder check turns serious, Larpcheck's verdict turns bad, or liquidity is pulled. Each alert opens the coin on your terminal. It says what happened; it never tells you to sell.</p>
+      <p>Radar watches the coins in your own wallets and alerts you the moment one turns: the dev sells, insiders dump, a top holder exits, the holder check turns serious, Larpcheck's verdict turns bad, or liquidity is pulled. It also tells you when a bag doubles or halves. Each alert opens the coin on your terminal. It says what happened; it never tells you to buy or sell.</p>
       <button class="fr-btn ghost" data-act="bag-toggle">Bag Guard: ${on ? "On" : "Off"}</button>
       ${a.holder && on && wallets ? `<p class="fine">Watching ${esc2(wallets)}, every 5 minutes. The wallets stay on this device.</p>` : ""}
       ${state}

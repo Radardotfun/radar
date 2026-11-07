@@ -1798,7 +1798,7 @@ class Radar {
             : '<p class="fine">No coins worth $5 or more in your wallets right now.</p>';
     return `<section class="settings">
       <div class="set-head"><h3>Bag Guard</h3><span class="verdict ${a.holder ? 'ok' : 'neutral'}">${a.holder ? (on ? 'ON' : 'OFF') : 'HOLDERS'}</span></div>
-      <p>Radar watches the coins in your own wallets and alerts you the moment one turns: the dev sells, insiders dump, a top holder exits, the holder check turns serious, Larpcheck's verdict turns bad, or liquidity is pulled. Each alert opens the coin on your terminal. It says what happened; it never tells you to sell.</p>
+      <p>Radar watches the coins in your own wallets and alerts you the moment one turns: the dev sells, insiders dump, a top holder exits, the holder check turns serious, Larpcheck's verdict turns bad, or liquidity is pulled. It also tells you when a bag doubles or halves. Each alert opens the coin on your terminal. It says what happened; it never tells you to buy or sell.</p>
       <button class="fr-btn ghost" data-act="bag-toggle">Bag Guard: ${on ? 'On' : 'Off'}</button>
       ${a.holder && on && wallets ? `<p class="fine">Watching ${esc(wallets)}, every 5 minutes. The wallets stay on this device.</p>` : ''}
       ${state}

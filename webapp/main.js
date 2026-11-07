@@ -110,8 +110,10 @@ useBackend(handlers, { cssText: css });
 
 const params = new URLSearchParams(location.search);
 const url = params.get('url');
+// ?q=<coin address>: a coin to scan straight away (the links in Radar signals on Discord).
+const ca = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(params.get('q') || '') ? params.get('q') : null;
 // Opened on a scan: on a phone the coins come first, with no intro to scroll past.
-if (url && isPostLink(url)) document.body.classList.add('scan-open');
+if ((url && isPostLink(url)) || ca) document.body.classList.add('scan-open');
 // Opened from a bot reply: add one to the day's count, and keep from= out of the address people share.
 if (['bot', 'discord', 'telegram'].includes(params.get('from'))) {
   navigator.sendBeacon?.(`${API_BASE}/count/${params.get('from')}-scan`);
@@ -119,4 +121,4 @@ if (['bot', 'discord', 'telegram'].includes(params.get('from'))) {
   history.replaceState(null, '', `/scan?${params}`);
 }
 mountInline(document.getElementById('radar'), 'dark', { hint: 'Paste a link to a post on X above. Or search a narrative, a ticker or a CA.' })
-  .then((radar) => radar.open(url && isPostLink(url) ? { text: url } : {}));
+  .then((radar) => radar.open(url && isPostLink(url) ? { text: url } : ca ? { text: ca } : {}));

@@ -1,4 +1,4 @@
-// Radar 1.7.134 on the web: built from the extension source at https://tryradar.fun. Not financial advice.
+// Radar 1.7.135 on the web: built from the extension source at https://tryradar.fun. Not financial advice.
 (() => {
   // extension/src/lib/keywords.js
   var STOP = new Set(`a about above after again against all almost also am an and any are aren as at be because been before
@@ -464,9 +464,9 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
   }
   async function mentionedTokens(text, chains, search = searchPairs) {
     const cas = [.../* @__PURE__ */ new Set([...text.match(SOL_CA) || [], ...text.match(EVM_CA) || []])].slice(0, 3);
-    const found = await Promise.all(cas.map(async (ca) => {
-      const key2 = ca.toLowerCase();
-      const hit = aggregate(await search(ca).catch(() => [])).find((t) => t.address.toLowerCase() === key2 || t.pairAddresses?.some((p) => p.toLowerCase() === key2));
+    const found = await Promise.all(cas.map(async (ca2) => {
+      const key2 = ca2.toLowerCase();
+      const hit = aggregate(await search(ca2).catch(() => [])).find((t) => t.address.toLowerCase() === key2 || t.pairAddresses?.some((p) => p.toLowerCase() === key2));
       if (!hit) return null;
       return aggregate(await allPairsMany([hit]).catch(() => [])).find((t) => t.address === hit.address && chains.includes(t.chain)) || null;
     }));
@@ -780,7 +780,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       const res = await fetch(`${apiBase}/tweet?url=${encodeURIComponent(post.url)}`, { signal: AbortSignal.timeout(8e3) });
       return res.ok ? (await res.json()).post?.bio || "" : "";
     }).catch(() => "") : "");
-    const found = await Promise.all(bioCas({ bio }).map((ca) => mentionedTokens(ca, chains, (q) => cached(`q:${q}`, 2e4, () => searchPairs(q))).then(([t]) => t).catch(() => null)));
+    const found = await Promise.all(bioCas({ bio }).map((ca2) => mentionedTokens(ca2, chains, (q) => cached(`q:${q}`, 2e4, () => searchPairs(q))).then(([t]) => t).catch(() => null)));
     return found.filter(Boolean);
   }
   function tiedBioCoin(tokens, post, read2, fullText) {
@@ -3734,7 +3734,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       const state = !a.holder || !on ? "" : !g ? '<p class="fine">First look in the next few minutes.</p>' : !g.wallets ? '<p class="fine">No wallets yet. Check your wallet at the top of Radar, or add one under Diamond Hand.</p>' : rows ? `<div class="section-label"><span>Your bags</span></div><div class="al-list">${rows}</div><p class="fine">Last look ${esc2(age(g.at))} ago. Mute a coin to keep it on the list without alerts.</p>` : '<p class="fine">No coins worth $5 or more in your wallets right now.</p>';
       return `<section class="settings">
       <div class="set-head"><h3>Bag Guard</h3><span class="verdict ${a.holder ? "ok" : "neutral"}">${a.holder ? on ? "ON" : "OFF" : "HOLDERS"}</span></div>
-      <p>Radar watches the coins in your own wallets and alerts you the moment one turns: the dev sells, insiders dump, a top holder exits, the holder check turns serious, Larpcheck's verdict turns bad, or liquidity is pulled. Each alert opens the coin on your terminal. It says what happened; it never tells you to sell.</p>
+      <p>Radar watches the coins in your own wallets and alerts you the moment one turns: the dev sells, insiders dump, a top holder exits, the holder check turns serious, Larpcheck's verdict turns bad, or liquidity is pulled. It also tells you when a bag doubles or halves. Each alert opens the coin on your terminal. It says what happened; it never tells you to buy or sell.</p>
       <button class="fr-btn ghost" data-act="bag-toggle">Bag Guard: ${on ? "On" : "Off"}</button>
       ${a.holder && on && wallets ? `<p class="fine">Watching ${esc2(wallets)}, every 5 minutes. The wallets stay on this device.</p>` : ""}
       ${state}
@@ -4145,14 +4145,14 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       const copy = e.target.closest("[data-copy]");
       if (copy) {
         e.preventDefault();
-        const ca = copy.dataset.copy;
-        await this.copyText(ca);
+        const ca2 = copy.dataset.copy;
+        await this.copyText(ca2);
         copy.classList.add("copied");
         copy.innerHTML = `Copied ${I.check}`;
         this.toast("Contract address copied");
         setTimeout(() => {
           copy.classList.remove("copied");
-          copy.innerHTML = `${short(ca)} ${I.copy}`;
+          copy.innerHTML = `${short(ca2)} ${I.copy}`;
         }, 1400);
         return;
       }
@@ -5372,11 +5372,12 @@ svg { display: block; }
   useBackend(handlers, { cssText: radar_default });
   var params = new URLSearchParams(location.search);
   var url = params.get("url");
-  if (url && isPostLink(url)) document.body.classList.add("scan-open");
+  var ca = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(params.get("q") || "") ? params.get("q") : null;
+  if (url && isPostLink(url) || ca) document.body.classList.add("scan-open");
   if (["bot", "discord", "telegram"].includes(params.get("from"))) {
     navigator.sendBeacon?.(`${API_BASE}/count/${params.get("from")}-scan`);
     params.delete("from");
     history.replaceState(null, "", `/scan?${params}`);
   }
-  mountInline(document.getElementById("radar"), "dark", { hint: "Paste a link to a post on X above. Or search a narrative, a ticker or a CA." }).then((radar) => radar.open(url && isPostLink(url) ? { text: url } : {}));
+  mountInline(document.getElementById("radar"), "dark", { hint: "Paste a link to a post on X above. Or search a narrative, a ticker or a CA." }).then((radar) => radar.open(url && isPostLink(url) ? { text: url } : ca ? { text: ca } : {}));
 })();

@@ -112,7 +112,7 @@ const rep = (o = {}) => ({ source: 'rugcheck', rugged: false, freezeAuthority: n
   const s = lookAtBag(bag({ liquidity: 20000, priceUsd: 1 }), {}).state;
   assert.equal(s.liqBase, 20000);
   // price -75%: a pool's depth falls to about half on its own
-  assert.deepEqual(lookAtBag(bag({ liquidity: 10500, priceUsd: 0.25 }), {}, s).events, [], 'a dump is not a pull');
+  assert.deepEqual(lookAtBag(bag({ liquidity: 10500, priceUsd: 0.25 }), {}, s).events.map((e) => e.reason), ['down'], 'a dump is not a pull (only the price move is told)');
   // depth -80% with price -10%: pulled
   const r = lookAtBag(bag({ liquidity: 4000, priceUsd: 0.9 }), {}, s);
   assert.deepEqual(r.events.map((e) => e.reason), ['liquidity']);
@@ -151,4 +151,44 @@ const rep = (o = {}) => ({ source: 'rugcheck', rugged: false, freezeAuthority: n
   assert.equal(setMuted(many, 'new', true)[0], 'new');
 }
 
-console.log('PASS bagguard: holdings, bags, and each alert once, never on the first look');
+
+// ---- price moves: doubling or halving since the first look, then measured again from there; news, never a warning
+{
+  // Liquidity moves with the price here, so only the price move speaks.
+  const at = (price) => bag({ priceUsd: price, liquidity: 20000 * Math.sqrt(price / 0.05) });
+  let r = lookAtBag(at(0.05), {});
+  assert.deepEqual(r.events, [], 'the first look only notes the price');
+  assert.equal(r.state.moveBase, 0.05);
+  r = lookAtBag(at(0.09), {}, r.state);
+  assert.deepEqual(r.events, [], '1.8x is not a double');
+  assert.equal(r.status, 'Quiet');
+  r = lookAtBag(at(0.105), {}, r.state);
+  assert.deepEqual(r.events.map((e) => [e.reason, e.text]), [['up', '$COIN is up 2.1x since Bag Guard first saw it']]);
+  assert.equal(r.flagged, false, 'a move up is not a warning');
+  assert.equal(r.status, '$COIN is up 2.1x since Bag Guard first saw it');
+  assert.equal(r.state.moveBase, 0.105, 'measured again from here');
+  const id1 = r.events[0].word;
+  r = lookAtBag(at(0.12), {}, r.state);
+  assert.deepEqual(r.events, [], 'no second alert for the same move');
+  assert.equal(r.status, 'Quiet');
+  r = lookAtBag(at(0.05), {}, r.state);
+  assert.deepEqual(r.events.map((e) => [e.reason, e.text]), [['down', '$COIN is down 52% since the last move Bag Guard told you about']]);
+  assert.equal(r.flagged, false);
+  assert.notEqual(r.events[0].word, id1, 'each move has its own alert id');
+  r = lookAtBag(at(0.6), {}, { ...r.state, moveBase: 0.05 });
+  assert.match(r.events[0].text, /is up 12x since/);
+  // A real warning still leads and flags the bag, a move alongside it is still told.
+  let w = lookAtBag(at(0.05), { report: rep() });
+  w = lookAtBag(bag({ priceUsd: 0.11, liquidity: 300 }), { report: rep() }, w.state);
+  assert.deepEqual(w.events.map((e) => e.reason), ['liquidity', 'up']);
+  assert.equal(w.flagged, true);
+  assert.match(w.status, /Liquidity/);
+  // Older state with no price kept starts quietly too.
+  r = lookAtBag(at(0.5), {}, { seen: true });
+  assert.deepEqual(r.events, []);
+  assert.equal(r.state.moveBase, 0.5);
+  // No price, no move.
+  assert.deepEqual(lookAtBag(bag({ priceUsd: 0 }), {}, { seen: true, moveBase: 0.05 }).events, []);
+}
+
+console.log('PASS bagguard: holdings, bags, and each alert once, never on the first look; price moves');

@@ -487,7 +487,7 @@ async function runBagGuard(now = false) {
       const look = lookAtBag(bag, { report, lc }, was[bag.mint]);
       state[bag.mint] = look.state;
       const url = terminalUrl(bag);
-      list.push({ mint: bag.mint, symbol: bag.symbol, value: bag.value, status: look.status, flagged: look.status !== 'Quiet', url, muted: muted.has(bag.mint) });
+      list.push({ mint: bag.mint, symbol: bag.symbol, value: bag.value, status: look.status, flagged: look.flagged, url, muted: muted.has(bag.mint) });
       // A muted bag is still looked at, so its state moves on, but it never alerts.
       for (const e of muted.has(bag.mint) ? [] : look.events) {
         const coin = coinOf(fresh[bag.mint]);

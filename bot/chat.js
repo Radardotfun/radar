@@ -7,6 +7,7 @@
 import { scanUrl, ticker, contract } from './reply.js';
 import { readLaunches, findBursts, wireMessage, KEEP_MS, WINDOW_MS, COOLDOWN_MS, MAX_PER_DAY } from './wire.js';
 import { recordStories, refreshTrack } from './track.js';
+import { lookup, candidates, pick, after, sentToday, signalMessage, webhookOf, MAX_PER_DAY as SIGNALS_PER_DAY } from './discord-signals.js';
 
 const DISCORD = 'https://discord.com/api/v10';
 const TELEGRAM = 'https://api.telegram.org';
@@ -54,6 +55,7 @@ export const COMMANDS = [
   { name: 'Scan with Radar', type: 3 },
   { name: 'watch', description: 'Turn automatic scans on or off in this channel', type: 1, default_member_permissions: '16' },
   { name: 'wire', description: 'Make this channel the narrative wire, or turn it off', type: 1, default_member_permissions: '16' },
+  { name: 'signals', description: 'Post Radar signals (coins that pass every Radar check) in this channel, or stop', type: 1, default_member_permissions: '16' },
 ];
 
 const hexBytes = (h) => Uint8Array.from(String(h).match(/../g) || [], (b) => parseInt(b, 16));
@@ -183,6 +185,13 @@ export function createChat(deps) {
       await setKv(env, 'wire', wire);
       return note(off ? 'The narrative wire is off.' : 'The narrative wire now posts in this channel.');
     }
+    if (name === 'signals') {
+      const sig = await getKv(env, 'signals', {});
+      const off = sig.channel === i.channel_id;
+      sig.channel = off ? null : i.channel_id;
+      await setKv(env, 'signals', sig);
+      return note(off ? 'Radar signals are off in this channel.' : 'Radar signals now post in this channel: coins Breaking now flagged that pass every Radar check, at most ' + SIGNALS_PER_DAY + ' a day.');
+    }
     const text = name === 'scan' ? i.data.options?.[0]?.value : Object.values(i.data.resolved?.messages || {})[0]?.content;
     const url = postLinks(text)[0];
     if (!url) return note('That has no link to a post on X.');
@@ -270,8 +279,30 @@ export function createChat(deps) {
     return findBursts(results.flatMap((row) => JSON.parse(row.coins)), now);
   }
 
+  // Radar signals (bot/discord-signals.js): Breaking now's flags that pass every check, one a minute at most, to a channel
+  // webhook (DISCORD_SIGNALS_WEBHOOK) or the channel chosen with /signals. One Jupiter request a minute, and none at all
+  // until there is somewhere to post.
+  async function signalsTick(env, now = Date.now()) {
+    const hook = webhookOf(env.DISCORD_SIGNALS_WEBHOOK);
+    const state = await getKv(env, 'signals', {});
+    if (!hook && !(state.channel && env.DISCORD_BOT_TOKEN)) return null;
+    if (sentToday(state, now) >= SIGNALS_PER_DAY) return null;
+    const rows = await candidates(env.DB, state, now);
+    if (!rows.length) return null;
+    const best = pick(rows, await lookup(deps.fetch, rows.map((r) => r.mint)));
+    if (!best) return null;
+    // Saved first: a failed save means no post, never the same coin twice.
+    await setKv(env, 'signals', after(state, best.row, now));
+    const msg = signalMessage(best.row, best.a, best.check, now);
+    const r = hook
+      ? await deps.fetch(`${hook}?wait=true`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(msg) })
+      : await discord(env, 'POST', `/channels/${state.channel}/messages`, msg);
+    if (!r.ok) console.log('signal post failed', r.status);
+    return { mint: best.row.mint, ok: r.ok };
+  }
+
   async function tick(env) {
-    const steps = [wireTick(env).catch((e) => console.log('wire failed', e.message))];
+    const steps = [wireTick(env).catch((e) => console.log('wire failed', e.message)), signalsTick(env).catch((e) => console.log('signals failed', e.message))];
     // Watched channels first, so a link posted there this minute starts this minute.
     if (env.DISCORD_BOT_TOKEN) await readChannels(env).catch((e) => console.log('channels failed', e.message));
     // Retries saved as one list before the queue had rows of their own go back in line.
@@ -302,7 +333,7 @@ export function createChat(deps) {
     return out;
   }
 
-  const status = async (env) => ({ discord: !!(env.DISCORD_BOT_TOKEN && env.DISCORD_PUBLIC_KEY && env.DISCORD_APP_ID), telegram: !!(env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_SECRET), watching: Object.keys(await getKv(env, 'watch', {})).length, wire: !!(await getKv(env, 'wire', {})).channel, pending: (await env.DB.prepare("SELECT COUNT(*) AS n FROM bot_kv WHERE k >= 'job:' AND k < 'job;'").first())?.n ?? 0 });
+  const status = async (env) => ({ discord: !!(env.DISCORD_BOT_TOKEN && env.DISCORD_PUBLIC_KEY && env.DISCORD_APP_ID), telegram: !!(env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_SECRET), watching: Object.keys(await getKv(env, 'watch', {})).length, wire: !!(await getKv(env, 'wire', {})).channel, signals: await (async () => { const sg = await getKv(env, 'signals', {}); return { to: webhookOf(env.DISCORD_SIGNALS_WEBHOOK) ? 'webhook' : sg.channel ? 'channel' : null, today: sentToday(sg), last: sg.last || null }; })(), pending: (await env.DB.prepare("SELECT COUNT(*) AS n FROM bot_kv WHERE k >= 'job:' AND k < 'job;'").first())?.n ?? 0 });
 
-  return { interaction, telegramUpdate, runJob, tick, setup, status, wireBursts };
+  return { interaction, telegramUpdate, runJob, tick, setup, status, wireBursts, signalsTick };
 }
