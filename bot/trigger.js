@@ -45,3 +45,19 @@ export function mergeState(s, saved) {
     log,
   };
 }
+
+// Accounts that answer a tag with a check of their own. A tag under one of their replies (Larpcheckbot's "get Pro" answer
+// on 7 Nov, 22 of its last 27) asks about the coin post above it, not about the bot's message.
+export const CHECKER_BOTS = new Set(['larpcheckbot']);
+
+/**
+ * Whether the post a tag sits under is a dead end to climb past: a checker bot's reply, or a bare tag (only mentions,
+ * at most a few words, no ticker, contract, picture or video) that answers another post. post: from the engine's /tweet.
+ */
+export function climbFrom(post) {
+  if (!post?.parentId) return false;
+  if (CHECKER_BOTS.has(String(post.author || '').toLowerCase())) return true;
+  if (post.images?.length || post.hasVideo || post.quoted) return false;
+  const rest = String(post.text || '').replace(/@\w{1,15}/g, ' ').replace(/https?:\/\/\S+/g, ' ').replace(/\s+/g, ' ').trim();
+  return rest.length <= 20 && !/\$[\p{L}\p{N}]|[1-9A-HJ-NP-Za-km-z]{32,44}|0x[0-9a-f]{40}/iu.test(rest);
+}

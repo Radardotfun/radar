@@ -18,7 +18,7 @@ import { latestProfiles } from '../extension/src/lib/alerts.js';
 import { botReply, replyEntries, NO_COINS, xLength, varied, larpReply, larpMode } from './reply.js';
 import { botCoins, withMemory } from './coins.js';
 import { oauthHeader } from './oauth.js';
-import { wantsCoins, worthRetry, mergeState } from './trigger.js';
+import { wantsCoins, worthRetry, mergeState, climbFrom } from './trigger.js';
 import { createChat } from './chat.js';
 import { candidates as signalCandidates, lookup as signalLookup, lookup as jupiterAssets, checkCoin } from './discord-signals.js';
 import { coinScore, tokenFromJupiter } from './coinscore.js';
@@ -216,7 +216,14 @@ async function replyFor(postUrl, known = null, fresh = false) {
   if (hit && Date.now() - hit.at < 600_000) return hit.p;
   const h = fresh || dirty.delete(postUrl) ? makeHandlers(HOST) : handlers;
   const p = (async () => {
-    const { post: read } = await h.tweet({ url: postUrl });
+    let { post: read } = await h.tweet({ url: postUrl });
+    // A tag under a checker bot's reply (Larpcheckbot's "get Pro" answer) or under a bare tag asks about the coin post
+    // further up: climb at most 3 posts to it. The reply still goes to whoever tagged us.
+    for (let hops = 0; hops < 3 && climbFrom(read); hops++) {
+      const up = await h.tweet({ url: `https://x.com/i/status/${read.parentId}` }).catch(() => null);
+      if (!up?.post) break;
+      read = up.post;
+    }
     // The bot looks at the poster's bio itself (coins.js), so the scan doesn't.
     const post = { ...read, skipBio: true, ...(read.videoUrl ? { watchVideo: true } : {}) };
     // A tag under one of @radardotfunn's own posts (people trying the bot under its announcement): no scan of our

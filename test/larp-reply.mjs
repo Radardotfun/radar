@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import { larpMode, larpReply, botReply, varied, xLength, LARP_WORDS } from '../bot/reply.js';
 import { coinScore, totalScore, COIN_WORDS, tokenFromJupiter } from '../bot/coinscore.js';
-import { wantsCoins } from '../bot/trigger.js';
+import { wantsCoins, climbFrom } from '../bot/trigger.js';
 
 const CA = 'Dacity1111111111111111111111111111111111pump';
 const named = { address: CA, symbol: 'DACITY', name: 'Dacity Coin', chain: 'solana', marketCap: 48_200, volume: { h24: 90_000 }, createdAt: Date.now() - 3600e3 };
@@ -119,6 +119,20 @@ for (const [said, shown] of [
   ['Skip - nothing checkable', 'Nothing checkable'],
   ['Available on the official site, author is the brand', 'Available on the official site, author is the brand'],
 ]) assert.equal(larpReply({ named, how: 'post' }, { ...check, call: said }, now).split('\n')[2], shown, said);
+
+// ---- a tag under a checker bot's reply or a bare tag climbs to the coin post above
+assert.equal(climbFrom({ author: 'Larpcheckbot', text: 'Get Pro to check this one: …', parentId: '2119094080030572768' }), true, "Larpcheckbot's paywall reply");
+assert.equal(climbFrom({ author: 'larpcheckbot', text: '$SUNPEAK · TOTAL 50/100 …', parentId: '1' }), true, 'any reply of theirs: the coin is above');
+assert.equal(climbFrom({ author: 'mendiyyy', text: '@Larpcheckbot', parentId: '2' }), true, 'a bare tag');
+assert.equal(climbFrom({ author: 'a1zenxs', text: '@Larpcheckbot ?', parentId: '3' }), true);
+assert.equal(climbFrom({ author: 'DMX7227', text: '@tetrascoreio @SiftscanBot @Larpcheckbot', parentId: '4' }), true, 'several tags, nothing else');
+assert.equal(climbFrom({ author: 'x', text: '@Larpcheckbot $GREY', parentId: '5' }), false, 'a tag that names its coin is the post');
+assert.equal(climbFrom({ author: 'x', text: `@Larpcheckbot ${CA}`, parentId: '6' }), false);
+assert.equal(climbFrom({ author: 'x', text: '@Larpcheckbot', parentId: '7', images: ['https://pbs.twimg.com/a.jpg'] }), false, 'a picture can be the story');
+assert.equal(climbFrom({ author: 'x', text: '@Larpcheckbot is this the dev that rugged the cat coin last week', parentId: '8' }), false, 'a real reply is a post of its own');
+assert.equal(climbFrom({ author: 'Larpcheckbot', text: 'a post of theirs, not a reply' }), false, 'nothing above it');
+assert.equal(climbFrom({ author: 'radardotfunn', text: 'Larp check on $GREY …', parentId: '9' }), false, 'our own posts keep their tip');
+assert.equal(climbFrom(null), false);
 
 // ---- asking for it counts as a request
 const mention = (text) => ({ text: `@radardotfunn ${text}`, display_text_range: [0, [...`@radardotfunn ${text}`].length], entities: { mentions: [{ username: 'radardotfunn', start: 0, end: 13 }] } });

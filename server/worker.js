@@ -272,6 +272,8 @@ async function readTweet(url, ctx) {
     replyTo: t.replying_to ? [t.replying_to] : [],
     parent: parent?.text || '',
     parentAuthor: parent?.author?.screen_name || '',
+    // The post this one answers, so the bot can climb from a tag under a checker bot's reply to the coin post above.
+    parentId: /^\d{5,25}$/.test(String(t.replying_to_status || '')) ? String(t.replying_to_status) : null,
     url: `https://x.com/${author || 'i'}/status/${id}`,
     images: images.slice(0, 3),
     hasVideo: !!video,
