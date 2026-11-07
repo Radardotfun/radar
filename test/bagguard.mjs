@@ -1,7 +1,7 @@
 // Bag Guard (extension/src/lib/bagguard.js), offline: what a wallet holds, which holdings are bags, and when a look at a bag
 // becomes an alert. node test/bagguard.mjs
 import assert from 'node:assert/strict';
-import { walletHoldings, pickBags, lookAtBag, provedWallet, terminalUrl, TOKEN_PROGRAMS, BAG_MIN_USD, MAX_BAGS } from '../extension/src/lib/bagguard.js';
+import { walletHoldings, pickBags, lookAtBag, provedWallet, terminalUrl, setMuted, TOKEN_PROGRAMS, BAG_MIN_USD, MAX_BAGS, MAX_MUTED } from '../extension/src/lib/bagguard.js';
 
 const W1 = 'WaLLet1aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
 const COIN = 'Coin111111111111111111111111111111111111pump';
@@ -136,6 +136,19 @@ const rep = (o = {}) => ({ source: 'rugcheck', rugged: false, freezeAuthority: n
   assert.equal(provedWallet('garbage.x'), null);
   assert.equal(terminalUrl(bag()), 'https://axiom.trade/meme/PairA?chain=sol');
   assert.equal(terminalUrl(bag({ pair: null })), `https://dexscreener.com/solana/${COIN}`);
+}
+
+// ---- muting a bag: newest first, no repeats, capped, and unmuting only removes that coin
+{
+  assert.deepEqual(setMuted(null, 'A', true), ['A']);
+  assert.deepEqual(setMuted(['A'], 'B', true), ['B', 'A']);
+  assert.deepEqual(setMuted(['B', 'A'], 'A', true), ['A', 'B'], 'muting again moves it to the front, once');
+  assert.deepEqual(setMuted(['A', 'B'], 'A', false), ['B']);
+  assert.deepEqual(setMuted(['B'], 'Z', false), ['B'], 'unmuting a coin that was never muted changes nothing');
+  assert.deepEqual(setMuted([1, '', 'B'], 'C', true), ['C', 'B'], 'junk in storage is dropped');
+  const many = Array.from({ length: MAX_MUTED }, (_, i) => 'M' + i);
+  assert.equal(setMuted(many, 'new', true).length, MAX_MUTED);
+  assert.equal(setMuted(many, 'new', true)[0], 'new');
 }
 
 console.log('PASS bagguard: holdings, bags, and each alert once, never on the first look');

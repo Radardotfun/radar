@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Radar
 // @namespace    https://tryradar.fun
-// @version      1.7.131
+// @version      1.7.132
 // @description  See the coins behind any post on X and instantly reroute to the biggest match that passes available on-chain safety checks.
 // @homepageURL  https://tryradar.fun
 // @supportURL   https://tryradar.fun
@@ -31,7 +31,7 @@
 // @downloadURL  https://tryradar.fun/radar.user.js
 // ==/UserScript==
 
-// Radar 1.7.131: built from the extension source at https://tryradar.fun. Not financial advice.
+// Radar 1.7.132: built from the extension source at https://tryradar.fun. Not financial advice.
 (() => {
   var __defProp = Object.defineProperty;
   var __export = (target, all) => {
@@ -3693,10 +3693,10 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       const a = this.alerts;
       const on = a.bagGuard !== false;
       const g = a.bags;
-      const rows = (g?.bags || []).map((b) => `<a class="al-hit" href="${esc2(b.url)}" target="_blank" rel="noopener noreferrer"><b>$${esc2(String(b.symbol || "").trim())}</b>
-        <span>${esc2(usd(b.value))}</span><em class="${b.flagged ? "bad" : ""}">${esc2(b.status)}</em></a>`).join("");
+      const rows = (g?.bags || []).map((b) => `<div class="bag-row${b.muted ? " muted" : ""}"><a class="al-hit" href="${esc2(b.url)}" target="_blank" rel="noopener noreferrer"><b>$${esc2(String(b.symbol || "").trim())}</b>
+        <span>${esc2(usd(b.value))}</span><em class="${b.flagged ? "bad" : ""}">${esc2(b.status)}</em></a><button type="button" class="bag-mute" data-act="bag-mute" data-mint="${esc2(b.mint)}" data-on="${b.muted ? "0" : "1"}" aria-pressed="${b.muted ? "true" : "false"}" title="${b.muted ? "Alert me about this coin again" : "Keep watching this coin, without alerts"}">${b.muted ? "Unmute" : "Mute"}</button></div>`).join("");
       const wallets = [a.proved ? "the wallet you checked" : "", (a.myWallets || []).length ? `${a.myWallets.length} from Diamond Hand` : ""].filter(Boolean).join(" and ");
-      const state = !a.holder || !on ? "" : !g ? '<p class="fine">First look in the next few minutes.</p>' : !g.wallets ? '<p class="fine">No wallets yet. Check your wallet at the top of Radar, or add one under Diamond Hand.</p>' : rows ? `<div class="section-label"><span>Your bags</span></div><div class="al-list">${rows}</div><p class="fine">Last look ${esc2(age(g.at))} ago.</p>` : '<p class="fine">No coins worth $5 or more in your wallets right now.</p>';
+      const state = !a.holder || !on ? "" : !g ? '<p class="fine">First look in the next few minutes.</p>' : !g.wallets ? '<p class="fine">No wallets yet. Check your wallet at the top of Radar, or add one under Diamond Hand.</p>' : rows ? `<div class="section-label"><span>Your bags</span></div><div class="al-list">${rows}</div><p class="fine">Last look ${esc2(age(g.at))} ago. Mute a coin to keep it on the list without alerts.</p>` : '<p class="fine">No coins worth $5 or more in your wallets right now.</p>';
       return `<section class="settings">
       <div class="set-head"><h3>Bag Guard</h3><span class="verdict ${a.holder ? "ok" : "neutral"}">${a.holder ? on ? "ON" : "OFF" : "HOLDERS"}</span></div>
       <p>Radar watches the coins in your own wallets and alerts you the moment one turns: the dev sells, insiders dump, a top holder exits, the holder check turns serious, Larpcheck's verdict turns bad, or liquidity is pulled. Each alert opens the coin on your terminal. It says what happened; it never tells you to sell.</p>
@@ -3705,6 +3705,14 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       ${state}
       ${a.holder ? "" : '<p class="fine">For $RADAR holders. Check your wallet at the top of Radar to turn it on.</p>'}
     </section>`;
+    }
+    async muteBag(mint, on) {
+      try {
+        this.alerts = await send("alerts:bagMute", { mint, on });
+      } catch (err) {
+        this.toast(err.message, 3e3);
+      }
+      this.renderBody();
     }
     async toggleBagGuard() {
       try {
@@ -4020,6 +4028,11 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       }
       if (e.target.closest('[data-act="bag-toggle"]')) {
         await this.toggleBagGuard();
+        return;
+      }
+      const bagMute = e.target.closest('[data-act="bag-mute"]');
+      if (bagMute) {
+        await this.muteBag(bagMute.dataset.mint, bagMute.dataset.on === "1");
         return;
       }
       if (e.target.closest('[data-act="dh-add"]')) {
@@ -4796,6 +4809,13 @@ svg { display: block; }
 .track-all { display: block; margin-top: 8px; color: var(--muted); text-decoration: underline; }
 /* Bag Guard: a bag whose last look found something */
 .al-hit em.bad { color: var(--down); white-space: normal; text-align: right; max-width: 60%; }
+/* Bag Guard: each bag with its Mute button; a muted bag is dimmed but still listed */
+.bag-row { display: flex; gap: 6px; align-items: stretch; min-width: 0; }
+.bag-row .al-hit { flex: 1; }
+.bag-mute { flex: none; min-width: 72px; border: 1px solid var(--line-2); border-radius: 10px; padding: 0 10px; background: transparent; color: var(--muted); font: 600 11px var(--font); cursor: pointer; }
+.bag-mute:hover { color: var(--text); background: var(--card-2); }
+.bag-row.muted .al-hit { opacity: .55; }
+.bag-row.muted .bag-mute { color: var(--text); border-color: var(--line-2); background: var(--card-2); }
 .empty + .settings { margin-top: 4px; }
 .settings p { margin: 0; font: 500 12.5px/1.45 var(--font); color: var(--muted); }
 .settings p.fine { font-size: 11px; color: var(--faint); }

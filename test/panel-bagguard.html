@@ -1,6 +1,7 @@
 <!doctype html>
 <!-- Manual check of Bag Guard in the real panel's settings view, with a fake background: no wallet, no chain reads.
-     Serve the repo root and open /test/panel-bagguard.html. ?off shows it switched off, ?out a non-holder, ?empty no bags. -->
+     Serve the repo root and open /test/panel-bagguard.html. ?off shows it switched off, ?out a non-holder, ?empty no bags,
+     ?muted with $MOLE muted (its Mute button toggles it either way). -->
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Panel: Bag Guard</title>
 <style>html,body{margin:0;height:100%;background:#000}#root{width:400px;height:100vh;margin:0 auto}</style></head>
@@ -36,6 +37,8 @@ const state = () => ({ watches: [], feed: feed.slice(), unread: 0, notifications
 h['alerts:list'] = async () => state();
 h['alerts:read'] = async () => state();
 h['alerts:bagGuard'] = async ({ on: v }) => { on = v; return state(); };
+if (q.has('muted')) bags.find((x) => x.mint === 'm4').muted = true;
+h['alerts:bagMute'] = async ({ mint, on: v }) => { const b = bags.find((x) => x.mint === mint); if (b) b.muted = !!v; return state(); };
 useBackend(h, { css: '../extension/src/ui/radar.css' });
 const radar = await mountInline(document.getElementById('root'), 'dark');
 window.radar = radar;

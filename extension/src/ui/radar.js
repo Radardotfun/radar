@@ -1752,13 +1752,14 @@ class Radar {
     const a = this.alerts;
     const on = a.bagGuard !== false;
     const g = a.bags;
-    const rows = (g?.bags || []).map((b) => `<a class="al-hit" href="${esc(b.url)}" target="_blank" rel="noopener noreferrer"><b>$${esc(String(b.symbol || '').trim())}</b>
-        <span>${esc(usd(b.value))}</span><em class="${b.flagged ? 'bad' : ''}">${esc(b.status)}</em></a>`).join('');
+    // Each bag opens on the terminal; Mute keeps it on the list without alerts.
+    const rows = (g?.bags || []).map((b) => `<div class="bag-row${b.muted ? ' muted' : ''}"><a class="al-hit" href="${esc(b.url)}" target="_blank" rel="noopener noreferrer"><b>$${esc(String(b.symbol || '').trim())}</b>
+        <span>${esc(usd(b.value))}</span><em class="${b.flagged ? 'bad' : ''}">${esc(b.status)}</em></a><button type="button" class="bag-mute" data-act="bag-mute" data-mint="${esc(b.mint)}" data-on="${b.muted ? '0' : '1'}" aria-pressed="${b.muted ? 'true' : 'false'}" title="${b.muted ? 'Alert me about this coin again' : 'Keep watching this coin, without alerts'}">${b.muted ? 'Unmute' : 'Mute'}</button></div>`).join('');
     const wallets = [a.proved ? 'the wallet you checked' : '', (a.myWallets || []).length ? `${a.myWallets.length} from Diamond Hand` : ''].filter(Boolean).join(' and ');
     const state = !a.holder || !on ? ''
       : !g ? '<p class="fine">First look in the next few minutes.</p>'
         : !g.wallets ? '<p class="fine">No wallets yet. Check your wallet at the top of Radar, or add one under Diamond Hand.</p>'
-          : rows ? `<div class="section-label"><span>Your bags</span></div><div class="al-list">${rows}</div><p class="fine">Last look ${esc(age(g.at))} ago.</p>`
+          : rows ? `<div class="section-label"><span>Your bags</span></div><div class="al-list">${rows}</div><p class="fine">Last look ${esc(age(g.at))} ago. Mute a coin to keep it on the list without alerts.</p>`
             : '<p class="fine">No coins worth $5 or more in your wallets right now.</p>';
     return `<section class="settings">
       <div class="set-head"><h3>Bag Guard</h3><span class="verdict ${a.holder ? 'ok' : 'neutral'}">${a.holder ? (on ? 'ON' : 'OFF') : 'HOLDERS'}</span></div>
@@ -1768,6 +1769,11 @@ class Radar {
       ${state}
       ${a.holder ? '' : '<p class="fine">For $RADAR holders. Check your wallet at the top of Radar to turn it on.</p>'}
     </section>`;
+  }
+
+  async muteBag(mint, on) {
+    try { this.alerts = await send('alerts:bagMute', { mint, on }); } catch (err) { this.toast(err.message, 3000); }
+    this.renderBody();
   }
 
   async toggleBagGuard() {
@@ -2022,6 +2028,8 @@ class Radar {
     if (e.target.closest('[data-act="big-toggle"]')) { await this.toggleBig(); return; }
     if (e.target.closest('[data-act="diamond-toggle"]')) { await this.toggleDiamond(); return; }
     if (e.target.closest('[data-act="bag-toggle"]')) { await this.toggleBagGuard(); return; }
+    const bagMute = e.target.closest('[data-act="bag-mute"]');
+    if (bagMute) { await this.muteBag(bagMute.dataset.mint, bagMute.dataset.on === '1'); return; }
     if (e.target.closest('[data-act="dh-add"]')) { await this.addMyWallet(); return; }
     const dhRemove = e.target.closest('[data-act="dh-remove"]');
     if (dhRemove) { await this.removeMyWallet(dhRemove.dataset.address); return; }

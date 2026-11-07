@@ -9,6 +9,8 @@ import { reportBlock, seriousWarning } from '../ui/holdercheck.js';
 export const BAG_KEY = 'bag-guard';        // per-coin state from the last look
 export const BAG_ON = 'bagGuard';          // on unless turned off
 export const BAG_LIST = 'bag-guard-bags';  // what the panel shows: the bags and where each stands
+export const BAG_MUTED = 'bag-guard-muted'; // coins the holder muted: still watched and listed, never alerted
+export const MAX_MUTED = 50;
 export const BAG_MINUTES = 5;
 export const BAG_MIN_USD = 5;              // smaller holdings are dust, not a bag
 export const MAX_BAGS = 12;
@@ -143,6 +145,12 @@ export function provedWallet(token) {
     const json = JSON.parse(atob(body.replace(/-/g, '+').replace(/_/g, '/')));
     return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(json?.a || '') ? json.a : null;
   } catch { return null; }
+}
+
+/** The muted list with one coin muted (on) or unmuted. Newest first, no repeats, at most MAX_MUTED. */
+export function setMuted(list, mint, on) {
+  const rest = (Array.isArray(list) ? list : []).filter((m) => typeof m === 'string' && m && m !== mint);
+  return (on ? [mint, ...rest] : rest).slice(0, MAX_MUTED);
 }
 
 // The trading-terminal link for a bag: Axiom's pair page, which opens sell as well as buy.

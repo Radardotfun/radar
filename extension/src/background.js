@@ -4,7 +4,7 @@ import { newWatch, newFollow, verdictTurned, checkWatch, buyUrl, chartUrl, MAX_W
 import { GUARD_KEY, GUARD_MINUTES, lookAtStar } from './lib/guard.js';
 import { lookAt, launchFromPairs, isWalletAddress, agoText, MAX_MY_WALLETS } from './lib/diamond.js';
 import { reportBlock } from './ui/holdercheck.js';
-import { BAG_KEY, BAG_ON, BAG_LIST, BAG_MINUTES, REPORTS_PER_RUN, walletHoldings, pickBags, lookAtBag, provedWallet, terminalUrl } from './lib/bagguard.js';
+import { BAG_KEY, BAG_ON, BAG_LIST, BAG_MUTED, BAG_MINUTES, REPORTS_PER_RUN, walletHoldings, pickBags, lookAtBag, provedWallet, terminalUrl, setMuted } from './lib/bagguard.js';
 
 export { API_BASE, DEFAULTS };
 
@@ -193,6 +193,15 @@ async function diamondState() {
 handlers['alerts:bagGuard'] = async ({ on }) => {
   await ext.storage.local.set({ [BAG_ON]: !!on });
   if (on) runBagGuard(true).catch(() => {});
+  return alertList(await loadAlerts());
+};
+// Muting a bag: it stays on the list and keeps being looked at (so unmuting doesn't replay old news), but never alerts.
+handlers['alerts:bagMute'] = async ({ mint, on }) => {
+  if (!isWalletAddress(String(mint || ''))) throw new Error('Not a coin address');
+  const got = await ext.storage.local.get([BAG_MUTED, BAG_LIST]);
+  const list = got[BAG_LIST];
+  await ext.storage.local.set({ [BAG_MUTED]: setMuted(got[BAG_MUTED], mint, !!on),
+    ...(list?.bags ? { [BAG_LIST]: { ...list, bags: list.bags.map((b) => (b.mint === mint ? { ...b, muted: !!on } : b)) } } : {}) });
   return alertList(await loadAlerts());
 };
 handlers['alerts:diamond'] = async ({ on }) => {
@@ -439,7 +448,7 @@ async function runBagGuard(now = false) {
   if (bagging) return;
   bagging = true;
   try {
-    const got = await ext.storage.local.get([BAG_ON, MY_WALLETS, 'radarHolder', BAG_KEY, BAG_LIST]);
+    const got = await ext.storage.local.get([BAG_ON, MY_WALLETS, 'radarHolder', BAG_KEY, BAG_LIST, BAG_MUTED]);
     if (got[BAG_ON] === false) return;
     const holder = got.radarHolder;
     if (!(holder?.token && holder.exp > Date.now())) return;
@@ -465,6 +474,7 @@ async function runBagGuard(now = false) {
     if (!fresh) return;
     const bags = pickBags(holdings, fresh);
     const was = got[BAG_KEY] || {};
+    const muted = new Set(got[BAG_MUTED] || []);
     // Holder reports are slow and rate limited: a few bags a run, the ones read longest ago (or never) first.
     const ask = new Set([...bags].sort((a, b) => (was[a.mint]?.reportAt || 0) - (was[b.mint]?.reportAt || 0)).slice(0, REPORTS_PER_RUN).map((b) => b.mint));
     const state = {};
@@ -477,19 +487,24 @@ async function runBagGuard(now = false) {
       const look = lookAtBag(bag, { report, lc }, was[bag.mint]);
       state[bag.mint] = look.state;
       const url = terminalUrl(bag);
-      list.push({ mint: bag.mint, symbol: bag.symbol, value: bag.value, status: look.status, flagged: look.status !== 'Quiet', url });
-      for (const e of look.events) {
+      list.push({ mint: bag.mint, symbol: bag.symbol, value: bag.value, status: look.status, flagged: look.status !== 'Quiet', url, muted: muted.has(bag.mint) });
+      // A muted bag is still looked at, so its state moves on, but it never alerts.
+      for (const e of muted.has(bag.mint) ? [] : look.events) {
         const coin = coinOf(fresh[bag.mint]);
         const larp = lc?.checked ? { by: 'Larpcheck', word: lc.verdict, score: lc.score ?? null, url: lc.url || lc.page || null } : null;
         // No buy button: an alert that something went wrong shouldn't offer one. The link opens the coin on the terminal.
         items.push({ id: `bag:${bag.mint}:${e.reason}:${e.word || e.text.slice(0, 40)}`, at: Date.now(), kind: e.reason === 'verdict' ? 'verdict' : 'guard', text: e.text, watch: { url, author: 'Bag Guard', label: `$${bag.symbol}` }, coin, larp, holders: null, buy: null, chart: url });
       }
     }
+    // A coin muted while this run was looking counts as muted too (item ids are bag:<mint>:...).
+    const mutedNow = new Set((await ext.storage.local.get(BAG_MUTED))[BAG_MUTED] || []);
+    for (const b of list) b.muted = mutedNow.has(b.mint);
+    const alerting = items.filter((i) => !mutedNow.has(i.id.split(':')[1]));
     // Only the coins still held keep their state: buy one again later and it starts from a fresh, quiet first look.
     await ext.storage.local.set({ [BAG_KEY]: state, [BAG_LIST]: { at: Date.now(), wallets: wallets.length, unread, bags: list } });
-    if (!items.length) return;
+    if (!alerting.length) return;
     const added = await withAlerts(async (a) => {
-      const newOnes = items.filter((i) => !a.feed.some((f) => f.id === i.id));
+      const newOnes = alerting.filter((i) => !a.feed.some((f) => f.id === i.id));
       a.feed = [...newOnes, ...a.feed].slice(0, 30);
       a.unread += newOnes.length;
       if (newOnes.length) showBadge(a.unread);

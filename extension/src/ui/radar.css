@@ -451,6 +451,13 @@ svg { display: block; }
 .track-all { display: block; margin-top: 8px; color: var(--muted); text-decoration: underline; }
 /* Bag Guard: a bag whose last look found something */
 .al-hit em.bad { color: var(--down); white-space: normal; text-align: right; max-width: 60%; }
+/* Bag Guard: each bag with its Mute button; a muted bag is dimmed but still listed */
+.bag-row { display: flex; gap: 6px; align-items: stretch; min-width: 0; }
+.bag-row .al-hit { flex: 1; }
+.bag-mute { flex: none; min-width: 72px; border: 1px solid var(--line-2); border-radius: 10px; padding: 0 10px; background: transparent; color: var(--muted); font: 600 11px var(--font); cursor: pointer; }
+.bag-mute:hover { color: var(--text); background: var(--card-2); }
+.bag-row.muted .al-hit { opacity: .55; }
+.bag-row.muted .bag-mute { color: var(--text); border-color: var(--line-2); background: var(--card-2); }
 .empty + .settings { margin-top: 4px; }
 .settings p { margin: 0; font: 500 12.5px/1.45 var(--font); color: var(--muted); }
 .settings p.fine { font-size: 11px; color: var(--faint); }
