@@ -28,8 +28,10 @@ export function wantsCoins(m, username) {
   return { ok: true };
 }
 
-// A busy DexScreener, AI, post reader or X is worth another try next minute; anything else is not.
-export const worthRetry = (message) => /rate.?limit|at its limit|ai limit|duplicate|\b429\b|\b50\d\b|timed out|timeout|could not read|too many|busy|overload|engine failed|fetch failed|network/i.test(String(message || ''));
+// A busy DexScreener, AI, post reader or X is worth another try next minute; anything else is not. A tag the bot said
+// it would try again ("trying again next minute") always is: until 8 Nov "The video's speech could not be read" matched
+// nothing here, so those tags were dropped with no reply.
+export const worthRetry = (message) => /rate.?limit|at its limit|ai limit|duplicate|\b429\b|\b50\d\b|timed out|timeout|could not (?:be )?read|trying again|too many|busy|overload|engine failed|fetch failed|network/i.test(String(message || ''));
 
 const newerId = (a, b) => { try { return BigInt(a || 0) >= BigInt(b || 0) ? a : b; } catch { return a || b; } };
 

@@ -535,6 +535,19 @@ export default {
       return json(200, { looked: coins.length, passing: coins.filter((c) => c.pass).length, coins, posting: (await chatFor(env).status(env)).signals });
     }
     if (u.pathname === '/log') return json(200, (await loadState(env)).log);
+    // Puts a tag back on the retry list, for one dropped by a fault since fixed. Only a tag in the log that wasn't
+    // skipped and has no reply: nothing new can be answered from here, and nothing twice.
+    if (u.pathname === '/requeue' && request.method === 'POST') {
+      const { mention } = await request.json().catch(() => ({}));
+      const s = await loadState(env);
+      const e = (s.log || []).find((x) => x.mention === mention && !x.skip);
+      if (!mention || !e) return json(404, { error: 'not a tag in the log' });
+      if ((s.log || []).some((x) => x.mention === mention && x.reply) || (await env.BOT_KV.get(`r:${mention}`).catch(() => null))) return json(409, { error: 'already answered' });
+      if ([...(s.pending || []), ...(s.inflight || [])].some((p) => p.mention === mention)) return json(200, { queued: false, waiting: true });
+      s.pending = [...(s.pending || []), { mention, by: e.by, target: e.target, tries: 1 }];
+      await env.BOT_KV.put('state', JSON.stringify(s));
+      return json(200, { queued: true, mention, target: e.target });
+    }
     // X's full answer to "who am I" with these keys (status, its body and the headers that explain a refusal).
     if (u.pathname === '/debug-me') {
       const host = u.searchParams.get('host') === 'twitter' ? 'https://api.twitter.com/2' : X;

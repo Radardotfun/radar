@@ -66,8 +66,15 @@ assert.deepEqual(wantsCoins(post(caUnder, [14, [...caUnder].length], [['radardot
 // A busy service is tried again; anything else isn't.
 import { worthRetry, mergeState } from '../bot/trigger.js';
 import { varied } from '../bot/reply.js';
-for (const m of ['DexScreener rate limited', 'DexScreener rate-limited 3 lookups', 'DexScreener 503', 'The AI is busy', 'Radar is busy reading posts right now', 'Narrative engine failed', 'The AI judge timed out', 'X 429', 'Radar could not read this post right now']) assert.equal(worthRetry(m), true, m);
+for (const m of ['DexScreener rate limited', 'DexScreener rate-limited 3 lookups', 'DexScreener 503', 'The AI is busy', 'Radar is busy reading posts right now', 'Narrative engine failed', 'The AI judge timed out', 'X 429', 'Radar could not read this post right now', "The video's speech could not be read, trying again next minute", 'The AI judge timed out, trying again next minute']) assert.equal(worthRetry(m), true, m);
 for (const m of ['That is not a link to a post on X', "Couldn't open that post. It may be deleted", 'X 403 forbidden', '', undefined]) assert.equal(worthRetry(m), false, m);
+// Every tag the bot says it will try again is put back on the list (8 Nov: the video speech one never was).
+{
+  const src = (await import('node:fs')).readFileSync(new URL('../bot/worker.js', import.meta.url), 'utf8');
+  const said = src.split('\n').filter((l) => /new Error\(/.test(l) && /trying again/.test(l)).map((l) => l.slice(l.indexOf('new Error(') + 11).replace(/\$\{[^}]*\}/g, '3').replace(/["'`]\);?\s*$/, ''));
+  assert.ok(said.length >= 3, `found ${said.length} "trying again" errors`);
+  for (const m of said) assert.equal(worthRetry(m), true, m);
+}
 // Runs that overlap can't undo each other: since never goes back, and retries and replies from both are kept.
 const late = { since: '100', day: 'd', sent: 2, pending: [{ mention: 'a', tries: 1 }], mine: ['r1'], judged: { p1: 1 }, log: [{ mention: 'a', at: '2026-11-01T00:00:01Z' }] };
 const saved = { since: '105', day: 'd', sent: 3, pending: [{ mention: 'b', tries: 1 }, { mention: 'a', tries: 2 }], mine: ['r2'], judged: { p2: 2 }, log: [{ mention: 'b', at: '2026-11-01T00:00:02Z' }, { mention: 'a', at: '2026-11-01T00:00:01Z' }] };
