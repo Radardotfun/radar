@@ -122,7 +122,7 @@ export async function lcSettings(env, ctx) {
 }
 
 // One more use of something limited per day, or false when it's used up. D1 keeps the count across the Worker's copies.
-async function spend(env, name, cap) {
+export async function spend(env, name, cap) {
   const day = new Date().toISOString().slice(0, 10);
   const row = await env.DB.prepare('SELECT n FROM counts WHERE day = ? AND name = ?').bind(day, name).first();
   if ((row?.n || 0) >= cap) return false;

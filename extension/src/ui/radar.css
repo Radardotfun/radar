@@ -323,6 +323,11 @@ svg { display: block; }
 .wallet { display: flex; justify-content: space-between; font: 500 11px var(--mono); color: var(--muted); padding: 3px 0; }
 .wallet a:hover { color: var(--text); text-decoration: underline; }
 .wallet .dev { color: var(--warn); }
+.wallet .old { color: var(--faint); }
+.wallet small { margin-left: 6px; color: var(--faint); }
+.coin-check .fine { margin: 6px 0 2px; font: 500 10.5px/1.4 var(--font); color: var(--faint); white-space: normal; }
+.coin-check .src-line .spinner { vertical-align: -2px; }
+.holder-line.ask-line { margin-top: 10px; }
 .toggle { font: 600 11px var(--mono); color: var(--muted); margin-top: 4px; }
 .toggle:hover { color: var(--text); }
 

@@ -588,8 +588,88 @@ class Radar {
       .then((d) => { a.dev = d; })
       .catch(() => {})
       .finally(() => this.renderDev(t.address));
-    await Promise.allSettled([rug, bundle, fam, dev]);
+    a.ready = Promise.allSettled([rug, bundle, fam, dev]);
+    await a.ready;
     a.loading = false;
+    if (this.openCards.has(t.address)) this.loadLinks(t);
+  }
+
+  // Wallet links and snipers (lib/links.js): read the first time a Solana card is opened, after the launch scan, which
+  // gives the launch time and the dev. Kept 10 minutes by the handler.
+  async loadLinks(t) {
+    if (t?.chain !== 'solana') return;
+    const a = this.audits.get(t.address) || {};
+    if (a.links || a.linksLoading) return;
+    a.linksLoading = true;
+    this.audits.set(t.address, a);
+    this.renderAudit(t.address);
+    await a.ready?.catch(() => {});
+    const creator = a.dev?.creator || a.bundle?.creator || a.rug?.creator || null;
+    const launchS = a.bundle?.ok && a.bundle.launchTime ? a.bundle.launchTime : null;
+    try {
+      a.links = await send('links', { mint: t.address, creator, launchS, pairs: t.pairAddresses || [] });
+      a.linksErr = null;
+    } catch (e) {
+      a.linksErr = e.message || "Couldn't trace the wallets";
+    }
+    a.linksLoading = false;
+    this.renderAudit(t.address);
+  }
+
+  // Ask Radar about a coin card (holders): the answer comes only from what this card shows.
+  coinEvidence(t) {
+    const a = this.audits.get(t.address) || {};
+    const c = coinCheck(t, a.rug, a.bundle, a.links);
+    const p = (v) => (v == null ? 'unknown' : `${Number(v) < 10 ? Number(v).toFixed(1) : Math.round(Number(v))}%`);
+    const lines = [
+      `$${String(t.symbol || '').trim()} (${t.name || 'no name'}) on Solana, contract ${t.address}`,
+      `Market cap ${usd(t.marketCap)}${t.onCurve ? ', still on its bonding curve' : `, liquidity ${usd(t.liquidity)}`}, 24h volume ${usd(t.volume?.h24)}, ${tradesLine(t)}, age ${age(t.createdAt)}`,
+      `Price change: 5m ${pct(t.priceChange?.m5)}, 1h ${pct(t.priceChange?.h1)}, 24h ${pct(t.priceChange?.h24)}`,
+    ];
+    if (c) lines.push(`Radar's coin check: ${c.word} ${c.score}/100`, ...c.facts.map((f) => `${f.k}: ${f.text || (f.unit === 'price' ? `price would fall about ${Math.abs(Math.round(f.v))}%` : p(f.v))}${f.sub ? ` (${f.sub})` : ''}`));
+    const r = a.rug;
+    if (r) {
+      lines.push(`Holders: ${r.holders ?? 'unknown'}; mint authority ${r.mintAuthority ? 'on' : 'off'}, freeze authority ${r.freezeAuthority ? 'on' : 'off'}${r.lpLockedPct != null && !t.onCurve && r.source !== 'larpcheck' ? `; ${Math.round(r.lpLockedPct)}% of liquidity locked or burned` : ''}`);
+      const block = reportBlock(r);
+      lines.push(block ? `Radar's holder check fails: ${block}` : "Radar's holder check passes");
+    }
+    const b = a.bundle;
+    if (b?.ok) lines.push(`Launch block: ${b.bundleWallets} wallets bought ${p(b.bundledPct)} and still hold ${p(b.bundleHeldPct)}; the dev bought ${p(b.devBoughtPct)} and holds ${p(b.devHeldPct)}`);
+    const d = devSummary(a.dev);
+    if (d) lines.push(`Dev wallet: ${d.head}, ${d.sub}`);
+    const l = a.links?.ok ? a.links : null;
+    if (l) {
+      lines.push(...l.groups.slice(0, 4).map((g) => `${g.owners.length} top wallet${g.owners.length === 1 ? '' : 's'} linked (${g.kinds.join(', ')}) hold ${p(g.pct)}`));
+      lines.push(`Radar read where ${l.read} of the top ${l.holders.length} wallets got their coins${l.launch ? `; ${l.snipers.wallets} got them in the first 10 seconds` : ''}`);
+    }
+    // Radar's own larp check of the post, when it's about this coin. Larpcheck's verdicts stay out: never reworded.
+    const s = this.state.story;
+    if (s?.word && !s.larpcheck && s.coin && String(s.coin).toUpperCase() === String(t.symbol || '').trim().toUpperCase()) {
+      lines.push(`Radar's larp check of the post: ${s.word} ${s.score}. ${s.call || ''}`, ...(s.findings || []).slice(0, 5).map((f) => `${f.kind}: ${f.text}`));
+    }
+    return lines.map((x) => String(x).slice(0, 300)).slice(0, 30);
+  }
+  askHtml(t) {
+    if (!this.holder?.on) return '';
+    if (!this.holder.holder) return '<div class="holder-line ask-line"><span>Holders can ask Radar about this coin</span><button type="button" data-holder-connect>Check my wallet</button></div>';
+    const ans = this.coinAnswers?.get(t.address);
+    return `<form class="lc-ask" data-ask-coin="${esc(t.address)}"><input type="text" maxlength="300" placeholder="Ask Radar about this coin" autocomplete="off" spellcheck="false" /><button type="submit"${ans?.busy ? ' disabled' : ''}>${ans?.busy ? '…' : 'Ask'}</button></form>
+      ${ans?.error ? `<div class="story-note">${esc(ans.error)}</div>` : ''}
+      ${ans?.answer ? `<div class="lc-answer"><small>${esc(ans.question)}</small><p>${esc(ans.answer)}</p><span>Answer by <b>Radar</b>, from this card. Not financial advice.</span></div>` : ''}`;
+  }
+  async runAskCoin(addr, question) {
+    const t = this.tokens.get(addr);
+    if (!t || this.coinAnswers?.get(addr)?.busy) return;
+    (this.coinAnswers ||= new Map()).set(addr, { busy: true, question });
+    this.renderAudit(addr);
+    try {
+      const { answer } = await send('askCoin', { coin: { symbol: String(t.symbol || '').trim(), address: t.address }, question, evidence: this.coinEvidence(t) });
+      this.coinAnswers.set(addr, { answer, question });
+      this.askAnswered = addr;
+    } catch (e) {
+      this.coinAnswers.set(addr, { error: e.message, question });
+    }
+    this.renderAudit(addr);
   }
 
   // Coins launched priced in this one (its children), or the coin it was itself launched under. Shown only when there is one.
@@ -732,6 +812,13 @@ class Radar {
     this.renderBody();
     this.renderFoot();
     this.bodyEl.addEventListener('click', (e) => this.onBodyClick(e));
+    this.bodyEl.addEventListener('submit', (e) => {
+      const form = e.target.closest('[data-ask-coin]');
+      if (!form) return;
+      e.preventDefault();
+      const q = form.querySelector('input').value.trim();
+      if (q) this.runAskCoin(form.dataset.askCoin, q);
+    });
     this.bodyEl.addEventListener('input', (e) => {
       const a = e.target.closest('[data-fr-amt]');
       if (!a) return;
@@ -1577,7 +1664,7 @@ class Radar {
       const src = reportSource(r);
       const withSrc = (...bits) => bits.filter(Boolean).map(esc).join(' · ');
       // Top 10 and insiders are in the coin check above once it has enough to say; listed here only until then.
-      if (!coinCheck(t, a.rug, a.bundle)) {
+      if (!coinCheck(t, a.rug, a.bundle, a.links)) {
         html += row(level(r.top10Pct, 30, 50), 'Top 10 holders', pctPlain(r.top10Pct), withSrc(r.topHolder ? `largest ${pctPlain(r.topHolder.pct)}` : '', src.holders));
         if (r.insiderWallets) html += row(level(r.insiderPct ?? 0, 8, 20), 'Insider wallets', `${r.insiderWallets}`, withSrc(r.insiderPct != null ? `hold ${pctPlain(r.insiderPct)}` : 'linked by transfers', src.holders));
       }
@@ -1874,6 +1961,7 @@ class Radar {
       ['Breaking now pings', 'A ping the moment a new story starts breaking.', this.pings ? sw('break-pings', !!this.pings.on) : tag('')],
       ['Radar Guard', "When a watchlist coin's post is gone, Larpcheck's verdict turns bad, or liquidity falls 30%.", tag('ON')],
       ['Who posted this', "On any post: the account's past coins, its deleted posts and its past usernames.", tag('ON')],
+      ['Ask Radar', 'Ask about any coin card. Radar answers from what it found, never with a buy or sell call.', tag('ON')],
       ['Live feeds', 'Breaking now and the track record as they happen. Everyone else sees them 10 and 30 minutes late.', tag('ON')],
     ].map(([name, line, end]) => `<div class="al-w perk"><div><b>${name}</b><span>${line}</span></div>${end}</div>`).join('');
     return `<section class="settings perks">
@@ -1970,7 +2058,7 @@ class Radar {
     for (const p of s.picks || []) {
       const t = this.tokens.get(p.token.address) || p.token;
       const a = this.audits.get(t.address) || {};
-      const c = coinCheck(t, a.rug, a.bundle);
+      const c = coinCheck(t, a.rug, a.bundle, a.links);
       lines.push(`${ROLE_NAME[p.role] || 'Pick'}: $${String(t.symbol).trim()} ${usd(t.marketCap)}${c ? ` · coin check ${checkWord(c, a.rug).word}${checkWord(c, a.rug).flagged ? '' : ` ${c.score}`}` : ''}`);
     }
     const st = s.story;
@@ -1999,7 +2087,7 @@ class Radar {
 
   // Coin check: who could move the price, as one word + score and the facts behind it.
   renderCoinCheck(card, t, a) {
-    const c = coinCheck(t, a.rug, a.bundle);
+    const c = coinCheck(t, a.rug, a.bundle, a.links);
     const chip = card.querySelector(`[data-cc="${t.address}"]`);
     const box = card.querySelector('[data-k="check"]');
     if (!c) {
@@ -2014,10 +2102,43 @@ class Radar {
     if (!box) return;
     const lvl = { ok: 'good', watch: 'warn', risk: 'bad' };
     const val = (f) => (f.text ? esc(f.text) : f.unit === 'price' ? pctPlain(f.v, 0) : pctPlain(f.v));
+    // A redraw (every minute) must not wipe a question being typed.
+    const typing = box.querySelector('[data-ask-coin] input');
+    const draft = typing?.value || '';
+    const focused = !!typing && typing === (this.root.activeElement || document.activeElement);
+    const wl = a.links?.ok ? a.links : null;
+    const open = this.expanded.has(`tw:${t.address}`);
+    const tags = (h) => `${h.linked ? ' <span class="dev">linked</span>' : ''}${h.sniper ? ' <span class="dev">sniper</span>' : ''}${h.read ? '' : ' <span class="old">not read</span>'}`;
+    const devWallet = wl?.groups.find((g) => g.dev)?.by;
+    const who = (a) => (a === devWallet ? 'the dev' : short(a));
+    // Why a wallet is linked, in the order the chain shows it. A funder only counts when it's one a group was built on: an
+    // exchange that paid one of them is never named as the tie.
+    const how = (h) => {
+      if (!h.linked) return '';
+      if (h.sentBy) return `coins from ${who(h.sentBy)}`;
+      const to = wl.holders.find((o) => o.sentBy === h.owner);
+      if (to) return `sent coins to ${short(to.owner)}`;
+      if (h.funder && (h.funder === devWallet || wl.groups.some((g) => g.by === h.funder))) return `paid by ${who(h.funder)}`;
+      const paid = wl.holders.find((o) => o.funder === h.owner);
+      if (paid) return `paid ${short(paid.owner)}`;
+      if (h.firstTx && wl.holders.some((o) => o !== h && o.firstTx === h.firstTx)) return 'bought in one transaction';
+      return '';
+    };
+    const wallets = wl?.holders.length ? `<button class="toggle" data-twallets="${esc(t.address)}">${open ? 'Hide' : 'Show'} top wallets ↓</button>
+      <div class="wallets ${open ? 'show' : ''}">${wl.holders.map((h) => `<div class="wallet"><a href="https://gmgn.ai/sol/address/${esc(h.owner)}" target="_blank" rel="noopener noreferrer">${short(h.owner)}${tags(h)}</a><span>${pctPlain(h.pct, 2)}${how(h) ? `<small>${esc(how(h))}</small>` : ''}</span></div>`).join('')}
+        <p class="fine">Linked: paid by the same wallet, sent their coins by another wallet, bought in one transaction, or tied to the dev. Exchanges and wallets doing 1,000+ transactions a day never link anyone. Sniper: first coins within 10 seconds of launch.</p></div>` : '';
+    const tracing = a.linksLoading ? '<div class="src-line"><span class="spinner"></span> Tracing the top wallets…</div>' : '';
     box.innerHTML = `<h4>Coin check <span class="verdict ${tone}">${word}${score}</span></h4>
       ${c.call && !c.facts.some((f) => f.text && c.call.toLowerCase().includes(String(f.text).toLowerCase())) ? `<p class="cc-call">${esc(c.call)}</p>` : ''}
       <div class="rows">${c.facts.map((f) => `<div class="row ${lvl[f.lvl] || ''}"><span class="dot"></span><span class="k">${esc(f.k)}</span><span class="v">${val(f)}${f.sub ? `<small>${esc(f.sub)}</small>` : ''}</span></div>`).join('')}</div>
-      <div class="src-line">${esc([a.rug && reportSource(a.rug).line, a.bundle?.ok && ['Launch block', since(a.bundleAt)].filter(Boolean).join(' · ')].filter(Boolean).join(' · '))}</div>`;
+      ${tracing}${wallets}
+      <div class="src-line">${esc([a.rug && reportSource(a.rug).line, a.bundle?.ok && ['Launch block', since(a.bundleAt)].filter(Boolean).join(' · '), wl && ['Wallet trace', since(wl.at)].filter(Boolean).join(' · ')].filter(Boolean).join(' · '))}</div>
+      ${this.askHtml(t)}`;
+    const input = box.querySelector('[data-ask-coin] input');
+    // Cleared once, when its answer comes in; a follow-up being typed later is kept like any other draft.
+    if (this.askAnswered === t.address) this.askAnswered = null;
+    else if (input && draft) input.value = draft;
+    if (input && focused) input.focus();
   }
 
   patchCard(prev, t) {
@@ -2232,6 +2353,7 @@ class Radar {
       card?.querySelector('.card-body')?.setAttribute('aria-hidden', String(!open));
       const btn = card?.querySelector('.toggle-card');
       if (btn) { btn.setAttribute('aria-expanded', String(open)); btn.title = open ? 'Show less' : 'Show everything'; }
+      if (open) this.loadLinks(this.tokens.get(addr));
       return;
     }
     const bub = e.target.closest('[data-bubble]');
@@ -2265,6 +2387,13 @@ class Radar {
       const key = `w:${w.dataset.wallets}`;
       this.expanded.has(key) ? this.expanded.delete(key) : this.expanded.add(key);
       this.renderAudit(w.dataset.wallets);
+      return;
+    }
+    const tw = e.target.closest('[data-twallets]');
+    if (tw) {
+      const key = `tw:${tw.dataset.twallets}`;
+      this.expanded.has(key) ? this.expanded.delete(key) : this.expanded.add(key);
+      this.renderAudit(tw.dataset.twallets);
     }
   }
 

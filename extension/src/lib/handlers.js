@@ -8,6 +8,7 @@ import { readPost, findCoins, postCoins as coinsInPost } from './narrative.js';
 import { freshPairs, keepBest, postWords, storyWords, BADGE_MS } from './fresh.js';
 import { norm } from './keywords.js';
 import { makeRpc, analyzeLaunch, PUBLIC_RPC } from './solana.js';
+import { walletLinks } from './links.js';
 import { pickReroute, marketBlock, reportBlock, rejectionLine } from './reroute.js';
 import { RECENT_KEY, addRecent } from '../ui/recent.js';
 import { WATCHLIST_KEY, toggleStar } from '../ui/watchlist.js';
@@ -151,6 +152,27 @@ export function makeHandlers(host) {
   async function devRecord({ mint }) {
     if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(String(mint || ''))) throw new Error('Not a coin address');
     return cached(`dev:${mint}`, 600_000, () => readDevRecord(mint, famRpc));
+  }
+
+  // Wallet links and snipers (lib/links.js): who funded a coin's top holders and who bought in its first 10 seconds, from
+  // the same RPC as the launch scan. Read when a card is opened, kept 10 minutes. Funders never change, holders do.
+  async function links({ mint, creator = null, launchS = null, pairs = [] }) {
+    if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(String(mint || ''))) throw new Error('Not a coin address');
+    const s = await host.settings();
+    await host.ready;
+    const rpc = rpcFor(await host.rpcUrl(s));
+    return cached(`wl:${mint}`, 600_000, () => walletLinks(rpc, mint, { creator, launchS, exclude: pairs }));
+  }
+
+  // Ask Radar about a coin card: answered on our server from what the card shows (holders only, a daily limit).
+  async function askCoin({ coin, question, evidence }) {
+    const h = await holderStored();
+    if (!h) throw new Error('This is for $RADAR and $LARPCHECK holders. Check your wallet first.');
+    const res = await fetch(`${API_BASE}/ask`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ token: h.token, coin, question, evidence }), signal: AbortSignal.timeout(30_000) });
+    const data = await res.json().catch(() => ({}));
+    if (res.status === 401) await host.store.set(HOLDER_KEY, null);
+    if (!res.ok) throw new Error(data.error || `Ask ${res.status}`);
+    return data;
   }
 
   // More of Larpcheck through our server: holder data for chains Radar's own check doesn't cover, its lists, and for
@@ -480,7 +502,7 @@ export function makeHandlers(host) {
 
   const launchState = () => cached('launch:state', 600_000, async () => (await fetch(`${API_BASE}/launch/settings`, { signal: AbortSignal.timeout(6000) })).json());
 
-  const handlers = { typedTicker, forgetCoins, breaking, track, starList, starToggle, videoInfo, tweet, read, coins, fresh, postCoins, mentioned, story, larpcheck, family, devRecord, refresh, safety, bundle, image, openWindow, reroute, holderStatus, holderSave, holderWho, holderActive, recentList, recentAdd, recentClear, launchState, lcHolders, lcBoard, lcSettings, lcStart, lcAsk, lcPoll, settings: () => host.settings() };
+  const handlers = { typedTicker, forgetCoins, breaking, track, starList, starToggle, videoInfo, tweet, read, coins, fresh, postCoins, mentioned, story, larpcheck, family, devRecord, links, askCoin, refresh, safety, bundle, image, openWindow, reroute, holderStatus, holderSave, holderWho, holderActive, recentList, recentAdd, recentClear, launchState, lcHolders, lcBoard, lcSettings, lcStart, lcAsk, lcPoll, settings: () => host.settings() };
   // Changing the RPC drops cached bundle results so they're re-read through the new one.
   handlers.resetBundles = () => memo.forEach((_, k) => k.startsWith('bd:') && memo.delete(k));
   return handlers;

@@ -1,4 +1,4 @@
-// Radar 1.7.145 alerts page, built from webapp/alerts.js: https://github.com/Radardotfun/radar
+// Radar 1.7.146 alerts page, built from webapp/alerts.js: https://github.com/Radardotfun/radar
 (() => {
   // extension/src/lib/keywords.js
   var STOP = new Set(`a about above after again against all almost also am an and any are aren as at be because been before
@@ -1338,6 +1338,200 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     };
   }
 
+  // extension/src/lib/links.js
+  var TOP = 12;
+  var SNIPE_S = 10;
+  var PAGE = 1e3;
+  var BUSY = 1e3;
+  var BURN = /* @__PURE__ */ new Set(["1nc1nerator11111111111111111111111111111111"]);
+  var keyOf = (k) => typeof k === "string" ? k : k?.pubkey || null;
+  function funderOf(tx, owner) {
+    const msg = tx?.transaction?.message;
+    const ins = [...msg?.instructions || [], ...(tx?.meta?.innerInstructions || []).flatMap((x) => x?.instructions || [])];
+    for (const i of ins) {
+      if (i?.program !== "system" || !i.parsed) continue;
+      const { type, info = {} } = i.parsed;
+      if ((type === "transfer" || type === "transferWithSeed") && info.destination === owner && info.source && info.source !== owner) return info.source;
+      if ((type === "createAccount" || type === "createAccountWithSeed") && info.newAccount === owner && info.source && info.source !== owner) return info.source;
+    }
+    const payer = keyOf(msg?.accountKeys?.[0]);
+    return payer && payer !== owner ? payer : null;
+  }
+  function isWallet(address) {
+    try {
+      return !BURN.has(address) && onCurve(unbase58(address));
+    } catch {
+      return false;
+    }
+  }
+  function tokensFrom(tx, mint, owner) {
+    const pre = new Map((tx?.meta?.preTokenBalances || []).filter((b) => b.mint === mint).map((b) => [b.accountIndex, b]));
+    const post = (tx?.meta?.postTokenBalances || []).filter((b) => b.mint === mint);
+    const amt = (b) => Number(b?.uiTokenAmount?.amount || 0);
+    const indexes = /* @__PURE__ */ new Set([...pre.keys(), ...post.map((b) => b.accountIndex)]);
+    const senders = [];
+    for (const i of indexes) {
+      const before = pre.get(i);
+      const after = post.find((b) => b.accountIndex === i);
+      const who = after?.owner || before?.owner;
+      if (!who || who === owner) continue;
+      if (amt(after) < amt(before)) senders.push(who);
+    }
+    if (!senders.length) return null;
+    if (senders.some((w) => !isWallet(w))) return "buy";
+    return senders.length === 1 ? senders[0] : null;
+  }
+  function linkHolders(holders, { creator = null, busy = /* @__PURE__ */ new Set() } = {}) {
+    const owners = new Set(holders.map((h) => h.owner));
+    const parent = new Map(holders.map((h) => [h.owner, h.owner]));
+    const find = (x) => {
+      while (parent.get(x) !== x) {
+        parent.set(x, parent.get(parent.get(x)));
+        x = parent.get(x);
+      }
+      return x;
+    };
+    const kinds = /* @__PURE__ */ new Map();
+    const join = (a, b, kind) => {
+      const ra = find(a);
+      const rb = find(b);
+      const ks = /* @__PURE__ */ new Set([...kinds.get(ra) || [], ...kinds.get(rb) || [], kind]);
+      if (ra !== rb) parent.set(ra, rb);
+      kinds.set(rb, ks);
+    };
+    const dev = /* @__PURE__ */ new Map();
+    const shared = (field, kind) => {
+      const first = /* @__PURE__ */ new Map();
+      for (const h of holders) {
+        const v = h[field];
+        if (!v || v === "buy") continue;
+        if (creator && v === creator) {
+          dev.set(h.owner, kind === "same funder" ? "funded by the dev" : "coins from the dev");
+          continue;
+        }
+        if (owners.has(v)) {
+          join(h.owner, v, kind === "same funder" ? "funded each other" : "tokens sent");
+          continue;
+        }
+        if (busy.has(v)) continue;
+        if (first.has(v)) join(h.owner, first.get(v), kind);
+        else first.set(v, h.owner);
+      }
+    };
+    shared("funder", "same funder");
+    shared("sentBy", "tokens sent");
+    const byTx = /* @__PURE__ */ new Map();
+    for (const h of holders) {
+      if (!h.firstTx) continue;
+      if (byTx.has(h.firstTx)) join(h.owner, byTx.get(h.firstTx), "one transaction");
+      else byTx.set(h.firstTx, h.owner);
+    }
+    const groups = /* @__PURE__ */ new Map();
+    for (const h of holders) {
+      const r = find(h.owner);
+      if (!groups.has(r)) groups.set(r, []);
+      groups.get(r).push(h);
+    }
+    const out = [];
+    for (const [root, members] of groups) {
+      if (members.length < 2) continue;
+      const tally = /* @__PURE__ */ new Map();
+      for (const m of members) if (m.funder && !owners.has(m.funder)) tally.set(m.funder, (tally.get(m.funder) || 0) + 1);
+      const by = [...tally].sort((a, b) => b[1] - a[1]).find(([, n2]) => n2 >= 2)?.[0] || null;
+      out.push({ kinds: [...kinds.get(root) || []].sort(), owners: members.map((m) => m.owner), pct: members.reduce((s, m) => s + m.pct, 0), by });
+    }
+    const devRows = holders.filter((h) => dev.has(h.owner));
+    if (devRows.length) out.push({ kinds: [...new Set(devRows.map((h) => dev.get(h.owner)))].sort(), owners: devRows.map((h) => h.owner), pct: devRows.reduce((s, h) => s + h.pct, 0), by: creator, dev: true });
+    return out.sort((a, b) => b.pct - a.pct);
+  }
+  function oldestOk(sigs) {
+    if (!Array.isArray(sigs) || sigs.length >= PAGE) return null;
+    for (let i = sigs.length - 1; i >= 0; i--) if (!sigs[i].err) return sigs[i];
+    return null;
+  }
+  var getTx = (rpc, sig) => rpc("getTransaction", [sig, { encoding: "jsonParsed", maxSupportedTransactionVersion: 1, commitment: "confirmed" }]).catch(() => null);
+  var history = (rpc, address) => rpc("getSignaturesForAddress", [address, { limit: PAGE, commitment: "confirmed" }]).catch(() => null);
+  async function walletLinks(rpc, mint, { creator = null, launchS = null, exclude = [], top = TOP } = {}) {
+    const skip = /* @__PURE__ */ new Set([...exclude, ...BURN]);
+    const [largest, mintInfo] = await Promise.all([
+      rpc("getTokenLargestAccounts", [mint, { commitment: "confirmed" }]),
+      rpc("getAccountInfo", [mint, { encoding: "jsonParsed", commitment: "confirmed" }])
+    ]);
+    const supply = Number(mintInfo?.value?.data?.parsed?.info?.supply || 0);
+    if (!supply) throw new Error("Not a token mint");
+    const accounts = (largest?.value || []).filter((a) => a?.address && !skip.has(a.address));
+    const empty = { ok: true, at: Date.now(), read: 0, traced: 0, devPct: null, holders: [], groups: [], linked: { wallets: 0, pct: 0 }, snipers: { wallets: 0, pct: 0 } };
+    if (!accounts.length) return empty;
+    const infos = await rpc("getMultipleAccounts", [accounts.map((a) => a.address), { encoding: "jsonParsed", commitment: "confirmed" }]);
+    const byOwner = /* @__PURE__ */ new Map();
+    accounts.forEach((a, i) => {
+      const owner = infos?.value?.[i]?.data?.parsed?.info?.owner;
+      if (!owner || skip.has(owner) || !isWallet(owner)) return;
+      const amount = Number(a.amount || 0);
+      const row = byOwner.get(owner) || { owner, amount: 0, account: a.address, biggest: 0 };
+      row.amount += amount;
+      if (amount > row.biggest) {
+        row.biggest = amount;
+        row.account = a.address;
+      }
+      byOwner.set(owner, row);
+    });
+    const devRow = creator ? byOwner.get(creator) : null;
+    const rows = [...byOwner.values()].filter((r) => r.owner !== creator).sort((a, b) => b.amount - a.amount).slice(0, top);
+    if (!rows.length) return { ...empty, devPct: devRow ? devRow.amount / supply * 100 : null };
+    const read = await Promise.all(rows.map(async (r) => {
+      const pct2 = r.amount / supply * 100;
+      const [own, coin] = await Promise.all([history(rpc, r.owner), history(rpc, r.account)]);
+      const firstOwn = oldestOk(own);
+      const firstCoin = oldestOk(coin);
+      const [ownTx, coinTx] = await Promise.all([firstOwn ? getTx(rpc, firstOwn.signature) : null, firstCoin ? getTx(rpc, firstCoin.signature) : null]);
+      const from = coinTx ? tokensFrom(coinTx, mint, r.owner) : null;
+      const firstBuy = firstCoin?.blockTime ?? null;
+      return {
+        owner: r.owner,
+        pct: pct2,
+        read: !!coinTx,
+        traced: !!ownTx,
+        funder: ownTx ? funderOf(ownTx, r.owner) : null,
+        sentBy: from && from !== "buy" ? from : null,
+        bought: from === "buy",
+        firstTx: coinTx ? firstCoin.signature : null,
+        firstBuy,
+        sniper: !!(launchS && firstBuy != null && firstBuy >= launchS - 1 && firstBuy - launchS <= SNIPE_S)
+      };
+    }));
+    const owners = new Set(read.map((h) => h.owner));
+    const counts = /* @__PURE__ */ new Map();
+    for (const h of read) for (const v of [h.funder, h.sentBy]) if (v && v !== creator && !owners.has(v)) counts.set(v, (counts.get(v) || 0) + 1);
+    const shared = [...counts].filter(([, n2]) => n2 >= 2).map(([v]) => v);
+    const busy = /* @__PURE__ */ new Set();
+    await Promise.all(shared.map(async (v) => {
+      const sigs = await history(rpc, v);
+      if (!Array.isArray(sigs)) {
+        busy.add(v);
+        return;
+      }
+      if (sigs.length >= BUSY && (sigs[0].blockTime || 0) - (sigs[sigs.length - 1].blockTime || 0) < 86400) busy.add(v);
+    }));
+    const groups = linkHolders(read, { creator, busy });
+    const linkedOwners = new Set(groups.flatMap((g) => g.owners));
+    const linked = read.filter((h) => linkedOwners.has(h.owner));
+    const snipers = read.filter((h) => h.sniper);
+    const sum = (list) => list.reduce((s, h) => s + h.pct, 0);
+    return {
+      ok: true,
+      at: Date.now(),
+      launch: launchS || null,
+      read: read.filter((h) => h.read).length,
+      traced: read.filter((h) => h.traced).length,
+      devPct: devRow ? devRow.amount / supply * 100 : null,
+      holders: read.map((h) => ({ ...h, linked: linkedOwners.has(h.owner) })),
+      groups,
+      linked: { wallets: linked.length, pct: sum(linked) },
+      snipers: { wallets: snipers.length, pct: sum(snipers) }
+    };
+  }
+
   // extension/src/lib/reroute.js
   async function pickReroute(tokens, getReport, { limit = 8, batch = 4, rules = RULES } = {}) {
     const seen2 = /* @__PURE__ */ new Set();
@@ -1478,6 +1672,22 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     async function devRecord2({ mint }) {
       if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(String(mint || ""))) throw new Error("Not a coin address");
       return cached(`dev:${mint}`, 6e5, () => devRecord(mint, famRpc));
+    }
+    async function links({ mint, creator = null, launchS = null, pairs = [] }) {
+      if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(String(mint || ""))) throw new Error("Not a coin address");
+      const s = await host.settings();
+      await host.ready;
+      const rpc = rpcFor(await host.rpcUrl(s));
+      return cached(`wl:${mint}`, 6e5, () => walletLinks(rpc, mint, { creator, launchS, exclude: pairs }));
+    }
+    async function askCoin({ coin, question, evidence }) {
+      const h = await holderStored();
+      if (!h) throw new Error("This is for $RADAR and $LARPCHECK holders. Check your wallet first.");
+      const res = await fetch(`${API_BASE}/ask`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ token: h.token, coin, question, evidence }), signal: AbortSignal.timeout(3e4) });
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 401) await host.store.set(HOLDER_KEY, null);
+      if (!res.ok) throw new Error(data.error || `Ask ${res.status}`);
+      return data;
     }
     const lcGet = async (path, ttl) => cached(`lc:${path}`, ttl, async () => {
       const res = await fetch(`${API_BASE}${path}`, { signal: AbortSignal.timeout(12e3) });
@@ -1765,7 +1975,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       });
     }
     const launchState = () => cached("launch:state", 6e5, async () => (await fetch(`${API_BASE}/launch/settings`, { signal: AbortSignal.timeout(6e3) })).json());
-    const handlers2 = { typedTicker, forgetCoins, breaking, track, starList, starToggle, videoInfo, tweet, read, coins: coins2, fresh, postCoins: postCoins2, mentioned, story, larpcheck, family, devRecord: devRecord2, refresh, safety, bundle, image, openWindow, reroute, holderStatus, holderSave, holderWho, holderActive, recentList, recentAdd, recentClear, launchState, lcHolders, lcBoard, lcSettings, lcStart, lcAsk, lcPoll, settings: () => host.settings() };
+    const handlers2 = { typedTicker, forgetCoins, breaking, track, starList, starToggle, videoInfo, tweet, read, coins: coins2, fresh, postCoins: postCoins2, mentioned, story, larpcheck, family, devRecord: devRecord2, links, askCoin, refresh, safety, bundle, image, openWindow, reroute, holderStatus, holderSave, holderWho, holderActive, recentList, recentAdd, recentClear, launchState, lcHolders, lcBoard, lcSettings, lcStart, lcAsk, lcPoll, settings: () => host.settings() };
     handlers2.resetBundles = () => memo.forEach((_, k) => k.startsWith("bd:") && memo.delete(k));
     return handlers2;
   }

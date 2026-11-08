@@ -9,7 +9,8 @@ import { signalFeed } from './signals.js';
 import { savePair, takePair } from './holderpair.js';
 import { holderGoogle } from './google.js';
 import { launchState, launchMeta, launchMetaFile, launchRecord, launchList, launchTaken } from './launch.js';
-import { engine, interpret, memeScore, judge, storyCheck, transcribe, watchVideo, sameImage, sameStory, samePicture, LOGO_HOST } from './narrative.js';
+import { engine, interpret, memeScore, judge, storyCheck, transcribe, watchVideo, sameImage, sameStory, samePicture, askCoin, LOGO_HOST } from './narrative.js';
+import { askRoute } from './ask.js';
 import { holderOn, holderConfig, holderVerify, holderWho } from './holder.js';
 import { syncEverHeld } from './everheld.js';
 import { recordPost, readStatus } from './ledger.js';
@@ -423,6 +424,12 @@ const app = {
             : pathname === '/lc/check' && request.method === 'POST' ? await lcStart(await jsonOf(request), env)
               : pathname === '/lc/ask' && request.method === 'POST' ? await lcAsk(await jsonOf(request), env)
                 : { status: 404, data: { error: 'Not found' } };
+      return json(out.status, out.data);
+    }
+    // Ask Radar (server/ask.js): a holder's question about a coin card, answered from the card's own evidence.
+    if (pathname === '/ask' && request.method === 'POST') {
+      if (limited(`ask:${ipOf(request)}`, 30)) return json(429, { error: 'Too many questions. Try again in a few minutes.' });
+      const out = await askRoute(await jsonOf(request), env, { ai: () => engine({ apiKey: env.ANTHROPIC_API_KEY, binding: env.AI, env }), answer: askCoin });
       return json(out.status, out.data);
     }
     // Holder-only data (server/holder.js). 1.7.17 reads /holder/config and its panel promises Frontrun's data, so that

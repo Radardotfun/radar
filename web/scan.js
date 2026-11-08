@@ -1,4 +1,4 @@
-// Radar 1.7.145 on the web: built from the extension source at https://tryradar.fun. Not financial advice.
+// Radar 1.7.146 on the web: built from the extension source at https://tryradar.fun. Not financial advice.
 (() => {
   // extension/src/lib/keywords.js
   var STOP = new Set(`a about above after again against all almost also am an and any are aren as at be because been before
@@ -1353,6 +1353,200 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     };
   }
 
+  // extension/src/lib/links.js
+  var TOP = 12;
+  var SNIPE_S = 10;
+  var PAGE = 1e3;
+  var BUSY = 1e3;
+  var BURN = /* @__PURE__ */ new Set(["1nc1nerator11111111111111111111111111111111"]);
+  var keyOf = (k) => typeof k === "string" ? k : k?.pubkey || null;
+  function funderOf(tx, owner) {
+    const msg = tx?.transaction?.message;
+    const ins = [...msg?.instructions || [], ...(tx?.meta?.innerInstructions || []).flatMap((x) => x?.instructions || [])];
+    for (const i of ins) {
+      if (i?.program !== "system" || !i.parsed) continue;
+      const { type, info = {} } = i.parsed;
+      if ((type === "transfer" || type === "transferWithSeed") && info.destination === owner && info.source && info.source !== owner) return info.source;
+      if ((type === "createAccount" || type === "createAccountWithSeed") && info.newAccount === owner && info.source && info.source !== owner) return info.source;
+    }
+    const payer = keyOf(msg?.accountKeys?.[0]);
+    return payer && payer !== owner ? payer : null;
+  }
+  function isWallet(address) {
+    try {
+      return !BURN.has(address) && onCurve(unbase58(address));
+    } catch {
+      return false;
+    }
+  }
+  function tokensFrom(tx, mint, owner) {
+    const pre = new Map((tx?.meta?.preTokenBalances || []).filter((b) => b.mint === mint).map((b) => [b.accountIndex, b]));
+    const post = (tx?.meta?.postTokenBalances || []).filter((b) => b.mint === mint);
+    const amt = (b) => Number(b?.uiTokenAmount?.amount || 0);
+    const indexes = /* @__PURE__ */ new Set([...pre.keys(), ...post.map((b) => b.accountIndex)]);
+    const senders = [];
+    for (const i of indexes) {
+      const before = pre.get(i);
+      const after = post.find((b) => b.accountIndex === i);
+      const who = after?.owner || before?.owner;
+      if (!who || who === owner) continue;
+      if (amt(after) < amt(before)) senders.push(who);
+    }
+    if (!senders.length) return null;
+    if (senders.some((w) => !isWallet(w))) return "buy";
+    return senders.length === 1 ? senders[0] : null;
+  }
+  function linkHolders(holders, { creator = null, busy = /* @__PURE__ */ new Set() } = {}) {
+    const owners = new Set(holders.map((h) => h.owner));
+    const parent = new Map(holders.map((h) => [h.owner, h.owner]));
+    const find = (x) => {
+      while (parent.get(x) !== x) {
+        parent.set(x, parent.get(parent.get(x)));
+        x = parent.get(x);
+      }
+      return x;
+    };
+    const kinds = /* @__PURE__ */ new Map();
+    const join = (a, b, kind) => {
+      const ra = find(a);
+      const rb = find(b);
+      const ks = /* @__PURE__ */ new Set([...kinds.get(ra) || [], ...kinds.get(rb) || [], kind]);
+      if (ra !== rb) parent.set(ra, rb);
+      kinds.set(rb, ks);
+    };
+    const dev = /* @__PURE__ */ new Map();
+    const shared2 = (field, kind) => {
+      const first = /* @__PURE__ */ new Map();
+      for (const h of holders) {
+        const v = h[field];
+        if (!v || v === "buy") continue;
+        if (creator && v === creator) {
+          dev.set(h.owner, kind === "same funder" ? "funded by the dev" : "coins from the dev");
+          continue;
+        }
+        if (owners.has(v)) {
+          join(h.owner, v, kind === "same funder" ? "funded each other" : "tokens sent");
+          continue;
+        }
+        if (busy.has(v)) continue;
+        if (first.has(v)) join(h.owner, first.get(v), kind);
+        else first.set(v, h.owner);
+      }
+    };
+    shared2("funder", "same funder");
+    shared2("sentBy", "tokens sent");
+    const byTx = /* @__PURE__ */ new Map();
+    for (const h of holders) {
+      if (!h.firstTx) continue;
+      if (byTx.has(h.firstTx)) join(h.owner, byTx.get(h.firstTx), "one transaction");
+      else byTx.set(h.firstTx, h.owner);
+    }
+    const groups = /* @__PURE__ */ new Map();
+    for (const h of holders) {
+      const r = find(h.owner);
+      if (!groups.has(r)) groups.set(r, []);
+      groups.get(r).push(h);
+    }
+    const out = [];
+    for (const [root, members] of groups) {
+      if (members.length < 2) continue;
+      const tally = /* @__PURE__ */ new Map();
+      for (const m of members) if (m.funder && !owners.has(m.funder)) tally.set(m.funder, (tally.get(m.funder) || 0) + 1);
+      const by = [...tally].sort((a, b) => b[1] - a[1]).find(([, n2]) => n2 >= 2)?.[0] || null;
+      out.push({ kinds: [...kinds.get(root) || []].sort(), owners: members.map((m) => m.owner), pct: members.reduce((s, m) => s + m.pct, 0), by });
+    }
+    const devRows = holders.filter((h) => dev.has(h.owner));
+    if (devRows.length) out.push({ kinds: [...new Set(devRows.map((h) => dev.get(h.owner)))].sort(), owners: devRows.map((h) => h.owner), pct: devRows.reduce((s, h) => s + h.pct, 0), by: creator, dev: true });
+    return out.sort((a, b) => b.pct - a.pct);
+  }
+  function oldestOk(sigs) {
+    if (!Array.isArray(sigs) || sigs.length >= PAGE) return null;
+    for (let i = sigs.length - 1; i >= 0; i--) if (!sigs[i].err) return sigs[i];
+    return null;
+  }
+  var getTx = (rpc, sig) => rpc("getTransaction", [sig, { encoding: "jsonParsed", maxSupportedTransactionVersion: 1, commitment: "confirmed" }]).catch(() => null);
+  var history2 = (rpc, address) => rpc("getSignaturesForAddress", [address, { limit: PAGE, commitment: "confirmed" }]).catch(() => null);
+  async function walletLinks(rpc, mint, { creator = null, launchS = null, exclude = [], top = TOP } = {}) {
+    const skip = /* @__PURE__ */ new Set([...exclude, ...BURN]);
+    const [largest, mintInfo] = await Promise.all([
+      rpc("getTokenLargestAccounts", [mint, { commitment: "confirmed" }]),
+      rpc("getAccountInfo", [mint, { encoding: "jsonParsed", commitment: "confirmed" }])
+    ]);
+    const supply = Number(mintInfo?.value?.data?.parsed?.info?.supply || 0);
+    if (!supply) throw new Error("Not a token mint");
+    const accounts = (largest?.value || []).filter((a) => a?.address && !skip.has(a.address));
+    const empty = { ok: true, at: Date.now(), read: 0, traced: 0, devPct: null, holders: [], groups: [], linked: { wallets: 0, pct: 0 }, snipers: { wallets: 0, pct: 0 } };
+    if (!accounts.length) return empty;
+    const infos = await rpc("getMultipleAccounts", [accounts.map((a) => a.address), { encoding: "jsonParsed", commitment: "confirmed" }]);
+    const byOwner = /* @__PURE__ */ new Map();
+    accounts.forEach((a, i) => {
+      const owner = infos?.value?.[i]?.data?.parsed?.info?.owner;
+      if (!owner || skip.has(owner) || !isWallet(owner)) return;
+      const amount = Number(a.amount || 0);
+      const row = byOwner.get(owner) || { owner, amount: 0, account: a.address, biggest: 0 };
+      row.amount += amount;
+      if (amount > row.biggest) {
+        row.biggest = amount;
+        row.account = a.address;
+      }
+      byOwner.set(owner, row);
+    });
+    const devRow = creator ? byOwner.get(creator) : null;
+    const rows = [...byOwner.values()].filter((r) => r.owner !== creator).sort((a, b) => b.amount - a.amount).slice(0, top);
+    if (!rows.length) return { ...empty, devPct: devRow ? devRow.amount / supply * 100 : null };
+    const read2 = await Promise.all(rows.map(async (r) => {
+      const pct3 = r.amount / supply * 100;
+      const [own, coin] = await Promise.all([history2(rpc, r.owner), history2(rpc, r.account)]);
+      const firstOwn = oldestOk(own);
+      const firstCoin = oldestOk(coin);
+      const [ownTx, coinTx] = await Promise.all([firstOwn ? getTx(rpc, firstOwn.signature) : null, firstCoin ? getTx(rpc, firstCoin.signature) : null]);
+      const from2 = coinTx ? tokensFrom(coinTx, mint, r.owner) : null;
+      const firstBuy = firstCoin?.blockTime ?? null;
+      return {
+        owner: r.owner,
+        pct: pct3,
+        read: !!coinTx,
+        traced: !!ownTx,
+        funder: ownTx ? funderOf(ownTx, r.owner) : null,
+        sentBy: from2 && from2 !== "buy" ? from2 : null,
+        bought: from2 === "buy",
+        firstTx: coinTx ? firstCoin.signature : null,
+        firstBuy,
+        sniper: !!(launchS && firstBuy != null && firstBuy >= launchS - 1 && firstBuy - launchS <= SNIPE_S)
+      };
+    }));
+    const owners = new Set(read2.map((h) => h.owner));
+    const counts = /* @__PURE__ */ new Map();
+    for (const h of read2) for (const v of [h.funder, h.sentBy]) if (v && v !== creator && !owners.has(v)) counts.set(v, (counts.get(v) || 0) + 1);
+    const shared2 = [...counts].filter(([, n2]) => n2 >= 2).map(([v]) => v);
+    const busy = /* @__PURE__ */ new Set();
+    await Promise.all(shared2.map(async (v) => {
+      const sigs = await history2(rpc, v);
+      if (!Array.isArray(sigs)) {
+        busy.add(v);
+        return;
+      }
+      if (sigs.length >= BUSY && (sigs[0].blockTime || 0) - (sigs[sigs.length - 1].blockTime || 0) < 86400) busy.add(v);
+    }));
+    const groups = linkHolders(read2, { creator, busy });
+    const linkedOwners = new Set(groups.flatMap((g) => g.owners));
+    const linked = read2.filter((h) => linkedOwners.has(h.owner));
+    const snipers = read2.filter((h) => h.sniper);
+    const sum = (list) => list.reduce((s, h) => s + h.pct, 0);
+    return {
+      ok: true,
+      at: Date.now(),
+      launch: launchS || null,
+      read: read2.filter((h) => h.read).length,
+      traced: read2.filter((h) => h.traced).length,
+      devPct: devRow ? devRow.amount / supply * 100 : null,
+      holders: read2.map((h) => ({ ...h, linked: linkedOwners.has(h.owner) })),
+      groups,
+      linked: { wallets: linked.length, pct: sum(linked) },
+      snipers: { wallets: snipers.length, pct: sum(snipers) }
+    };
+  }
+
   // extension/src/lib/reroute.js
   async function pickReroute(tokens, getReport, { limit = 8, batch = 4, rules = RULES } = {}) {
     const seen = /* @__PURE__ */ new Set();
@@ -1511,6 +1705,22 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     async function devRecord2({ mint }) {
       if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(String(mint || ""))) throw new Error("Not a coin address");
       return cached(`dev:${mint}`, 6e5, () => devRecord(mint, famRpc));
+    }
+    async function links2({ mint, creator = null, launchS = null, pairs = [] }) {
+      if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(String(mint || ""))) throw new Error("Not a coin address");
+      const s = await host.settings();
+      await host.ready;
+      const rpc = rpcFor(await host.rpcUrl(s));
+      return cached(`wl:${mint}`, 6e5, () => walletLinks(rpc, mint, { creator, launchS, exclude: pairs }));
+    }
+    async function askCoin({ coin, question, evidence }) {
+      const h = await holderStored();
+      if (!h) throw new Error("This is for $RADAR and $LARPCHECK holders. Check your wallet first.");
+      const res = await fetch(`${API_BASE}/ask`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ token: h.token, coin, question, evidence }), signal: AbortSignal.timeout(3e4) });
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 401) await host.store.set(HOLDER_KEY, null);
+      if (!res.ok) throw new Error(data.error || `Ask ${res.status}`);
+      return data;
     }
     const lcGet = async (path, ttl) => cached(`lc:${path}`, ttl, async () => {
       const res = await fetch(`${API_BASE}${path}`, { signal: AbortSignal.timeout(12e3) });
@@ -1798,7 +2008,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       });
     }
     const launchState = () => cached("launch:state", 6e5, async () => (await fetch(`${API_BASE}/launch/settings`, { signal: AbortSignal.timeout(6e3) })).json());
-    const handlers2 = { typedTicker, forgetCoins, breaking, track, starList, starToggle, videoInfo, tweet: tweet2, read: read2, coins: coins2, fresh, postCoins: postCoins2, mentioned, story, larpcheck, family, devRecord: devRecord2, refresh, safety, bundle, image, openWindow: openWindow2, reroute: reroute2, holderStatus, holderSave, holderWho, holderActive, recentList, recentAdd, recentClear, launchState, lcHolders, lcBoard, lcSettings, lcStart, lcAsk, lcPoll, settings: () => host.settings() };
+    const handlers2 = { typedTicker, forgetCoins, breaking, track, starList, starToggle, videoInfo, tweet: tweet2, read: read2, coins: coins2, fresh, postCoins: postCoins2, mentioned, story, larpcheck, family, devRecord: devRecord2, links: links2, askCoin, refresh, safety, bundle, image, openWindow: openWindow2, reroute: reroute2, holderStatus, holderSave, holderWho, holderActive, recentList, recentAdd, recentClear, launchState, lcHolders, lcBoard, lcSettings, lcStart, lcAsk, lcPoll, settings: () => host.settings() };
     handlers2.resetBundles = () => memo.forEach((_, k) => k.startsWith("bd:") && memo.delete(k));
     return handlers2;
   }
@@ -1829,9 +2039,18 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     const x = soldPct2 / 100 * supplyTokens;
     return (1 - (poolTokens / (poolTokens + x)) ** 2) * 100;
   }
-  function coinCheck(token, rug, bundle) {
+  function linksSub(l) {
+    if (!l?.ok) return "";
+    if (!l.linked.wallets) return `none of the top ${l.holders.length} \xB7 ${l.read} read`;
+    const kinds = [...new Set(l.groups.flatMap((g) => g.kinds))];
+    return `${l.linked.wallets} wallet${l.linked.wallets === 1 ? "" : "s"} \xB7 ${kinds.join(", ")}`;
+  }
+  var linksKnown = (l) => !!(l?.ok && l.holders?.length && (l.linked.wallets > 0 || l.read * 2 >= l.holders.length));
+  function coinCheck(token, rug, bundle, links2 = null) {
     if (!rug && !bundle?.ok) return null;
     const b = bundle?.ok ? bundle : null;
+    const l = links2?.ok && links2.holders?.length ? links2 : null;
+    const known = linksKnown(l);
     const facts = [];
     let score = 100;
     let worst = "ok";
@@ -1846,11 +2065,21 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     };
     const launchHeld = b ? b.bundleHeldPct + b.devHeldPct : null;
     const linked = rug?.insiderPct ?? null;
-    const insiders = Math.max(launchHeld ?? 0, linked ?? 0);
+    const traced = known ? l.linked.pct : null;
+    const insiders = Math.max(launchHeld ?? 0, linked ?? 0, traced ?? 0);
     const lvIns = level(insiders, T.insiders);
     note(lvIns, 10, 30);
-    if (launchHeld != null || linked != null) {
-      facts.push({ k: "Insiders hold", v: insiders, lvl: lvIns, sub: !insiders ? "" : linked != null && linked >= (launchHeld ?? 0) ? `${rug.insiderWallets} linked wallets` : "launch wallets" });
+    if (launchHeld != null || linked != null || traced != null) {
+      const sub = !insiders ? "" : traced != null && traced >= insiders ? `${l.linked.wallets} linked top wallets` : linked != null && linked >= (launchHeld ?? 0) ? `${rug.insiderWallets} linked wallets` : "launch wallets";
+      facts.push({ k: "Insiders hold", v: insiders, lvl: lvIns, sub });
+    }
+    if (known) facts.push({ k: "Linked top wallets hold", v: l.linked.pct, lvl: level(l.linked.pct, T.insiders), sub: linksSub(l) });
+    else if (l) facts.push({ k: "Linked top wallets", text: `${l.holders.length - l.read} of the top ${l.holders.length} couldn't be read`, lvl: null });
+    if (l?.launch) {
+      const lvSnipe = level(l.snipers.pct, T.launchHeld);
+      const rank = { ok: 0, watch: 1, risk: 2 };
+      if (rank[lvSnipe] > rank[level(b?.bundleHeldPct ?? 0, T.launchHeld)]) note(lvSnipe, 5, 12);
+      facts.push({ k: "Snipers hold", v: l.snipers.pct, lvl: lvSnipe, sub: l.snipers.wallets ? `${l.snipers.wallets} bought in the first 10 s` : "none in the top wallets" });
     }
     const dev = b || rug?.creatorPct != null ? Math.max(b?.devHeldPct ?? 0, rug?.creatorPct ?? 0) : null;
     const lvDev = level(dev, T.dev);
@@ -1910,7 +2139,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
   var pctText = (v) => `${Math.abs(v) < 10 ? Math.abs(v).toFixed(1) : Math.round(Math.abs(v))}%`;
   function callLine(word, facts) {
     const ranked = facts.filter((f) => f.lvl === "risk").concat(facts.filter((f) => f.lvl === "watch"));
-    const pick = (ranked.length ? ranked : facts).slice(0, 2).map((f) => f.text ? `${f.k.toLowerCase()}: ${f.text.toLowerCase()}` : f.unit === "price" ? `insiders selling would drop price ~${pctText(f.v)}` : `${f.k.toLowerCase()} ${pctText(f.v)}`);
+    const pick = (ranked.length ? ranked : facts.filter((f) => f.lvl)).slice(0, 2).map((f) => f.text ? `${f.k.toLowerCase()}: ${f.text.toLowerCase()}` : f.unit === "price" ? `insiders selling would drop price ~${pctText(f.v)}` : `${f.k.toLowerCase()} ${pctText(f.v)}`);
     if (!pick.length) return "";
     const s = pick.join(" \xB7 ");
     return s.charAt(0).toUpperCase() + s.slice(1);
@@ -2542,8 +2771,86 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
         a.dev = d;
       }).catch(() => {
       }).finally(() => this.renderDev(t.address));
-      await Promise.allSettled([rug, bundle, fam, dev]);
+      a.ready = Promise.allSettled([rug, bundle, fam, dev]);
+      await a.ready;
       a.loading = false;
+      if (this.openCards.has(t.address)) this.loadLinks(t);
+    }
+    // Wallet links and snipers (lib/links.js): read the first time a Solana card is opened, after the launch scan, which
+    // gives the launch time and the dev. Kept 10 minutes by the handler.
+    async loadLinks(t) {
+      if (t?.chain !== "solana") return;
+      const a = this.audits.get(t.address) || {};
+      if (a.links || a.linksLoading) return;
+      a.linksLoading = true;
+      this.audits.set(t.address, a);
+      this.renderAudit(t.address);
+      await a.ready?.catch(() => {
+      });
+      const creator = a.dev?.creator || a.bundle?.creator || a.rug?.creator || null;
+      const launchS = a.bundle?.ok && a.bundle.launchTime ? a.bundle.launchTime : null;
+      try {
+        a.links = await send("links", { mint: t.address, creator, launchS, pairs: t.pairAddresses || [] });
+        a.linksErr = null;
+      } catch (e) {
+        a.linksErr = e.message || "Couldn't trace the wallets";
+      }
+      a.linksLoading = false;
+      this.renderAudit(t.address);
+    }
+    // Ask Radar about a coin card (holders): the answer comes only from what this card shows.
+    coinEvidence(t) {
+      const a = this.audits.get(t.address) || {};
+      const c = coinCheck(t, a.rug, a.bundle, a.links);
+      const p = (v) => v == null ? "unknown" : `${Number(v) < 10 ? Number(v).toFixed(1) : Math.round(Number(v))}%`;
+      const lines = [
+        `$${String(t.symbol || "").trim()} (${t.name || "no name"}) on Solana, contract ${t.address}`,
+        `Market cap ${usd(t.marketCap)}${t.onCurve ? ", still on its bonding curve" : `, liquidity ${usd(t.liquidity)}`}, 24h volume ${usd(t.volume?.h24)}, ${tradesLine(t)}, age ${age(t.createdAt)}`,
+        `Price change: 5m ${pct2(t.priceChange?.m5)}, 1h ${pct2(t.priceChange?.h1)}, 24h ${pct2(t.priceChange?.h24)}`
+      ];
+      if (c) lines.push(`Radar's coin check: ${c.word} ${c.score}/100`, ...c.facts.map((f) => `${f.k}: ${f.text || (f.unit === "price" ? `price would fall about ${Math.abs(Math.round(f.v))}%` : p(f.v))}${f.sub ? ` (${f.sub})` : ""}`));
+      const r = a.rug;
+      if (r) {
+        lines.push(`Holders: ${r.holders ?? "unknown"}; mint authority ${r.mintAuthority ? "on" : "off"}, freeze authority ${r.freezeAuthority ? "on" : "off"}${r.lpLockedPct != null && !t.onCurve && r.source !== "larpcheck" ? `; ${Math.round(r.lpLockedPct)}% of liquidity locked or burned` : ""}`);
+        const block = reportBlock(r);
+        lines.push(block ? `Radar's holder check fails: ${block}` : "Radar's holder check passes");
+      }
+      const b = a.bundle;
+      if (b?.ok) lines.push(`Launch block: ${b.bundleWallets} wallets bought ${p(b.bundledPct)} and still hold ${p(b.bundleHeldPct)}; the dev bought ${p(b.devBoughtPct)} and holds ${p(b.devHeldPct)}`);
+      const d = devSummary(a.dev);
+      if (d) lines.push(`Dev wallet: ${d.head}, ${d.sub}`);
+      const l = a.links?.ok ? a.links : null;
+      if (l) {
+        lines.push(...l.groups.slice(0, 4).map((g) => `${g.owners.length} top wallet${g.owners.length === 1 ? "" : "s"} linked (${g.kinds.join(", ")}) hold ${p(g.pct)}`));
+        lines.push(`Radar read where ${l.read} of the top ${l.holders.length} wallets got their coins${l.launch ? `; ${l.snipers.wallets} got them in the first 10 seconds` : ""}`);
+      }
+      const s = this.state.story;
+      if (s?.word && !s.larpcheck && s.coin && String(s.coin).toUpperCase() === String(t.symbol || "").trim().toUpperCase()) {
+        lines.push(`Radar's larp check of the post: ${s.word} ${s.score}. ${s.call || ""}`, ...(s.findings || []).slice(0, 5).map((f) => `${f.kind}: ${f.text}`));
+      }
+      return lines.map((x) => String(x).slice(0, 300)).slice(0, 30);
+    }
+    askHtml(t) {
+      if (!this.holder?.on) return "";
+      if (!this.holder.holder) return '<div class="holder-line ask-line"><span>Holders can ask Radar about this coin</span><button type="button" data-holder-connect>Check my wallet</button></div>';
+      const ans = this.coinAnswers?.get(t.address);
+      return `<form class="lc-ask" data-ask-coin="${esc2(t.address)}"><input type="text" maxlength="300" placeholder="Ask Radar about this coin" autocomplete="off" spellcheck="false" /><button type="submit"${ans?.busy ? " disabled" : ""}>${ans?.busy ? "\u2026" : "Ask"}</button></form>
+      ${ans?.error ? `<div class="story-note">${esc2(ans.error)}</div>` : ""}
+      ${ans?.answer ? `<div class="lc-answer"><small>${esc2(ans.question)}</small><p>${esc2(ans.answer)}</p><span>Answer by <b>Radar</b>, from this card. Not financial advice.</span></div>` : ""}`;
+    }
+    async runAskCoin(addr, question) {
+      const t = this.tokens.get(addr);
+      if (!t || this.coinAnswers?.get(addr)?.busy) return;
+      (this.coinAnswers ||= /* @__PURE__ */ new Map()).set(addr, { busy: true, question });
+      this.renderAudit(addr);
+      try {
+        const { answer } = await send("askCoin", { coin: { symbol: String(t.symbol || "").trim(), address: t.address }, question, evidence: this.coinEvidence(t) });
+        this.coinAnswers.set(addr, { answer, question });
+        this.askAnswered = addr;
+      } catch (e) {
+        this.coinAnswers.set(addr, { error: e.message, question });
+      }
+      this.renderAudit(addr);
     }
     // Coins launched priced in this one (its children), or the coin it was itself launched under. Shown only when there is one.
     renderFamily(addr) {
@@ -2690,6 +2997,13 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       this.renderBody();
       this.renderFoot();
       this.bodyEl.addEventListener("click", (e) => this.onBodyClick(e));
+      this.bodyEl.addEventListener("submit", (e) => {
+        const form = e.target.closest("[data-ask-coin]");
+        if (!form) return;
+        e.preventDefault();
+        const q = form.querySelector("input").value.trim();
+        if (q) this.runAskCoin(form.dataset.askCoin, q);
+      });
       this.bodyEl.addEventListener("input", (e) => {
         const a = e.target.closest("[data-fr-amt]");
         if (!a) return;
@@ -3521,7 +3835,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       if (r) {
         const src = reportSource(r);
         const withSrc = (...bits) => bits.filter(Boolean).map(esc2).join(" \xB7 ");
-        if (!coinCheck(t, a.rug, a.bundle)) {
+        if (!coinCheck(t, a.rug, a.bundle, a.links)) {
           html += row(level2(r.top10Pct, 30, 50), "Top 10 holders", pctPlain(r.top10Pct), withSrc(r.topHolder ? `largest ${pctPlain(r.topHolder.pct)}` : "", src.holders));
           if (r.insiderWallets) html += row(level2(r.insiderPct ?? 0, 8, 20), "Insider wallets", `${r.insiderWallets}`, withSrc(r.insiderPct != null ? `hold ${pctPlain(r.insiderPct)}` : "linked by transfers", src.holders));
         }
@@ -3823,6 +4137,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
         ["Breaking now pings", "A ping the moment a new story starts breaking.", this.pings ? sw("break-pings", !!this.pings.on) : tag("")],
         ["Radar Guard", "When a watchlist coin's post is gone, Larpcheck's verdict turns bad, or liquidity falls 30%.", tag("ON")],
         ["Who posted this", "On any post: the account's past coins, its deleted posts and its past usernames.", tag("ON")],
+        ["Ask Radar", "Ask about any coin card. Radar answers from what it found, never with a buy or sell call.", tag("ON")],
         ["Live feeds", "Breaking now and the track record as they happen. Everyone else sees them 10 and 30 minutes late.", tag("ON")]
       ].map(([name, line, end]) => `<div class="al-w perk"><div><b>${name}</b><span>${line}</span></div>${end}</div>`).join("");
       return `<section class="settings perks">
@@ -3917,7 +4232,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       for (const p of s.picks || []) {
         const t = this.tokens.get(p.token.address) || p.token;
         const a = this.audits.get(t.address) || {};
-        const c = coinCheck(t, a.rug, a.bundle);
+        const c = coinCheck(t, a.rug, a.bundle, a.links);
         lines.push(`${ROLE_NAME[p.role] || "Pick"}: $${String(t.symbol).trim()} ${usd(t.marketCap)}${c ? ` \xB7 coin check ${checkWord(c, a.rug).word}${checkWord(c, a.rug).flagged ? "" : ` ${c.score}`}` : ""}`);
       }
       const st = s.story;
@@ -3942,7 +4257,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     }
     // Coin check: who could move the price, as one word + score and the facts behind it.
     renderCoinCheck(card, t, a) {
-      const c = coinCheck(t, a.rug, a.bundle);
+      const c = coinCheck(t, a.rug, a.bundle, a.links);
       const chip = card.querySelector(`[data-cc="${t.address}"]`);
       const box = card.querySelector('[data-k="check"]');
       if (!c) {
@@ -3957,10 +4272,39 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       if (!box) return;
       const lvl = { ok: "good", watch: "warn", risk: "bad" };
       const val = (f) => f.text ? esc2(f.text) : f.unit === "price" ? pctPlain(f.v, 0) : pctPlain(f.v);
+      const typing = box.querySelector("[data-ask-coin] input");
+      const draft = typing?.value || "";
+      const focused = !!typing && typing === (this.root.activeElement || document.activeElement);
+      const wl = a.links?.ok ? a.links : null;
+      const open = this.expanded.has(`tw:${t.address}`);
+      const tags = (h) => `${h.linked ? ' <span class="dev">linked</span>' : ""}${h.sniper ? ' <span class="dev">sniper</span>' : ""}${h.read ? "" : ' <span class="old">not read</span>'}`;
+      const devWallet = wl?.groups.find((g) => g.dev)?.by;
+      const who = (a2) => a2 === devWallet ? "the dev" : short(a2);
+      const how = (h) => {
+        if (!h.linked) return "";
+        if (h.sentBy) return `coins from ${who(h.sentBy)}`;
+        const to = wl.holders.find((o) => o.sentBy === h.owner);
+        if (to) return `sent coins to ${short(to.owner)}`;
+        if (h.funder && (h.funder === devWallet || wl.groups.some((g) => g.by === h.funder))) return `paid by ${who(h.funder)}`;
+        const paid = wl.holders.find((o) => o.funder === h.owner);
+        if (paid) return `paid ${short(paid.owner)}`;
+        if (h.firstTx && wl.holders.some((o) => o !== h && o.firstTx === h.firstTx)) return "bought in one transaction";
+        return "";
+      };
+      const wallets = wl?.holders.length ? `<button class="toggle" data-twallets="${esc2(t.address)}">${open ? "Hide" : "Show"} top wallets \u2193</button>
+      <div class="wallets ${open ? "show" : ""}">${wl.holders.map((h) => `<div class="wallet"><a href="https://gmgn.ai/sol/address/${esc2(h.owner)}" target="_blank" rel="noopener noreferrer">${short(h.owner)}${tags(h)}</a><span>${pctPlain(h.pct, 2)}${how(h) ? `<small>${esc2(how(h))}</small>` : ""}</span></div>`).join("")}
+        <p class="fine">Linked: paid by the same wallet, sent their coins by another wallet, bought in one transaction, or tied to the dev. Exchanges and wallets doing 1,000+ transactions a day never link anyone. Sniper: first coins within 10 seconds of launch.</p></div>` : "";
+      const tracing = a.linksLoading ? '<div class="src-line"><span class="spinner"></span> Tracing the top wallets\u2026</div>' : "";
       box.innerHTML = `<h4>Coin check <span class="verdict ${tone}">${word}${score}</span></h4>
       ${c.call && !c.facts.some((f) => f.text && c.call.toLowerCase().includes(String(f.text).toLowerCase())) ? `<p class="cc-call">${esc2(c.call)}</p>` : ""}
       <div class="rows">${c.facts.map((f) => `<div class="row ${lvl[f.lvl] || ""}"><span class="dot"></span><span class="k">${esc2(f.k)}</span><span class="v">${val(f)}${f.sub ? `<small>${esc2(f.sub)}</small>` : ""}</span></div>`).join("")}</div>
-      <div class="src-line">${esc2([a.rug && reportSource(a.rug).line, a.bundle?.ok && ["Launch block", since(a.bundleAt)].filter(Boolean).join(" \xB7 ")].filter(Boolean).join(" \xB7 "))}</div>`;
+      ${tracing}${wallets}
+      <div class="src-line">${esc2([a.rug && reportSource(a.rug).line, a.bundle?.ok && ["Launch block", since(a.bundleAt)].filter(Boolean).join(" \xB7 "), wl && ["Wallet trace", since(wl.at)].filter(Boolean).join(" \xB7 ")].filter(Boolean).join(" \xB7 "))}</div>
+      ${this.askHtml(t)}`;
+      const input = box.querySelector("[data-ask-coin] input");
+      if (this.askAnswered === t.address) this.askAnswered = null;
+      else if (input && draft) input.value = draft;
+      if (input && focused) input.focus();
     }
     patchCard(prev, t) {
       const card = this.bodyEl.querySelector(`.card[data-addr="${t.address}"]`);
@@ -4297,6 +4641,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
           btn.setAttribute("aria-expanded", String(open));
           btn.title = open ? "Show less" : "Show everything";
         }
+        if (open) this.loadLinks(this.tokens.get(addr));
         return;
       }
       const bub = e.target.closest("[data-bubble]");
@@ -4329,6 +4674,13 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
         const key2 = `w:${w.dataset.wallets}`;
         this.expanded.has(key2) ? this.expanded.delete(key2) : this.expanded.add(key2);
         this.renderAudit(w.dataset.wallets);
+        return;
+      }
+      const tw = e.target.closest("[data-twallets]");
+      if (tw) {
+        const key2 = `tw:${tw.dataset.twallets}`;
+        this.expanded.has(key2) ? this.expanded.delete(key2) : this.expanded.add(key2);
+        this.renderAudit(tw.dataset.twallets);
       }
     }
     // Instant reroute through the one shared check (lib/reroute.js, run by the backend).
@@ -4744,6 +5096,11 @@ svg { display: block; }
 .wallet { display: flex; justify-content: space-between; font: 500 11px var(--mono); color: var(--muted); padding: 3px 0; }
 .wallet a:hover { color: var(--text); text-decoration: underline; }
 .wallet .dev { color: var(--warn); }
+.wallet .old { color: var(--faint); }
+.wallet small { margin-left: 6px; color: var(--faint); }
+.coin-check .fine { margin: 6px 0 2px; font: 500 10.5px/1.4 var(--font); color: var(--faint); white-space: normal; }
+.coin-check .src-line .spinner { vertical-align: -2px; }
+.holder-line.ask-line { margin-top: 10px; }
 .toggle { font: 600 11px var(--mono); color: var(--muted); margin-top: 4px; }
 .toggle:hover { color: var(--text); }
 

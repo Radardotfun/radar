@@ -27,13 +27,26 @@ export function dropIfSold(soldPct, poolTokens, supplyTokens) {
   return (1 - (poolTokens / (poolTokens + x)) ** 2) * 100;
 }
 
+// The words under "Linked top wallets hold": how many, and what ties them.
+export function linksSub(l) {
+  if (!l?.ok) return '';
+  if (!l.linked.wallets) return `none of the top ${l.holders.length} · ${l.read} read`;
+  const kinds = [...new Set(l.groups.flatMap((g) => g.kinds))];
+  return `${l.linked.wallets} wallet${l.linked.wallets === 1 ? '' : 's'} · ${kinds.join(', ')}`;
+}
+// A "none linked" only counts once Radar read at least half the top wallets; a link found always counts.
+export const linksKnown = (l) => !!(l?.ok && l.holders?.length && (l.linked.wallets > 0 || l.read * 2 >= l.holders.length));
+
 /**
- * token: Radar token (liquidity, onCurve, createdAt), rug: rugReport(), bundle: analyzeLaunch() result.
+ * token: Radar token (liquidity, onCurve, createdAt), rug: rugReport(), bundle: analyzeLaunch() result,
+ * links: walletLinks() result (lib/links.js), when the card has been opened.
  * Returns null until there is enough data to say anything.
  */
-export function coinCheck(token, rug, bundle) {
+export function coinCheck(token, rug, bundle, links = null) {
   if (!rug && !bundle?.ok) return null;
   const b = bundle?.ok ? bundle : null;
+  const l = links?.ok && links.holders?.length ? links : null;
+  const known = linksKnown(l);
   const facts = [];
   let score = 100;
   let worst = 'ok';
@@ -42,15 +55,28 @@ export function coinCheck(token, rug, bundle) {
     else if (lvl === 'watch') { score -= penaltyWatch; if (worst === 'ok') worst = 'watch'; }
   };
 
-  // Insiders: wallets tied to the launch (launch block buyers + dev still holding) or linked by
-  // transfers (RugCheck's networks). Take the larger view rather than adding overlapping sets.
+  // Insiders: wallets tied to the launch (launch block buyers + dev still holding), linked by transfers (RugCheck's
+  // networks) or by who funded them (Radar's own trace). Take the larger view rather than adding overlapping sets.
   const launchHeld = b ? b.bundleHeldPct + b.devHeldPct : null;
   const linked = rug?.insiderPct ?? null;
-  const insiders = Math.max(launchHeld ?? 0, linked ?? 0);
+  const traced = known ? l.linked.pct : null;
+  const insiders = Math.max(launchHeld ?? 0, linked ?? 0, traced ?? 0);
   const lvIns = level(insiders, T.insiders);
   note(lvIns, 10, 30);
-  if (launchHeld != null || linked != null) {
-    facts.push({ k: 'Insiders hold', v: insiders, lvl: lvIns, sub: !insiders ? '' : linked != null && linked >= (launchHeld ?? 0) ? `${rug.insiderWallets} linked wallets` : 'launch wallets' });
+  if (launchHeld != null || linked != null || traced != null) {
+    const sub = !insiders ? ''
+      : traced != null && traced >= insiders ? `${l.linked.wallets} linked top wallets`
+        : linked != null && linked >= (launchHeld ?? 0) ? `${rug.insiderWallets} linked wallets` : 'launch wallets';
+    facts.push({ k: 'Insiders hold', v: insiders, lvl: lvIns, sub });
+  }
+  if (known) facts.push({ k: 'Linked top wallets hold', v: l.linked.pct, lvl: level(l.linked.pct, T.insiders), sub: linksSub(l) });
+  else if (l) facts.push({ k: 'Linked top wallets', text: `${l.holders.length - l.read} of the top ${l.holders.length} couldn't be read`, lvl: null });
+  if (l?.launch) {
+    // Snipers are mostly launch buyers already counted above: they only cost the score where they say more.
+    const lvSnipe = level(l.snipers.pct, T.launchHeld);
+    const rank = { ok: 0, watch: 1, risk: 2 };
+    if (rank[lvSnipe] > rank[level(b?.bundleHeldPct ?? 0, T.launchHeld)]) note(lvSnipe, 5, 12);
+    facts.push({ k: 'Snipers hold', v: l.snipers.pct, lvl: lvSnipe, sub: l.snipers.wallets ? `${l.snipers.wallets} bought in the first 10 s` : 'none in the top wallets' });
   }
 
   // The larger of the two reads: the launch scan alone can miss what RugCheck saw the creator holding.
@@ -98,7 +124,7 @@ const pctText = (v) => `${Math.abs(v) < 10 ? Math.abs(v).toFixed(1) : Math.round
 // One line for traders: the two facts that matter most, in plain words.
 function callLine(word, facts) {
   const ranked = facts.filter((f) => f.lvl === 'risk').concat(facts.filter((f) => f.lvl === 'watch'));
-  const pick = (ranked.length ? ranked : facts).slice(0, 2).map((f) => (f.text ? `${f.k.toLowerCase()}: ${f.text.toLowerCase()}` : f.unit === 'price' ? `insiders selling would drop price ~${pctText(f.v)}` : `${f.k.toLowerCase()} ${pctText(f.v)}`));
+  const pick = (ranked.length ? ranked : facts.filter((f) => f.lvl)).slice(0, 2).map((f) => (f.text ? `${f.k.toLowerCase()}: ${f.text.toLowerCase()}` : f.unit === 'price' ? `insiders selling would drop price ~${pctText(f.v)}` : `${f.k.toLowerCase()} ${pctText(f.v)}`));
   if (!pick.length) return '';
   const s = pick.join(' · ');
   return s.charAt(0).toUpperCase() + s.slice(1);

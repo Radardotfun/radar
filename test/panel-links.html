@@ -1,0 +1,73 @@
+<!doctype html>
+<!-- Wallet links, snipers and Ask Radar in the real panel, on a made-up coin, with the backend faked. Serve the repo root and
+     open /test/panel-links.html, then open the card. ?out: not a holder (no Ask form, the wallet check instead).
+     ?blind: most top wallets couldn't be read. ?light: light theme. -->
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Panel: Wallet links</title>
+<style>html,body{margin:0;height:100%;background:#000}#root{width:400px;max-width:100%;height:100vh;margin:0 auto}</style></head>
+<body><div id="root"></div>
+<script type="module">
+import { makeHandlers, DEFAULTS } from '../extension/src/lib/handlers.js';
+import { useBackend, mountInline } from '../extension/src/ui/radar.js';
+
+const q = new URLSearchParams(location.search);
+const mem = new Map();
+const h = makeHandlers({
+  settings: async () => DEFAULTS,
+  store: { get: async (k) => mem.get(k) ?? null, set: async (k, v) => { mem.set(k, v); } },
+  openWindow: (url) => window.open(url),
+  rpcUrl: async () => null,
+  ready: Promise.resolve(),
+});
+const NOW = Date.now();
+const CAT = { chain: 'solana', address: 'LinkCat111111111111111111111111111111pump', name: 'Link Cat', symbol: 'LINKCAT', marketCap: 182000, liquidity: 0, onCurve: true, mcapBacked: true,
+  priceUsd: 0.000182, volume: { m5: 900, h1: 21000, h6: 64000, h24: 88000 }, txns: { h1: { buys: 410, sells: 322 }, h24: { buys: 1900, sells: 1500 } }, priceChange: { m5: 2, h1: 18, h6: 140, h24: 140 },
+  createdAt: NOW - 3 * 3600_000, links: [], pairAddresses: [] };
+const A = ['BTmeAebSh8MaYsTDiBiix79htKckjYQP5fvucFoFpump', 't9bnCGiZVUYsRKvx4d5dPcoDCSyuBM9C33ZNGNULARP', '2j5SaS7xy776qCBpyPQbZjyQSAtKiFgrwjfErthnW2ZM', 'GKTeJV8dKUpp2wKYfjSbMrF1BhAiC3nSn3bHMa3zjSet', 'HGE5K8mQtD7zYGfTCimkPRQ7HLKuefS26Z58XNxzuWuf', '9GpJDZrgXvGXxGjffCZhhYfyLyZ94QTezQoipn74pump', 'Fwu1Fwpxi3zuk6BwYdJoD6HpjUkjjHgKJ5EPhbTopump'];
+const DEV = '8MHHRJvpbXwCYKKdHRitEMpTVejFgtJGeUD8r8DPpump';
+const launch = Math.floor((NOW - 3 * 3600_000) / 1000);
+const rows = [
+  { owner: A[0], pct: 6.1, read: true, traced: true, funder: 'F1F1F1F1F1F1F1F1F1F1F1F1F1F1F1F1F1F1F1F1F1', bought: true, firstTx: 'b', firstBuy: launch + 1, sniper: true, linked: true },
+  { owner: A[1], pct: 4.0, read: true, traced: false, funder: null, bought: true, firstTx: 'b', firstBuy: launch + 1, sniper: true, linked: true },
+  { owner: A[2], pct: 3.2, read: true, traced: true, funder: 'H8sMJSCQxfKiFTCfDR3DUMLPwcRbM61LGFJ8N4dK3WjS', bought: true, firstTx: 'c', firstBuy: launch + 600, sniper: false, linked: true },
+  { owner: A[3], pct: 2.0, read: true, traced: false, funder: null, sentBy: A[2], bought: false, firstTx: 'd', firstBuy: launch + 3000, sniper: false, linked: true },
+  { owner: A[4], pct: 1.6, read: true, traced: false, funder: null, sentBy: DEV, bought: false, firstTx: 'e', firstBuy: launch + 4000, sniper: false, linked: true },
+  { owner: A[5], pct: 1.4, read: true, traced: true, funder: 'H8sMJSCQxfKiFTCfDR3DUMLPwcRbM61LGFJ8N4dK3WjS', bought: true, firstTx: 'f', firstBuy: launch + 8, sniper: true, linked: false },
+  { owner: A[6], pct: 1.1, read: q.has('blind') ? false : true, traced: false, funder: null, bought: true, firstTx: 'g', firstBuy: launch + 900, sniper: false, linked: false },
+];
+const blind = q.has('blind');
+const LINKS = blind
+  ? { ok: true, at: NOW, launch, read: 2, traced: 1, devPct: 0, holders: rows.map((r, i) => ({ ...r, read: i < 2, linked: false, sniper: false })), groups: [], linked: { wallets: 0, pct: 0 }, snipers: { wallets: 0, pct: 0 } }
+  : { ok: true, at: NOW, launch, read: 7, traced: 3, devPct: 0, holders: rows,
+    groups: [{ kinds: ['one transaction'], owners: [A[0], A[1]], pct: 10.1, by: null }, { kinds: ['tokens sent'], owners: [A[2], A[3]], pct: 5.2, by: null }, { kinds: ['coins from the dev'], owners: [A[4]], pct: 1.6, by: DEV, dev: true }],
+    linked: { wallets: 5, pct: 16.9 }, snipers: { wallets: 3, pct: 11.5 } };
+const fail = () => Promise.reject(new Error('not in this check'));
+window.asked = [];
+Object.assign(h, {
+  read: async ({ post }) => ({ narrative: 'A cat that links every wallet it sees', post }),
+  coins: async () => ({ mode: 'ai', ts: Date.now(), mentioned: [], picks: [{ role: 'top', token: CAT }], others: [] }),
+  refresh: async () => ({ tokens: {} }), story: fail, larpcheck: async () => null,
+  safety: q.has('nosafety') ? fail : async () => ({ score: 4, rugged: false, risks: [], mintAuthority: null, freezeAuthority: null, holders: 812, top10Pct: 24, topHolder: { pct: 6.1 }, top: [], insiderWallets: 0, insiderPct: 0, creator: DEV, creatorPct: 0, lpLockedPct: 100, poolTokens: 2e8, supplyTokens: 1e9, launchpad: 'pump.fun', readAt: NOW }),
+  bundle: q.has('nobundle') ? fail : async () => ({ ok: true, launchSlot: 400000000, launchTime: launch, creator: DEV, note: null, bundleWallets: 2, bundledPct: 10.4, bundleHeldPct: 10.1, devBoughtPct: 1.2, devHeldPct: 0, wallets: [{ owner: A[0], isDev: false, boughtPct: 6.2, heldPct: 6.1 }, { owner: A[1], isDev: false, boughtPct: 4.2, heldPct: 4.0 }] }),
+  family: async () => ({ children: 0, parent: null }),
+  devRecord: async () => ({ creator: DEV, launches: 14, bonded: 2, thisBonded: false }),
+  ...(q.has('nolinks') ? {} : { links: async (m) => { window.linksAsked = m; await new Promise((r) => setTimeout(r, 400)); return LINKS; } }),
+  ...(q.has('noholder') ? {} : { holderStatus: async () => ({ on: true, holder: !q.has('out'), pitch: 'Hold $10 of $RADAR or $LARPCHECK' }) }),
+  askCoin: async (m) => { window.asked.push(m); await new Promise((r) => setTimeout(r, 300)); return { answer: 'Five of the top wallets are linked and hold 16.9%: two bought in one transaction, one was handed coins by another top wallet, and one got its coins from the dev.' }; },
+  // A holder's panel also reads its alerts and Larpcheck's plan; without these it keeps asking (as panel-perks.html does).
+  lcSettings: async () => ({ plan: false }),
+  // "Off" hides Who posted this. Not "locked": the real background clears the holder then, a stub that didn't would loop.
+  holderWho: async () => ({ off: true }),
+});
+const alerts = () => ({ watches: [], feed: [], unread: 0, notifications: true, freshBadges: true, bigAccounts: true, diamond: true, myWallets: [], holder: !q.has('out'), bagGuard: true, proved: null, bags: null });
+h['alerts:list'] = async () => alerts();
+h['alerts:read'] = async () => alerts();
+h['alerts:breakingPings'] = async () => ({ on: false });
+useBackend(h, { css: '../extension/src/ui/radar.css' });
+
+const theme = q.has('light') ? 'light' : 'dark';
+document.body.style.background = theme === 'light' ? '#fff' : '#000';
+const radar = await mountInline(document.getElementById('root'), theme);
+window.radar = radar;
+radar.scan({ post: { text: `new coin just dropped ${CAT.address}`, author: 'test', url: `https://x.com/test/status/${(BigInt(NOW - 45 * 60_000 - 1288834974657) << 22n).toString()}` }, source: { kind: '@test', label: 'Wallet links check' } });
+</script></body></html>
