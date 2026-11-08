@@ -1,4 +1,4 @@
-// Radar 1.7.146 on the web: built from the extension source at https://tryradar.fun. Not financial advice.
+// Radar 1.7.147 on the web: built from the extension source at https://tryradar.fun. Not financial advice.
 (() => {
   // extension/src/lib/keywords.js
   var STOP = new Set(`a about above after again against all almost also am an and any are aren as at be because been before
@@ -4277,7 +4277,10 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       const focused = !!typing && typing === (this.root.activeElement || document.activeElement);
       const wl = a.links?.ok ? a.links : null;
       const open = this.expanded.has(`tw:${t.address}`);
-      const tags = (h) => `${h.linked ? ' <span class="dev">linked</span>' : ""}${h.sniper ? ' <span class="dev">sniper</span>' : ""}${h.read ? "" : ' <span class="old">not read</span>'}`;
+      const groupsOf = (wl?.groups || []).filter((g) => g.owners?.length);
+      const letter = (i) => String.fromCharCode(65 + i % 26);
+      const groupOf = (owner) => groupsOf.findIndex((g) => g.owners.includes(owner));
+      const tags = (h) => `${h.linked ? ` <span class="dev">linked${groupOf(h.owner) >= 0 ? ` ${letter(groupOf(h.owner))}` : ""}</span>` : ""}${h.sniper ? ' <span class="dev">sniper</span>' : ""}${h.read ? "" : ' <span class="old">not read</span>'}`;
       const devWallet = wl?.groups.find((g) => g.dev)?.by;
       const who = (a2) => a2 === devWallet ? "the dev" : short(a2);
       const how = (h) => {
@@ -4293,7 +4296,8 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       };
       const wallets = wl?.holders.length ? `<button class="toggle" data-twallets="${esc2(t.address)}">${open ? "Hide" : "Show"} top wallets \u2193</button>
       <div class="wallets ${open ? "show" : ""}">${wl.holders.map((h) => `<div class="wallet"><a href="https://gmgn.ai/sol/address/${esc2(h.owner)}" target="_blank" rel="noopener noreferrer">${short(h.owner)}${tags(h)}</a><span>${pctPlain(h.pct, 2)}${how(h) ? `<small>${esc2(how(h))}</small>` : ""}</span></div>`).join("")}
-        <p class="fine">Linked: paid by the same wallet, sent their coins by another wallet, bought in one transaction, or tied to the dev. Exchanges and wallets doing 1,000+ transactions a day never link anyone. Sniper: first coins within 10 seconds of launch.</p></div>` : "";
+        ${groupsOf.map((g, i) => `<div class="wallet group"><span>Group ${letter(i)} \xB7 ${g.owners.length} wallet${g.owners.length === 1 ? "" : "s"}${g.dev ? " \xB7 tied to the dev" : ""}</span><span>${pctPlain(g.pct, 2)}</span></div>`).join("")}
+        <p class="fine">Linked: same letter, same group. Paid by the same wallet, sent their coins by another wallet, bought in one transaction, or tied to the dev. Exchanges and wallets doing 1,000+ transactions a day never link anyone. Sniper: first coins within 10 seconds of launch.</p></div>` : "";
       const tracing = a.linksLoading ? '<div class="src-line"><span class="spinner"></span> Tracing the top wallets\u2026</div>' : "";
       box.innerHTML = `<h4>Coin check <span class="verdict ${tone}">${word}${score}</span></h4>
       ${c.call && !c.facts.some((f) => f.text && c.call.toLowerCase().includes(String(f.text).toLowerCase())) ? `<p class="cc-call">${esc2(c.call)}</p>` : ""}
@@ -5098,6 +5102,8 @@ svg { display: block; }
 .wallet .dev { color: var(--warn); }
 .wallet .old { color: var(--faint); }
 .wallet small { margin-left: 6px; color: var(--faint); }
+.wallet.group { color: var(--text); }
+.wallet:not(.group) + .wallet.group { margin-top: 4px; padding-top: 6px; border-top: 1px solid var(--line); }
 .coin-check .fine { margin: 6px 0 2px; font: 500 10.5px/1.4 var(--font); color: var(--faint); white-space: normal; }
 .coin-check .src-line .spinner { vertical-align: -2px; }
 .holder-line.ask-line { margin-top: 10px; }

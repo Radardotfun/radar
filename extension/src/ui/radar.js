@@ -2108,7 +2108,11 @@ class Radar {
     const focused = !!typing && typing === (this.root.activeElement || document.activeElement);
     const wl = a.links?.ok ? a.links : null;
     const open = this.expanded.has(`tw:${t.address}`);
-    const tags = (h) => `${h.linked ? ' <span class="dev">linked</span>' : ''}${h.sniper ? ' <span class="dev">sniper</span>' : ''}${h.read ? '' : ' <span class="old">not read</span>'}`;
+    // Wallets tied to each other share a letter, so a group reads at a glance.
+    const groupsOf = (wl?.groups || []).filter((g) => g.owners?.length);
+    const letter = (i) => String.fromCharCode(65 + (i % 26));
+    const groupOf = (owner) => groupsOf.findIndex((g) => g.owners.includes(owner));
+    const tags = (h) => `${h.linked ? ` <span class="dev">linked${groupOf(h.owner) >= 0 ? ` ${letter(groupOf(h.owner))}` : ''}</span>` : ''}${h.sniper ? ' <span class="dev">sniper</span>' : ''}${h.read ? '' : ' <span class="old">not read</span>'}`;
     const devWallet = wl?.groups.find((g) => g.dev)?.by;
     const who = (a) => (a === devWallet ? 'the dev' : short(a));
     // Why a wallet is linked, in the order the chain shows it. A funder only counts when it's one a group was built on: an
@@ -2126,7 +2130,8 @@ class Radar {
     };
     const wallets = wl?.holders.length ? `<button class="toggle" data-twallets="${esc(t.address)}">${open ? 'Hide' : 'Show'} top wallets ↓</button>
       <div class="wallets ${open ? 'show' : ''}">${wl.holders.map((h) => `<div class="wallet"><a href="https://gmgn.ai/sol/address/${esc(h.owner)}" target="_blank" rel="noopener noreferrer">${short(h.owner)}${tags(h)}</a><span>${pctPlain(h.pct, 2)}${how(h) ? `<small>${esc(how(h))}</small>` : ''}</span></div>`).join('')}
-        <p class="fine">Linked: paid by the same wallet, sent their coins by another wallet, bought in one transaction, or tied to the dev. Exchanges and wallets doing 1,000+ transactions a day never link anyone. Sniper: first coins within 10 seconds of launch.</p></div>` : '';
+        ${groupsOf.map((g, i) => `<div class="wallet group"><span>Group ${letter(i)} · ${g.owners.length} wallet${g.owners.length === 1 ? '' : 's'}${g.dev ? ' · tied to the dev' : ''}</span><span>${pctPlain(g.pct, 2)}</span></div>`).join('')}
+        <p class="fine">Linked: same letter, same group. Paid by the same wallet, sent their coins by another wallet, bought in one transaction, or tied to the dev. Exchanges and wallets doing 1,000+ transactions a day never link anyone. Sniper: first coins within 10 seconds of launch.</p></div>` : '';
     const tracing = a.linksLoading ? '<div class="src-line"><span class="spinner"></span> Tracing the top wallets…</div>' : '';
     box.innerHTML = `<h4>Coin check <span class="verdict ${tone}">${word}${score}</span></h4>
       ${c.call && !c.facts.some((f) => f.text && c.call.toLowerCase().includes(String(f.text).toLowerCase())) ? `<p class="cc-call">${esc(c.call)}</p>` : ''}

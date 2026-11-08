@@ -325,6 +325,8 @@ svg { display: block; }
 .wallet .dev { color: var(--warn); }
 .wallet .old { color: var(--faint); }
 .wallet small { margin-left: 6px; color: var(--faint); }
+.wallet.group { color: var(--text); }
+.wallet:not(.group) + .wallet.group { margin-top: 4px; padding-top: 6px; border-top: 1px solid var(--line); }
 .coin-check .fine { margin: 6px 0 2px; font: 500 10.5px/1.4 var(--font); color: var(--faint); white-space: normal; }
 .coin-check .src-line .spinner { vertical-align: -2px; }
 .holder-line.ask-line { margin-top: 10px; }
