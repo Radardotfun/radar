@@ -263,12 +263,25 @@
     group.parentElement.insertBefore(line, group);
   }
 
+  // The bot writes the coin into its reply ("Larp check on $FORK", "📌 In the post: FORK · $845.8K", then the address),
+  // so its row never waits on a lookup that failed: the reply's own words stand in.
+  const SOL_ADDR = /\b[1-9A-HJ-NP-Za-km-z]{32,44}\b/;
+  function botCoin(text) {
+    const address = (text.match(SOL_ADDR) || [])[0];
+    if (!address) return null;
+    const symbol = (text.match(/In the post: ([^\s·]+)/) || text.match(/\bon \$([A-Za-z0-9_]{1,20})/) || [])[1] || `${address.slice(0, 4)}…`;
+    return { address, chain: 'solana', symbol, name: symbol, dexId: null };
+  }
+
   async function caLine(article) {
-    const coins = await send({ type: 'mentioned', text: postText(article) }).catch(() => []);
+    const text = postText(article);
+    const bot = handleOf(article).toLowerCase() === BOT;
+    let coins = await send({ type: 'mentioned', text }).catch(() => []);
+    if (bot && !coins.length && botCoin(text)) coins = [botCoin(text)];
     const groups = article.querySelectorAll('[role="group"]');
     const group = groups[groups.length - 1];
     if (!coins.length || !group || article.querySelector('.nr-ca')) return;
-    if (handleOf(article).toLowerCase() === BOT) return botLine(article, coins, group);
+    if (bot) return botLine(article, coins, group);
     const line = document.createElement('div');
     line.className = 'nr-ca';
     line.style.color = getComputedStyle(article.querySelector('[data-testid="tweetText"]') || article).color;

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Radar
 // @namespace    https://tryradar.fun
-// @version      1.7.150
+// @version      1.7.151
 // @description  See the coins behind any post on X and instantly reroute to the biggest match that passes available on-chain safety checks.
 // @homepageURL  https://tryradar.fun
 // @supportURL   https://tryradar.fun
@@ -31,7 +31,7 @@
 // @downloadURL  https://tryradar.fun/radar.user.js
 // ==/UserScript==
 
-// Radar 1.7.150: built from the extension source at https://tryradar.fun. Not financial advice.
+// Radar 1.7.151: built from the extension source at https://tryradar.fun. Not financial advice.
 (() => {
   var __defProp = Object.defineProperty;
   var __export = (target, all) => {
@@ -6131,12 +6131,22 @@ svg { display: block; }
       }, true);
       group.parentElement.insertBefore(line, group);
     }
+    const SOL_ADDR = /\b[1-9A-HJ-NP-Za-km-z]{32,44}\b/;
+    function botCoin(text) {
+      const address = (text.match(SOL_ADDR) || [])[0];
+      if (!address) return null;
+      const symbol = (text.match(/In the post: ([^\s·]+)/) || text.match(/\bon \$([A-Za-z0-9_]{1,20})/) || [])[1] || `${address.slice(0, 4)}\u2026`;
+      return { address, chain: "solana", symbol, name: symbol, dexId: null };
+    }
     async function caLine(article) {
-      const coins = await send2({ type: "mentioned", text: postText2(article) }).catch(() => []);
+      const text = postText2(article);
+      const bot = handleOf(article).toLowerCase() === BOT;
+      let coins = await send2({ type: "mentioned", text }).catch(() => []);
+      if (bot && !coins.length && botCoin(text)) coins = [botCoin(text)];
       const groups = article.querySelectorAll('[role="group"]');
       const group = groups[groups.length - 1];
       if (!coins.length || !group || article.querySelector(".nr-ca")) return;
-      if (handleOf(article).toLowerCase() === BOT) return botLine(article, coins, group);
+      if (bot) return botLine(article, coins, group);
       const line = document.createElement("div");
       line.className = "nr-ca";
       line.style.color = getComputedStyle(article.querySelector('[data-testid="tweetText"]') || article).color;
