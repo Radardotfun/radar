@@ -110,6 +110,16 @@ const dacity = tok('Dacity', 'Dacity Coin', 'nxPqDacity1111111111111111111111111
 const dacityTiny = tok('Dacity', 'DacityCoin', '2GjQDacity2222222222222222222222222222pump', 4_500);
 assert.equal(pickNamed('DACITY', [dacityTiny, dacity], 'Top GTA 6 memes: $DACITY $VICE $JASON $DACITYCOIN $GTA'), dacity, 'another cashtag is not the name written in the post');
 assert.equal(pickNamed('DACITY', [dacity, dacityTiny], '$DACITY, the DacityCoin of Vice City'), dacityTiny, 'the name as a word still wins');
+// @wikifork, 8 Nov: the post's link "https://forks.wiki" is not the words "forks wiki". A $2.5K copy by that name, launched
+// after the post with no links, had taken $FORK over the $869K coin.
+{
+  const forkOld = tok('FORK', 'A Fork in the Road', 'EiQFPuw5zgXQpLk5XSqvMtKTWjf5xiLRZdHftseDpump', 869_000, { createdAt: Date.parse('2024-12-07') });
+  const forkCopy = tok('fork', 'forks wiki', '7q6FE4Hxd3sUQPqFWWyTPin1M3WcPHMBsguAEiojpump', 2_488, { createdAt: Date.parse('2026-11-07T21:37:30Z'), mcapBacked: false, onCurve: true });
+  const post = 'forks launch a coin on any @github repo\n\n❯ season 0 is live: https://forks.wiki\n\napply → get $FORK';
+  assert.equal(pickNamed('FORK', [forkCopy, forkOld], post), forkOld, 'a name only inside a link names nothing');
+  assert.equal(pickNamed('FORK', [forkCopy, forkOld], 'season 0 is live on forks.wiki, get $FORK'), forkOld, 'a bare domain neither');
+  assert.equal(pickNamed('FORK', [forkOld, forkCopy], 'forks wiki is live: get $FORK'), forkCopy, 'the name written as words still wins');
+}
 const purr = tok('PURR', 'Hypurr', '8RNUw4N655VSrZKuhGdywhbSMDTrheguFPfxbpE2NZHQ', 3_800_000);
 const fakes = [tok('PURR', 'Hypurr', 'FakePurr1111111111111111111111111111111pump', 26_000), tok('Hypurr', 'Hypurr', 'FakePurr2222222222222222222222222222222pump', 197_000), tok('HYPE', 'Hype', '98sMhvDwXj1RQi5c5Mndm3vPe9cBqPrbLaufMXFNMh5g', 105_000), tok('HCAT', 'Hyperliquid Cat', 'HCat33333333333333333333333333333333333pump', 90_000, { createdAt: Date.parse('2026-09-01') }), tok('KITTY', 'Red Kitten Crew', 'Kitty4444444444444444444444444444444444pump', 900_000, { relevance: 70 })];
 const scan = { mentioned: [purr], picks: [], roleCandidates: fakes };

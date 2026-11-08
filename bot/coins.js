@@ -55,8 +55,11 @@ const closeEarlier = (a, b) => {
   return a.createdAt - b.createdAt;
 };
 export function pickNamed(tk, tokens, text, own = text) {
-  const words = plain(text);
-  const ownWords = plain(own);
+  // Only words the post writes, not its links: @wikifork's "https://forks.wiki" read as the words "forks wiki", and a
+  // $2.5K copy named "forks wiki", launched four hours after the post with no links of its own, took $FORK (8 Nov).
+  const noLinks = (s) => String(s || '').replace(/https?:\/\/\S+|\b[\w-]+(\.[\w-]+)*\.(com|io|xyz|fun|wiki|ai|app|org|net|gg|so|co|dev|me|tv|lol|meme)\b\S*/gi, ' ');
+  const words = plain(noLinks(text));
+  const ownWords = plain(noLinks(own));
   // A name that is only the ticker ("GTA$" for GTA$) earns nothing: every copy has it.
   const nameIn = (t, w) => { const n = plain(t.name).trim(); return n.length >= 3 && n !== lower(tk) && n !== plain(tk).trim() && w.includes(` ${n} `); };
   const named = (t) => nameIn(t, words);
