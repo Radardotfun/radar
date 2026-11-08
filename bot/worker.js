@@ -4,7 +4,8 @@
 // binding), and replies. Until BOT_LIVE is "1" it only logs the reply it would post.
 //
 // Costs (docs.x.com pricing, 29 Oct 2026): $0.005 per post read, $0.01 per reply to a tag ("summoned"), $0.20 for a
-// post with a link, so replies carry none. No reply caps (the user's call, 29 Oct 2026): spending is bounded by the
+// post with a link. Since 8 Nov 2026 a reply on a coin carries one trade link (bot/reply.js tradeLink, the user's call),
+// so it costs $0.20; a larp check on a post with no coin has none. No reply caps (the user's call, 29 Oct 2026): spending is bounded by the
 // limit set in X's developer console. A post tagged many times is still scanned once per 10 minutes.
 // Each tag is handled in its own run of this Worker (through the SELF binding), so a busy minute never hits the
 // per-run request limit; the batch is saved before any reply, so a tag can't be answered twice.
@@ -15,7 +16,7 @@
 import { makeHandlers, API_BASE, DEFAULTS } from '../extension/src/lib/handlers.js';
 import { searchPairs, allPairs, aggregate, fullTokens } from '../extension/src/lib/market.js';
 import { latestProfiles } from '../extension/src/lib/alerts.js';
-import { replyEntries, xLength, varied, larpReply, larpMode, larpcheckReply, postLarpReply } from './reply.js';
+import { replyEntries, xLength, varied, larpReply, larpMode, larpcheckReply, postLarpReply, hasTradeLine, withoutTradeLine } from './reply.js';
 import { botCoins, withMemory } from './coins.js';
 import { oauthHeader } from './oauth.js';
 import { wantsCoins, worthRetry, mergeState, climbFrom } from './trigger.js';
@@ -478,6 +479,9 @@ async function handle(env, { mention, target, live, scores: known = null, tries 
       // X won't take crypto addresses in an app's first 7 days: send the short form instead. And it refuses a reply
       // identical to an earlier one, so the time makes it different.
       if (/crypto address/i.test(e.message)) sent = short;
+      // X turned down the reply and it carries the trade link (8 Nov: a link costs $0.20 a reply): once more without it,
+      // so the tag still gets its larp check. A reply X may have posted is never sent twice.
+      else if (!/duplicate/i.test(e.message) && !mayHavePosted(e) && hasTradeLine(sent)) sent = withoutTradeLine(sent);
       else if (!/duplicate/i.test(e.message)) throw e;
       sent = varied(sent);
       posted = await post(sent);

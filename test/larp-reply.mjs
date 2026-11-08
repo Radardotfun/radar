@@ -1,7 +1,7 @@
 // The tag bot's larp check (bot/reply.js larpMode, larpReply; bot/coinscore.js): a post that names its coin gets the
 // story and the coin scored, a narrative post gets the coins. node test/larp-reply.mjs
 import assert from 'node:assert/strict';
-import { larpMode, larpReply, larpcheckReply, larpcheckOk, botReply, varied, xLength, LARP_WORDS, postLarpReply } from '../bot/reply.js';
+import { larpMode, larpReply, larpcheckReply, larpcheckOk, botReply, varied, xLength, LARP_WORDS, postLarpReply, tradeLink, hasTradeLine, withoutTradeLine } from '../bot/reply.js';
 import { coinScore, totalScore, COIN_WORDS, tokenFromJupiter } from '../bot/coinscore.js';
 import { wantsCoins, climbFrom, hasCa } from '../bot/trigger.js';
 import { nameHistory, coinHandle, historyLines, HISTORY_MS } from '../bot/history.js';
@@ -66,18 +66,45 @@ assert.equal(text, [
   '',
   '📌 In the post: DACITY · $48.2K',
   CA,
+  `📈 Trade on Jupiter (best price across its pools): https://jup.ag/tokens/${CA}`,
   '',
   "Story: do the post's claims hold up. Coin: holders, dev, liquidity. A high score is no promise against a rug. Not advice.",
   'Full scan + Insta Buy: link in bio',
 ].join('\n'));
 assert.equal((text.match(/\$[A-Za-z]/g) || []).length, 1, 'one cashtag: X refuses more');
-assert.ok(!/@\w|https?:\/\//.test(text), 'nothing from the AI can mention anyone or post a link');
+assert.ok(!/@\w/.test(text), 'nothing from the AI can mention anyone');
+assert.deepEqual(text.match(/https?:\/\/\S+/g), [`https://jup.ag/tokens/${CA}`], "the one link is Radar's trade link: nothing from the AI posts one");
 assert.ok(xLength(text) < 900, `length ${xLength(text)}`);
 assert.match(varied(text, new Date(now + 7000)), /^Larp check on \$DACITY \(15:20:07 UTC\):/);
 // Short form: the contract shortened on the coin's line.
 const short = larpReply({ named, how: 'post' }, check, now, { full: false, coin });
-assert.match(short, /📌 In the post: DACITY · \$48\.2K · Daci…pump\n\nStory:/);
-assert.ok(!short.includes(CA));
+assert.match(short, /📌 In the post: DACITY · \$48\.2K · Daci…pump\n📈 Trade on Jupiter \(best price across its pools\): https:\/\/jup\.ag\/tokens\/\S+\n\nStory:/);
+assert.ok(!short.replace(/https:\/\/\S+/g, '').includes(CA), 'the short form never writes the address out (only inside its trade link)');
+
+// ---- where the coin trades best: its deepest pool picks the place, and each link opens on that coin
+{
+  const s = (o) => tradeLink({ address: CA, chain: 'solana', ...o });
+  assert.deepEqual(s({ dexId: 'pumpfun' }), { url: `https://pump.fun/coin/${CA}`, venue: 'pump.fun', note: 'still on its curve' });
+  assert.deepEqual(s({ dexId: 'pumpswap' }), { url: `https://pump.fun/coin/${CA}`, venue: 'pump.fun', note: 'its deepest pool is on PumpSwap' });
+  for (const dexId of ['raydium', 'meteora', 'orca', 'launchlab', undefined]) assert.equal(s({ dexId }).url, `https://jup.ag/tokens/${CA}`, String(dexId));
+  const hood = '0x' + 'ab'.repeat(20);
+  assert.equal(tradeLink({ address: hood, chain: 'robinhood' }).url, `https://app.uniswap.org/swap?chain=robinhood&outputCurrency=${hood}`);
+  assert.equal(tradeLink({ address: hood, chain: 'bsc', url: `https://dexscreener.com/bsc/${hood}` }).url, `https://dexscreener.com/bsc/${hood}`);
+  assert.equal(tradeLink({ address: hood, chain: 'bsc', url: 'https://evil.example/x' }), null, 'only a DexScreener page, never a link from elsewhere');
+  assert.equal(tradeLink({ address: 'not a mint!', chain: 'solana' }), null);
+  assert.equal(tradeLink(null), null);
+  const pump = larpReply({ named: { ...named, dexId: 'pumpfun' }, how: 'post' }, check, now, { coin });
+  assert.ok(pump.includes(`\n${CA}\n📈 Trade on pump.fun (still on its curve): https://pump.fun/coin/${CA}\n\n`), pump);
+  assert.ok(xLength(pump) < 900, `length ${xLength(pump)}`);
+  // When X turns a reply with a link down, the bot sends it once more without the trade line, and nothing else changes.
+  assert.equal(hasTradeLine(pump), true);
+  const bare = withoutTradeLine(pump);
+  assert.equal(hasTradeLine(bare), false);
+  assert.ok(bare.includes(`\n${CA}\n\nStory:`), bare);
+  assert.equal(bare, pump.replace(`\n📈 Trade on pump.fun (still on its curve): https://pump.fun/coin/${CA}`, ''));
+  assert.equal(withoutTradeLine(varied(pump, new Date(now + 3000))).includes('📈'), false, 'after the time is varied too');
+  assert.equal(hasTradeLine(postLarpReply({ word: 'LARP', score: 10, call: 'x', findings: [] }, now)), false, 'no coin, no trade link');
+}
 
 // ---- the story alone (a coin on another chain, or no audit)
 const alone = larpReply({ named: { ...named, chain: 'bsc' }, how: 'post' }, { word: 'REAL', score: 90, call: 'word '.repeat(60), findings: [] }, now);
@@ -135,14 +162,15 @@ for (const [said, shown] of [
     '',
     '📌 In the post: DACITY · $48.2K',
     CA,
+    `📈 Trade on Jupiter (best price across its pools): https://jup.ag/tokens/${CA}`,
     '',
     "Larpcheck's full report: https://larpcheck.app/c/CQ2HTrific",
     'Full scan + Insta Buy: link in bio',
   ].join('\n'));
   assert.equal((r.match(/\$[A-Za-z]/g) || []).length, 1, 'one cashtag');
-  assert.equal((r.match(/https?:\/\//g) || []).length, 1, 'only their report link');
+  assert.deepEqual(r.match(/https?:\/\/\S+/g), [`https://jup.ag/tokens/${CA}`, 'https://larpcheck.app/c/CQ2HTrific'], 'the trade link and their report link, nothing from their text');
   assert.match(varied(r, new Date(now + 4000)), /^Larpcheck on \$DACITY \(15:20:04 UTC\):/);
-  assert.match(larpcheckReply({ named, how: 'post' }, lc, now, { full: false }), /DACITY · \$48\.2K · Daci…pump\n\nLarpcheck's full report/);
+  assert.match(larpcheckReply({ named, how: 'post' }, lc, now, { full: false }), /DACITY · \$48\.2K · Daci…pump\n📈 Trade on Jupiter[^\n]+\n\nLarpcheck's full report/);
   // Older answers without stamps: their verdict and score.
   assert.match(larpcheckReply({ named, how: 'post' }, { checked: true, url: 'https://larpcheck.app/c/x1', verdict: 'REAL', score: 81 }, now), /\n🧪 story REAL 81\n/);
   // Anything else is not their verdict, and Radar's check answers instead.

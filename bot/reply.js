@@ -167,6 +167,32 @@ const plain = (s, n) => {
  * liquidity from Jupiter's audit). Then the holder numbers and the coin with its contract. null when there is no named
  * coin or no usable story read (the bot then sends the coins). full: false gives the short contract, as botReply does.
  */
+// Where the coin trades best, as one link on its reply (the user, 8 Nov 2026: "it gives the link of where it is best to
+// trade like the rick bot, only on x"; a reply with a link costs $0.20 on X, not $0.01). Its deepest pool picks the place
+// (market.js aggregate's primary, a live curve first): pump.fun for a coin on its pump.fun curve or in its PumpSwap pool,
+// Jupiter's token page (its swap routes through every pool) for any other Solana coin, Uniswap on Robinhood Chain,
+// DexScreener's pair page anywhere else. Each link was opened on a real coin before it was used.
+export function tradeLink(t) {
+  const a = String(t?.address || '');
+  if (!a) return null;
+  if (t.chain === 'solana' && /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(a)) {
+    if (t.dexId === 'pumpfun') return { url: `https://pump.fun/coin/${a}`, venue: 'pump.fun', note: 'still on its curve' };
+    if (t.dexId === 'pumpswap') return { url: `https://pump.fun/coin/${a}`, venue: 'pump.fun', note: 'its deepest pool is on PumpSwap' };
+    return { url: `https://jup.ag/tokens/${a}`, venue: 'Jupiter', note: 'best price across its pools' };
+  }
+  if (t.chain === 'robinhood' && /^0x[0-9a-fA-F]{40}$/.test(a)) return { url: `https://app.uniswap.org/swap?chain=robinhood&outputCurrency=${a}`, venue: 'Uniswap', note: '' };
+  if (/^https:\/\/dexscreener\.com\/[a-z]+\/[\w]+$/.test(t.url || '')) return { url: t.url, venue: 'its pools', note: 'on DexScreener' };
+  return null;
+}
+const tradeLines = (t) => {
+  const l = tradeLink(t);
+  return l ? [`📈 Trade on ${l.venue}${l.note ? ` (${l.note})` : ''}: ${l.url}`] : [];
+};
+const TRADE_LINE = /^📈 Trade on [^\n]*: https:\/\/\S+$/m;
+export const hasTradeLine = (text) => TRADE_LINE.test(String(text || ''));
+/** The same reply without its trade link, for when X turns a reply with a link down. */
+export const withoutTradeLine = (text) => String(text || '').replace(/\n📈 Trade on [^\n]*: https:\/\/\S+(?=\n|$)/, '');
+
 // Lines Radar adds to either reply: the account history (bot/history.js).
 const extras = (history) => {
   const h = (Array.isArray(history) ? history : []).filter(Boolean).map((x) => plain(x, 160));
@@ -222,6 +248,7 @@ export function larpReply(result, check, now = Date.now(), { full = true, coin =
     ...(coin?.line ? [`👥 ${coin.line}`, ''] : []),
     full ? pin : `${pin} · ${shortCa(t.address)}`,
     ...(full ? [contract(t.address)] : []),
+    ...tradeLines(t),
     '',
     coin ? 'Story: do the post\'s claims hold up. Coin: holders, dev, liquidity. A high score is no promise against a rug. Not advice.' : "Radar's read of the evidence, not advice.",
     'Full scan + Insta Buy: link in bio',
@@ -254,6 +281,7 @@ export function larpcheckReply(result, lc, now = Date.now(), { full = true, hist
     ...x.h,
     full ? pin : `${pin} · ${shortCa(t.address)}`,
     ...(full ? [contract(t.address)] : []),
+    ...tradeLines(t),
     '',
     `Larpcheck's full report: ${lc.url}`,
     'Full scan + Insta Buy: link in bio',
