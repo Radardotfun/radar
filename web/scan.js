@@ -1,4 +1,4 @@
-// Radar 1.7.149 on the web: built from the extension source at https://tryradar.fun. Not financial advice.
+// Radar 1.7.150 on the web: built from the extension source at https://tryradar.fun. Not financial advice.
 (() => {
   // extension/src/lib/keywords.js
   var STOP = new Set(`a about above after again against all almost also am an and any are aren as at be because been before
@@ -1764,7 +1764,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     }
     async function mentioned({ text }) {
       const s = await host.settings();
-      return cached(`mn:${text}`, 6e4, async () => (await mentionedTokens(String(text || "").slice(0, 2e3), s.chains)).map((t) => ({ address: t.address, chain: t.chain, symbol: t.symbol, name: t.name, marketCap: t.marketCap, createdAt: t.createdAt })));
+      return cached(`mn:${text}`, 6e4, async () => (await mentionedTokens(String(text || "").slice(0, 2e3), s.chains)).map((t) => ({ address: t.address, chain: t.chain, symbol: t.symbol, name: t.name, marketCap: t.marketCap, createdAt: t.createdAt, dexId: t.dexId || null })));
     }
     async function refresh({ tokens, deep = [], roleCandidates = [], roleCut = 0 }) {
       const fresh2 = await fullTokens(tokens, new Set(deep));

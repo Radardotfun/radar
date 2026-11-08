@@ -36,6 +36,12 @@
     .nr-ca-btn:hover{background:rgba(127,127,127,.12);border-color:rgba(127,127,127,.6)}
     .nr-ca-btn svg{width:16px;height:16px;opacity:.75}
     .nr-ca-btn span{font-weight:500;opacity:.65;font-variant-numeric:tabular-nums}
+    .nr-bot{align-items:center;gap:6px}
+    .nr-bot .nr-ca-btn{height:28px;font-size:13px}
+    .nr-bot .nr-open{border-color:rgba(167,139,250,.7);background:rgba(167,139,250,.14)}
+    .nr-bot .nr-open:hover{border-color:#a78bfa;background:rgba(167,139,250,.24)}
+    .nr-bot .nr-open svg{color:#a78bfa;opacity:1}
+    .nr-bot .nr-app{padding:0 11px;text-decoration:none;font-weight:600}
     .nr-action-wrap{display:flex;align-items:center;justify-content:flex-start;position:relative;flex:none;gap:2px}
     .nr-reroute-btn{display:inline-flex;align-items:center;justify-content:center;height:30px;margin:0 2px;padding:0 8px;border:1px solid rgba(127,127,127,.35);border-radius:999px;background:transparent;color:rgb(113,118,123);cursor:pointer;white-space:nowrap;font:600 11px/1 TwitterChirp,-apple-system,"Segoe UI",system-ui,sans-serif;transition:background .2s,color .2s,border-color .2s}
     .nr-reroute-btn:hover{background:rgba(127,127,127,.15);border-color:rgba(127,127,127,.6);color:inherit}
@@ -229,11 +235,40 @@
     }
   }, { rootMargin: '300px 0px' });
 
+  // A reply from the Radar bot gets its own row: the coin in Radar, or on the apps people trade from. Bot replies carry
+  // no links (on X a link costs the bot 20 times as much per reply), so this row is what takes a click on the reply there.
+  const BOT = 'radardotfunn';
+  const appLinks = (t) => (t.chain !== 'solana' ? [] : [
+    ['DexScreener', `https://dexscreener.com/solana/${t.address}`],
+    ['GMGN', `https://gmgn.ai/sol/token/${t.address}`],
+    ...(/pump$/.test(t.address) || /pump/i.test(t.dexId || '') ? [['pump.fun', `https://pump.fun/coin/${t.address}`]] : []),
+    ['Fomo', `https://fomo.family/tokens/solana/${t.address}`],
+  ]);
+  function botLine(article, coins, group) {
+    // The reply's coin is the first address in it (the "In the post" one).
+    const t = coins[0];
+    const line = document.createElement('div');
+    line.className = 'nr-ca nr-bot';
+    line.style.color = getComputedStyle(article.querySelector('[data-testid="tweetText"]') || article).color;
+    line.innerHTML = `<button type="button" class="nr-ca-btn nr-open" title="Open the full check on $${esc(t.symbol)} in Radar">${ICON}Open in Radar</button>`
+      + appLinks(t).map(([name, url]) => `<a class="nr-ca-btn nr-app" href="${esc(url)}" target="_blank" rel="noopener noreferrer" title="Open $${esc(t.symbol)} on ${esc(name)}">${esc(name)}</a>`).join('');
+    line.addEventListener('click', (e) => {
+      // X opens the reply's thread on a click anywhere in it; a click here does only what it says.
+      e.stopPropagation();
+      if (e.target.closest('.nr-app')) return;
+      if (!e.target.closest('.nr-open')) return e.preventDefault();
+      e.preventDefault();
+      launch({ post: { text: t.address }, source: { kind: 'Radar bot', label: `$${t.symbol}` } });
+    }, true);
+    group.parentElement.insertBefore(line, group);
+  }
+
   async function caLine(article) {
     const coins = await send({ type: 'mentioned', text: postText(article) }).catch(() => []);
     const groups = article.querySelectorAll('[role="group"]');
     const group = groups[groups.length - 1];
     if (!coins.length || !group || article.querySelector('.nr-ca')) return;
+    if (handleOf(article).toLowerCase() === BOT) return botLine(article, coins, group);
     const line = document.createElement('div');
     line.className = 'nr-ca';
     line.style.color = getComputedStyle(article.querySelector('[data-testid="tweetText"]') || article).color;

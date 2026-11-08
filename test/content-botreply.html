@@ -1,0 +1,50 @@
+<!doctype html>
+<!-- The row the content script (extension/src/content/content.js) adds under a Radar bot reply on X, with the extension
+     faked. Serve the repo root and open /test/content-botreply.html (?light for X's light theme). window.__launched holds
+     what "Open in Radar" asked for. -->
+<html><head><meta charset="utf-8"><title>Content: bot reply row</title>
+<style>
+  html,body{margin:0;min-height:100vh;background:#000;color:#e7e9ea;font:15px/1.4 -apple-system,"Segoe UI",system-ui,sans-serif}
+  body.light{background:#fff;color:#0f1419}
+  main{max-width:600px;margin:0 auto;border-left:1px solid #2f3336;border-right:1px solid #2f3336}
+  body.light main{border-color:#eff3f4}
+  article{display:block;padding:12px 16px;border-bottom:1px solid #2f3336}
+  body.light article{border-color:#eff3f4}
+  [data-testid="User-Name"] a{color:inherit;text-decoration:none;font-weight:700}
+  [data-testid="User-Name"] span.h{color:#71767b;font-weight:400}
+  [data-testid="tweetText"]{white-space:pre-wrap;margin:4px 0 0}
+  [role="group"]{display:flex;justify-content:space-between;margin-top:12px;color:#71767b;max-width:420px}
+</style></head>
+<body>
+<main id="tl"></main>
+<script>
+  if (location.search.includes('light')) document.body.classList.add('light');
+  window.__launched = [];
+  window.__asked = [];
+  const COINS = {
+    HFEXturTx75AKoa1soyFHdn5L68AhZF7Gs6dejnFodkb: { symbol: 'HYPERFLOAT', name: 'Hyperfloat', marketCap: 23500, createdAt: Date.now() - 2 * 3600e3, dexId: 'raydium' },
+    '5q5pEZZwhkuazS4rGa66LcNotdsnUE9KcJ7xQmXSpump': { symbol: 'MEMEOS', name: 'MEMEOS', marketCap: 301600, createdAt: Date.now() - 9 * 86400e3, dexId: 'pumpswap' },
+  };
+  const found = (text) => Object.entries(COINS).filter(([a]) => text.includes(a)).map(([address, c]) => ({ address, chain: 'solana', ...c }));
+  globalThis.__nrHost = {
+    send: async (msg) => { window.__asked.push(msg.type); return msg.type === 'mentioned' ? { ok: true, data: found(msg.text) } : { ok: true, data: { coins: [] } }; },
+    get: async () => undefined,
+    set: async () => {},
+    radar: async () => ({ mountFloating: () => ({ isOpen: false, open: (p) => window.__launched.push(p), prefetch() {}, close() {}, route: async () => ({ symbol: 'X', reason: 'test' }) }) }),
+  };
+  const post = (id, handle, name, text) => `<article data-testid="tweet" id="${id}">
+    <div data-testid="User-Name"><a href="/${handle}"><span>${name}</span></a> <a href="/${handle}"><span class="h">@${handle}</span></a> <a href="/${handle}/status/1${id.length}"><time>2m</time></a></div>
+    <div data-testid="tweetText">${text}</div>
+    <div role="group"><span>💬</span><span>🔁</span><span>♡</span><span>📊</span><span class="share">⇪</span></div></article>`;
+  document.getElementById('tl').innerHTML = [
+    post('bot1', 'radardotfunn', 'radar', 'Larp check on $MEMEOS (21:30 UTC):\n🧪 55/100 · story PARTLY REAL 42 · coin OK 68\nReal platform, unlocked coin: ~1,000 holders, top 10 hold 19%, dev out, liquidity burned.\n\n📌 In the post: MEMEOS · $301.6K\n5q5pEZZwhkuazS4rGa66LcNotdsnUE9KcJ7xQmXSpump\n\nFull scan + Insta Buy: link in bio'),
+    post('bot2', 'radardotfunn', 'radar', 'Larp check on $HYPERFLOAT (10:04 UTC):\n🧪 58/100 · story UNCLEAR 30 · coin HEALTHY 85\n\n📌 In the post: HYPERFLOAT · $23.5K\nHFEXturTx75AKoa1soyFHdn5L68AhZF7Gs6dejnFodkb\n\nFull scan + Insta Buy: link in bio'),
+    post('other', 'someone', 'Someone', 'aped this one HFEXturTx75AKoa1soyFHdn5L68AhZF7Gs6dejnFodkb'),
+    post('botnoca', 'radardotfunn', 'radar', 'new on radar: linked top wallets. download on tryradar.fun'),
+  ].join('');
+  // X opens a post's thread on a click anywhere in it.
+  window.__threadClicks = 0;
+  document.getElementById('tl').addEventListener('click', () => { window.__threadClicks++; });
+</script>
+<script src="../extension/src/content/content.js"></script>
+</body></html>

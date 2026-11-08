@@ -232,7 +232,7 @@ export function makeHandlers(host) {
   async function mentioned({ text }) {
     const s = await host.settings();
     return cached(`mn:${text}`, 60_000, async () => (await mentionedTokens(String(text || '').slice(0, 2000), s.chains))
-      .map((t) => ({ address: t.address, chain: t.chain, symbol: t.symbol, name: t.name, marketCap: t.marketCap, createdAt: t.createdAt })));
+      .map((t) => ({ address: t.address, chain: t.chain, symbol: t.symbol, name: t.name, marketCap: t.marketCap, createdAt: t.createdAt, dexId: t.dexId || null })));
   }
 
   async function refresh({ tokens, deep = [], roleCandidates = [], roleCut = 0 }) {
