@@ -568,6 +568,22 @@ export async function watchVideo(env, videoUrl) {
   throw new Error(`Could not watch the video (${tried.join(', ')})`);
 }
 
+/**
+ * Whether an MP4 has a sound track: a track whose handler ("hdlr" box) is "soun". null when the file shows no track
+ * handlers at all (not an MP4 Radar can read), so the caller tries the speech model anyway.
+ */
+export function hasAudioTrack(bytes) {
+  let handlers = 0;
+  for (let i = 0; i + 16 <= bytes.length; i++) {
+    // "hdlr", then version and flags (4 bytes) and pre_defined (4), then the handler type.
+    if (bytes[i] !== 0x68 || bytes[i + 1] !== 0x64 || bytes[i + 2] !== 0x6c || bytes[i + 3] !== 0x72) continue;
+    handlers++;
+    const type = String.fromCharCode(bytes[i + 12], bytes[i + 13], bytes[i + 14], bytes[i + 15]);
+    if (type === 'soun') return true;
+  }
+  return handlers ? false : null;
+}
+
 export async function transcribe(binding, videoUrl) {
   const res = await fetch(videoUrl);
   if (!res.ok) throw new Error(`video ${res.status}`);
@@ -575,6 +591,9 @@ export async function transcribe(binding, videoUrl) {
   if (size > 6 * 1024 * 1024) throw new Error('video too long to transcribe');
   // Whisper takes base64 audio; MP4/AAC is decoded on Cloudflare's side.
   const bytes = new Uint8Array(await res.arrayBuffer());
+  // A video with no sound track has no speech to read. Whisper can't decode it ("3030: Failed to decode audio file"),
+  // and until 8 Nov that error made the bot try such a tag five times over five minutes for speech that never existed.
+  if (hasAudioTrack(bytes) === false) return { text: '', silent: true };
   let bin = '';
   for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
   const out = await binding.run('@cf/openai/whisper-large-v3-turbo', { audio: btoa(bin), task: 'transcribe', vad_filter: true });

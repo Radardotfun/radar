@@ -103,4 +103,25 @@ const { default: engine, ipOf, INSIDE } = await import('../server/worker.js');
   globalThis.fetch = realFetch;
   console.log('PASS engine: videos are watched again, by a model that still answers');
 }
+// 8 Nov: a video with no sound track has no speech. It used to go to Whisper, fail ("3030: Failed to decode audio
+// file") and have the bot try the tag five times. Now it's an empty transcript, with no model run.
+{
+  const { transcribe, hasAudioTrack } = await import('../server/narrative.js');
+  const box = (...types) => { const parts = []; for (const t of types) parts.push(0, 0, 0, 33, ...Buffer.from('hdlr'), 0, 0, 0, 0, 0, 0, 0, 0, ...Buffer.from(t), 0, 0, 0, 0); return new Uint8Array([...Buffer.from('....ftypisom....moov'), ...parts]); };
+  assert.equal(hasAudioTrack(box('vide')), false);
+  assert.equal(hasAudioTrack(box('vide', 'soun')), true);
+  assert.equal(hasAudioTrack(new Uint8Array(64)), null, 'no handlers at all: let the model try');
+  const realFetch = globalThis.fetch;
+  let file = box('vide');
+  globalThis.fetch = async () => new Response(file, { headers: { 'content-length': String(file.length) } });
+  let runs = 0;
+  const ai = { run: async () => { runs++; return { text: ' gm, this is the coin ' }; } };
+  assert.deepEqual(await transcribe(ai, 'https://video.twimg.com/a.mp4'), { text: '', silent: true });
+  assert.equal(runs, 0, 'a silent video never reaches the speech model');
+  file = box('vide', 'soun');
+  assert.deepEqual(await transcribe(ai, 'https://video.twimg.com/b.mp4'), { text: 'gm, this is the coin' });
+  assert.equal(runs, 1);
+  globalThis.fetch = realFetch;
+  console.log('PASS engine: a video with no sound is read as no speech, not a failed one');
+}
 process.exit(0);
