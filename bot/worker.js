@@ -514,7 +514,20 @@ export default {
     if (!authorized(request, env)) return json(401, { error: 'token required' });
     if (u.pathname === '/health') {
       const s = await loadState(env);
-      return json(200, { live: env.BOT_LIVE === '1', keys: hasKeys(env), keyShape: keyShape(env), account: s.me?.username || null, today: { day: s.day, replies: s.sent }, since: s.since, chat: await chatFor(env).status(env).catch((e) => String(e.message || e)) });
+      // Tags waiting for another try and tags a run has claimed, with how long the oldest has been there: a stuck tag shows
+      // here without reading the log (9 Nov). A pending tag's age comes from its id (X ids carry their time).
+      const idAt = (id) => { try { return Number((BigInt(id) >> 22n) + 1288834974657n); } catch { return null; } };
+      const ageMin = (ms) => (ms ? Math.round((Date.now() - ms) / 60_000) : null);
+      const pend = s.pending || [];
+      const infl = s.inflight || [];
+      const queue = {
+        pending: pend.length,
+        oldestPendingMin: pend.length ? Math.max(...pend.map((p) => ageMin(idAt(p.mention)) ?? 0)) : null,
+        inflight: infl.length,
+        oldestInflightMin: infl.length ? Math.max(...infl.map((p) => ageMin(p.at) ?? 0)) : null,
+        lastReplyAt: (s.log || []).find((e) => e.reply && !e.already)?.at || null,
+      };
+      return json(200, { live: env.BOT_LIVE === '1', keys: hasKeys(env), keyShape: keyShape(env), account: s.me?.username || null, today: { day: s.day, replies: s.sent }, since: s.since, queue, chat: await chatFor(env).status(env).catch((e) => String(e.message || e)) });
     }
     // One Discord or Telegram scan, in a run of its own.
     if (u.pathname === '/chat-job' && request.method === 'POST') {

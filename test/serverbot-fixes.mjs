@@ -50,6 +50,17 @@ const { default: engine, ipOf, INSIDE } = await import('../server/worker.js');
   await poll();
   assert.equal(xPosts.filter((p) => p.reply?.in_reply_to_tweet_id === '200').length, 1, 'one reply to the tag');
   console.log('PASS bot: X answering 5xx never makes the bot reply twice');
+  // /health shows the retry list and the claimed tags with their ages (9 Nov), so a stuck tag shows without the log.
+  const st = JSON.parse(kv.get('state'));
+  const tagId = String((BigInt(Date.now() - 7 * 60_000 - 1288834974657) << 22n));
+  kv.set('state', JSON.stringify({ ...st, pending: [{ mention: tagId, by: '9', target: '150', tries: 1 }], inflight: [{ mention: '201', at: Date.now() - 3 * 60_000 }] }));
+  const h = await (await bot.fetch(new Request('https://radar-bot/health', { headers: { 'x-bot-token': 't' } }), env, ctx)).json();
+  assert.equal(h.queue.pending, 1);
+  assert.equal(h.queue.oldestPendingMin, 7);
+  assert.equal(h.queue.inflight, 1);
+  assert.equal(h.queue.oldestInflightMin, 3);
+  kv.set('state', JSON.stringify(st));
+  console.log('PASS bot: /health shows waiting and claimed tags with their ages');
 }
 
 // 2. IPv6 limits count the /64 written out in full; the bot's own calls (no client address) don't share one bucket.
