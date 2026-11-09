@@ -188,10 +188,18 @@ const tradeLines = (t) => {
   const l = tradeLink(t);
   return l ? [`📈 Trade on ${l.venue}${l.note ? ` (${l.note})` : ''}: ${l.url}`] : [];
 };
+// The reply's last line. On X a post with any link costs the same, so a reply that already carries one (the trade link,
+// Larpcheck's report) links the coin's full scan on tryradar.fun too (9 Nov); one with none says "link in bio" and stays
+// at the link-free price.
+export const SCAN_IN_BIO = 'Full scan + Insta Buy: link in bio';
+export const coinScanUrl = (address) => `${SITE}/scan?q=${encodeURIComponent(contract(address))}`;
+const scanLine = (t, linked) => (linked && contract(t.address) ? `Full scan + Insta Buy: ${coinScanUrl(t.address)}` : SCAN_IN_BIO);
 const TRADE_LINE = /^📈 Trade on [^\n]*: https:\/\/\S+$/m;
-export const hasTradeLine = (text) => TRADE_LINE.test(String(text || ''));
-/** The same reply without its trade link, for when X turns a reply with a link down. */
-export const withoutTradeLine = (text) => String(text || '').replace(/\n📈 Trade on [^\n]*: https:\/\/\S+(?=\n|$)/, '');
+const SCAN_LINE = /^Full scan \+ Insta Buy: https:\/\/tryradar\.fun\/scan\?q=\S+$/m;
+/** Whether a reply carries Radar's own links (the trade link or the full scan link). */
+export const hasTradeLine = (text) => TRADE_LINE.test(String(text || '')) || SCAN_LINE.test(String(text || ''));
+/** The same reply without Radar's own links, for when X turns a reply with a link down: no trade line, the scan "in bio". */
+export const withoutTradeLine = (text) => String(text || '').replace(/\n📈 Trade on [^\n]*: https:\/\/\S+(?=\n|$)/, '').replace(SCAN_LINE, SCAN_IN_BIO);
 
 // Lines Radar adds to either reply: the account history (bot/history.js).
 const extras = (history) => {
@@ -237,6 +245,7 @@ export function larpReply(result, check, now = Date.now(), { full = true, coin =
   const lines = [...red.map((x) => `⚠️ ${x}`), ...of('missing').slice(0, 1).map((x) => `❔ ${x}`), ...of('works').slice(0, 1).map((x) => `✅ ${x}`)];
   const pin = `📌 In the post: ${ticker(t.symbol)}${usd(t.marketCap) ? ` · ${usd(t.marketCap)}` : ''}${CHAIN_TAG[t.chain] ? ` · ${CHAIN_TAG[t.chain]}` : ''}`;
   const x = extras(history);
+  const trade = result?.trade === false ? [] : tradeLines(t);
   return [
     `Larp check on $${ticker(t.symbol)} (${at} UTC):`,
     `🧪 ${scores}`,
@@ -249,10 +258,10 @@ export function larpReply(result, check, now = Date.now(), { full = true, coin =
     full ? pin : `${pin} · ${shortCa(t.address)}`,
     ...(full ? [contract(t.address)] : []),
     // The bot leaves the trade link out when nothing ties the coin to the post (bot/coins.js tradeOk).
-    ...(result?.trade === false ? [] : tradeLines(t)),
+    ...trade,
     '',
     coin ? 'Story: do the post\'s claims hold up. Coin: holders, dev, liquidity. A high score is no promise against a rug. Not advice.' : "Radar's read of the evidence, not advice.",
-    'Full scan + Insta Buy: link in bio',
+    scanLine(t, trade.length > 0),
   ].join('\n');
 }
 
@@ -286,7 +295,8 @@ export function larpcheckReply(result, lc, now = Date.now(), { full = true, hist
     ...(result?.trade === false ? [] : tradeLines(t)),
     '',
     `Larpcheck's full report: ${lc.url}`,
-    'Full scan + Insta Buy: link in bio',
+    // Their report is a link already, so the full scan is linked too.
+    scanLine(t, true),
   ].join('\n');
 }
 
