@@ -180,7 +180,12 @@ export function tradeLink(t) {
     if (t.dexId === 'pumpswap') return { url: `https://pump.fun/coin/${a}`, venue: 'pump.fun', note: 'its deepest pool is on PumpSwap' };
     return { url: `https://jup.ag/tokens/${a}`, venue: 'Jupiter', note: 'best price across its pools' };
   }
-  if (t.chain === 'robinhood' && /^0x[0-9a-fA-F]{40}$/.test(a)) return { url: `https://app.uniswap.org/swap?chain=robinhood&outputCurrency=${a}`, venue: 'Uniswap', note: '' };
+  // Uniswap needs the native coin named too, or the sell side opens empty (9 Nov, checked on BRETT on Base and $ROBINHOOD on
+  // Robinhood Chain); PancakeSwap fills BNB by itself (checked on CAKE).
+  if (/^0x[0-9a-fA-F]{40}$/.test(a)) {
+    if (t.chain === 'robinhood' || t.chain === 'base') return { url: `https://app.uniswap.org/swap?chain=${t.chain}&inputCurrency=NATIVE&outputCurrency=${a}`, venue: 'Uniswap', note: '' };
+    if (t.chain === 'bsc') return { url: `https://pancakeswap.finance/swap?chain=bsc&outputCurrency=${a}`, venue: 'PancakeSwap', note: '' };
+  }
   if (/^https:\/\/dexscreener\.com\/[a-z]+\/[\w]+$/.test(t.url || '')) return { url: t.url, venue: 'its pools', note: 'on DexScreener' };
   return null;
 }

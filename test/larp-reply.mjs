@@ -89,9 +89,13 @@ assert.ok(!short.replace(/https:\/\/\S+/g, '').includes(CA), 'the short form nev
   assert.deepEqual(s({ dexId: 'pumpswap' }), { url: `https://pump.fun/coin/${CA}`, venue: 'pump.fun', note: 'its deepest pool is on PumpSwap' });
   for (const dexId of ['raydium', 'meteora', 'orca', 'launchlab', undefined]) assert.equal(s({ dexId }).url, `https://jup.ag/tokens/${CA}`, String(dexId));
   const hood = '0x' + 'ab'.repeat(20);
-  assert.equal(tradeLink({ address: hood, chain: 'robinhood' }).url, `https://app.uniswap.org/swap?chain=robinhood&outputCurrency=${hood}`);
-  assert.equal(tradeLink({ address: hood, chain: 'bsc', url: `https://dexscreener.com/bsc/${hood}` }).url, `https://dexscreener.com/bsc/${hood}`);
-  assert.equal(tradeLink({ address: hood, chain: 'bsc', url: 'https://evil.example/x' }), null, 'only a DexScreener page, never a link from elsewhere');
+  // Uniswap with the native coin named (an empty sell side otherwise), PancakeSwap on BNB, DexScreener for any other chain.
+  assert.equal(tradeLink({ address: hood, chain: 'robinhood' }).url, `https://app.uniswap.org/swap?chain=robinhood&inputCurrency=NATIVE&outputCurrency=${hood}`);
+  assert.deepEqual(tradeLink({ address: hood, chain: 'base' }), { url: `https://app.uniswap.org/swap?chain=base&inputCurrency=NATIVE&outputCurrency=${hood}`, venue: 'Uniswap', note: '' });
+  assert.deepEqual(tradeLink({ address: hood, chain: 'bsc' }), { url: `https://pancakeswap.finance/swap?chain=bsc&outputCurrency=${hood}`, venue: 'PancakeSwap', note: '' });
+  assert.equal(tradeLink({ address: hood, chain: 'ethereum', url: `https://dexscreener.com/ethereum/${hood}` }).url, `https://dexscreener.com/ethereum/${hood}`);
+  assert.equal(tradeLink({ address: hood, chain: 'ethereum', url: 'https://evil.example/x' }), null, 'only a DexScreener page, never a link from elsewhere');
+  assert.equal(tradeLink({ address: 'not-hex', chain: 'bsc' }), null);
   assert.equal(tradeLink({ address: 'not a mint!', chain: 'solana' }), null);
   assert.equal(tradeLink(null), null);
   const pump = larpReply({ named: { ...named, dexId: 'pumpfun' }, how: 'post' }, check, now, { coin });
