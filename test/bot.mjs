@@ -133,6 +133,26 @@ assert.ok((named.match(/\$[A-Za-z]/g) || []).length <= 1, 'still one cashtag');
 const pair = (t) => ({ chainId: 'solana', dexId: 'raydium', pairAddress: `${t.address.slice(0, 20)}pool`, baseToken: { address: t.address, name: t.name, symbol: t.symbol }, quoteToken: { address: 'So11111111111111111111111111111111111111112' }, priceUsd: '1', priceNative: '0.005', liquidity: { usd: t.marketCap / 10, quote: t.marketCap / 2000 }, marketCap: t.marketCap, fdv: t.marketCap, volume: { h24: 50_000 } });
 const looked = await botCoins({ mentioned: [], picks: [], roleCandidates: [] }, { text: 'whales accumulated $SI' }, { search: async (q) => (q === 'SI' ? [superAi, superInu].map(pair) : []) });
 assert.equal(looked.named?.address, superInu.address);
+assert.equal(looked.trade, true, 'a $12.5M coin under the typed ticker: its reply links where it trades');
+// The trade link needs something tying the coin to the post (9 Nov): a coin guessed from a ticker alone, small and with no
+// links back, may be a copy. Its larp check still runs, with no link to trade it.
+{
+  const small = tok('FORK', 'forks wiki', '7q6FE4Hxd3sUQPqFWWyTPin1M3WcPHMBsguAEiojpump', 2_488);
+  // A small pool that is trading: a live coin, just not one of any size.
+  const smallPair = { ...pair(small), liquidity: { usd: 1500, quote: 7.5 }, volume: { h1: 600, h24: 5000 }, txns: { h1: { buys: 6, sells: 3 }, h24: { buys: 60, sells: 30 } } };
+  const guessed = await botCoins({ mentioned: [], picks: [], roleCandidates: [] }, { text: 'forks wiki is live: get $FORK', author: 'wikifork', url: 'https://x.com/wikifork/status/2119124558380745174' }, { search: async (q) => (q === 'FORK' ? [smallPair] : []) });
+  assert.equal(guessed.named?.address, small.address);
+  assert.equal(guessed.trade, false, 'small, guessed from its ticker, nothing pointing back: no trade link');
+  const typedCa = await botCoins({ mentioned: [small], picks: [], roleCandidates: [] }, { text: `get it: ${small.address}` }, { search: async () => [] });
+  assert.equal(typedCa.trade, true, 'its address in the post');
+  const linksBack = await botCoins({ mentioned: [], picks: [], roleCandidates: [{ ...small, socials: [{ type: 'twitter', url: 'https://x.com/WikiFork' }] }] }, { text: 'forks wiki is live: get $FORK', author: 'wikifork' }, { search: async () => [] });
+  assert.equal(linksBack.trade, true, "its own profile links the poster's account");
+  const linksPost = await botCoins({ mentioned: [], picks: [], roleCandidates: [{ ...small, websites: ['https://x.com/i/status/2119124558380745174'] }] }, { text: 'forks wiki is live: get $FORK', author: 'someone', url: 'https://x.com/someone/status/2119124558380745174' }, { search: async () => [] });
+  assert.equal(linksPost.trade, true, 'its own profile links this post');
+  const lookalike = await botCoins({ mentioned: [], picks: [], roleCandidates: [{ ...small, socials: [{ type: 'twitter', url: 'https://x.com/wikiforkfan' }] }] }, { text: 'forks wiki is live: get $FORK', author: 'wikifork' }, { search: async () => [] });
+  assert.equal(lookalike.trade, false, 'an account that only starts with the handle is not the poster');
+  assert.equal((await botCoins({ mentioned: [], picks: [], roleCandidates: [] }, { text: 'gm' }, { search: async () => [] })).trade, false, 'no coin, no link');
+}
 console.log('PASS bot: the coin a post names (CA or $ticker) leads, copycats and major tickers left out');
 // The scan's CA lookup came back empty (DexScreener busy): the address is looked up again, never guessed from the ticker.
 const again = await botCoins({ mentioned: [], picks: [], roleCandidates: fakes }, { text: 'Just aped $PURR - 8RNUw4N655VSrZKuhGdywhbSMDTrheguFPfxbpE2NZHQ' }, { search: async () => fakes.map(pair), lookupCa: async (ca) => (ca === purr.address ? purr : null) });

@@ -192,13 +192,15 @@ export async function botCoins(res, post, { search, lookupCa, lookupBio = lookup
   const scanned = [...(res?.roleCandidates || []), ...(res?.picks || []).map((p) => p.token), ...(res?.others || []), res?.techMatch].filter((t) => t?.address);
   const text = [post?.text, post?.quoted, post?.parent].filter(Boolean).join('\n');
   let named = res?.mentioned?.[0] || null;
+  // An address written in the post is the surest tie a coin can have (the trade link below relies on it).
+  let byCa = !!named;
   // The scan's CA lookup gives up when DexScreener is busy, and a guess from the ticker then names a copycat. An
   // address in the post is looked up again here; if DexScreener still can't answer, the tag is retried later.
   if (!named && lookupCa) {
     for (const ca of [...new Set([...(text.match(SOL_CA) || []), ...(text.match(EVM_CAS) || [])])].slice(0, 3)) {
       named = await lookupCa(ca);
       if (named && !chains.includes(named.chain)) named = null;
-      if (named) break;
+      if (named) { byCa = true; break; }
     }
   }
   // The poster's bio, when it holds this post's coin. Ahead of a guess from a ticker, which can land on a copy.
@@ -378,5 +380,24 @@ export async function botCoins(res, post, { search, lookupCa, lookupBio = lookup
   // came up as Newest on a $███ post).
   const newest = [...all.values()].filter((t) => !shown.has(t.address) && tickers.has(sym(t)) && t.createdAt && live(t) && (alive(t) || t.onCurve) && !isMajor(t))
     .sort((a, b) => b.createdAt - a.createdAt)[0] || null;
-  return { named, how, alsoLinked, picks: alsoLinked ? picks.filter((p) => p.token.address !== alsoLinked.address) : picks, alone: story.length < 2, outranked, postAt, newest, related: all.size };
+  return { named, how, alsoLinked, picks: alsoLinked ? picks.filter((p) => p.token.address !== alsoLinked.address) : picks, alone: story.length < 2, outranked, postAt, newest, related: all.size,
+    trade: !!named && tradeOk(named, post, { byCa, how }) };
+}
+
+/**
+ * Whether the reply may send people to trade the coin it names (bot/reply.js tradeLink). Only when something ties that coin
+ * to the post: its address in the post, the poster's bio, its own profile linking the post or the poster, a name that is
+ * the poster's own account, or a backed coin of real size. A coin guessed from a ticker or a picture alone, small and with
+ * nothing pointing back, may be a copy: its larp check still runs, with no trade link (8 Nov, @wikifork's "forks wiki").
+ */
+export const TRADE_MIN = 100_000;
+export function tradeOk(t, post, { byCa = false, how = null } = {}) {
+  if (!t?.address) return false;
+  if (byCa || how === 'bio' || how === 'linked' || t.fromPost || ownCoin(t, post)) return true;
+  // The handle as written (underscores and all), only ever word characters: X handles are [A-Za-z0-9_].
+  const author = String(post?.author || '').toLowerCase().replace(/[^a-z0-9_]/g, '');
+  const id = String(post?.url || '').match(/\/status\/(\d+)/)?.[1];
+  const links = [...(t.socials || []).map((s) => s?.url), ...(t.websites || []), ...(t.links || [])].map((u) => String(u || '').toLowerCase());
+  if (links.some((u) => (author.length >= 2 && new RegExp(`(?:x|twitter)\\.com/${author}(?:[/?#]|$)`).test(u)) || (id && u.includes(id)))) return true;
+  return !!t.mcapBacked && alive(t) && (t.marketCap || 0) >= TRADE_MIN;
 }

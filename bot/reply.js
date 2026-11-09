@@ -248,7 +248,8 @@ export function larpReply(result, check, now = Date.now(), { full = true, coin =
     ...(coin?.line ? [`👥 ${coin.line}`, ''] : []),
     full ? pin : `${pin} · ${shortCa(t.address)}`,
     ...(full ? [contract(t.address)] : []),
-    ...tradeLines(t),
+    // The bot leaves the trade link out when nothing ties the coin to the post (bot/coins.js tradeOk).
+    ...(result?.trade === false ? [] : tradeLines(t)),
     '',
     coin ? 'Story: do the post\'s claims hold up. Coin: holders, dev, liquidity. A high score is no promise against a rug. Not advice.' : "Radar's read of the evidence, not advice.",
     'Full scan + Insta Buy: link in bio',
@@ -281,7 +282,8 @@ export function larpcheckReply(result, lc, now = Date.now(), { full = true, hist
     ...x.h,
     full ? pin : `${pin} · ${shortCa(t.address)}`,
     ...(full ? [contract(t.address)] : []),
-    ...tradeLines(t),
+    // The bot leaves the trade link out when nothing ties the coin to the post (bot/coins.js tradeOk).
+    ...(result?.trade === false ? [] : tradeLines(t)),
     '',
     `Larpcheck's full report: ${lc.url}`,
     'Full scan + Insta Buy: link in bio',

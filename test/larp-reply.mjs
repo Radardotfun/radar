@@ -104,6 +104,11 @@ assert.ok(!short.replace(/https:\/\/\S+/g, '').includes(CA), 'the short form nev
   assert.equal(bare, pump.replace(`\n📈 Trade on pump.fun (still on its curve): https://pump.fun/coin/${CA}`, ''));
   assert.equal(withoutTradeLine(varied(pump, new Date(now + 3000))).includes('📈'), false, 'after the time is varied too');
   assert.equal(hasTradeLine(postLarpReply({ word: 'LARP', score: 10, call: 'x', findings: [] }, now)), false, 'no coin, no trade link');
+  // Nothing ties the coin to the post (bot/coins.js tradeOk said no): the larp check, without the link.
+  const untied = larpReply({ named: { ...named, dexId: 'pumpfun' }, how: 'post', trade: false }, check, now, { coin });
+  assert.equal(hasTradeLine(untied), false);
+  assert.equal(untied, withoutTradeLine(pump));
+  assert.equal(hasTradeLine(larpcheckReply({ named, how: 'post', trade: false }, { checked: true, url: 'https://larpcheck.app/c/x1', verdict: 'REAL', score: 81 }, now)), false);
 }
 
 // ---- the story alone (a coin on another chain, or no audit)
