@@ -53,7 +53,8 @@ const coinsHtml = (it) => {
 const render = () => {
   const list = $('al-list');
   $('al-empty').hidden = items.length > 0;
-  $('al-status').textContent = live ? 'Live. You hold enough to get these as they land.' : 'You\'re seeing these 10 minutes late.';
+  // Free for everyone since 15 Nov: the server answers every visitor live, so "live" no longer means holding.
+  $('al-status').textContent = live ? 'Live, as they land. Free for everyone.' : 'You\'re seeing these 10 minutes late.';
   $('al-status').classList.toggle('on', live);
   $('al-unlock').hidden = live;
   // Android's Chrome refuses a page's own notifications without a service worker, so the promise couldn't be kept there.

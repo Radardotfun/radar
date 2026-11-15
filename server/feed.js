@@ -2,7 +2,7 @@
 // saves each minute (wire_rows, bot/chat.js), so it costs one database read a minute. Names only: it says what launched, never why.
 // Holders see it live. Everyone else sees the same list as it stood 10 minutes ago, which the server decides, since the code is public.
 import { findStories, KEEP_MS } from '../bot/wire.js';
-import { readToken } from './holder.js';
+import { readToken, freeForAll } from './holder.js';
 
 export const FEED_DELAY_MS = 10 * 60_000;
 
@@ -13,7 +13,8 @@ async function readStories(env, asOf) {
 
 /** { token? } -> { live, asOf, stories }. A bad or missing token gets the delayed list, not an error. */
 export async function feed(body, env, { cache = caches.default, now = Date.now() } = {}) {
-  const live = !!(body?.token && env.HOLDER_SECRET && await readToken(env, body.token, now));
+  // Live for everyone since 15 Nov (server/holder.js freeForAll); the holder token only matters with FREE "0".
+  const live = freeForAll(env) || !!(body?.token && env.HOLDER_SECRET && await readToken(env, body.token, now));
   const minute = now - (now % 60_000);
   const asOf = live ? minute : minute - FEED_DELAY_MS;
   const key = new Request(`https://cache.narrative-radar/feed1/${asOf}`);

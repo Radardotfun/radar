@@ -1,7 +1,7 @@
 // POST /ask { token, coin, question, evidence }: Ask Radar. A holder's question about a coin card, answered by the AI only
 // from what Radar found on that card (narrative.js askCoin). Holders only (server/holder.js), with daily limits, because each
 // answer costs an AI call. Larpcheck's verdicts never go in: their terms say a verdict is never reworded.
-import { readToken } from './holder.js';
+import { askerOf } from './holder.js';
 import { spend } from './lc.js';
 
 export const ASKS_PER_WALLET = 20;
@@ -10,7 +10,8 @@ const ADDRESS = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 const clip = (s, n) => (typeof s === 'string' ? s.replace(/[\u0000-\u001f\u007f<>]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, n) : '');
 
 export async function askRoute(body, env, { ai, answer }) {
-  const wallet = await readToken(env, body?.token);
+  // Everything is free since 15 Nov: anyone asks, counted against their wallet or their address (server/holder.js askerOf).
+  const wallet = await askerOf(env, body);
   if (!wallet) return { status: 401, data: { error: 'Your holder check ran out. Connect your wallet again.' } };
   const question = clip(body?.question, 300);
   if (!question) return { status: 400, data: { error: 'Ask a question first.' } };

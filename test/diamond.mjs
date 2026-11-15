@@ -66,7 +66,7 @@ assert.equal(sql.prepare("SELECT COUNT(*) n FROM signals WHERE kind = 'diamond'"
 console.log('PASS diamond: a watched wallet buying a coin launched in the last 6 hours is an alert, once');
 
 // Holders get it; the public, delayed list doesn't.
-const env = { DB: db, HOLDER_SECRET: '' };
+const env = { DB: db, HOLDER_SECRET: '', FREE: '0' };
 const pub = await signalFeed({ public: true }, env, { now: now + 30 * 60_000, cache: null });
 assert.equal(pub.body.items.filter((i) => i.kind === 'diamond').length, 0, 'not on the public list');
 console.log('PASS diamond: holders only');

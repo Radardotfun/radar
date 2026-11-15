@@ -1,4 +1,4 @@
-// Radar 1.7.157 alerts page, built from webapp/alerts.js: https://github.com/Radardotfun/radar
+// Radar 1.7.158 alerts page, built from webapp/alerts.js: https://github.com/Radardotfun/radar
 (() => {
   // extension/src/lib/keywords.js
   var STOP = new Set(`a about above after again against all almost also am an and any are aren as at be because been before
@@ -1682,8 +1682,8 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     }
     async function askCoin({ coin, question, evidence }) {
       const h = await holderStored();
-      if (!h) throw new Error("This is for $RADAR and $LARPCHECK holders. Check your wallet first.");
-      const res = await fetch(`${API_BASE}/ask`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ token: h.token, coin, question, evidence }), signal: AbortSignal.timeout(3e4) });
+      if (!h && !(await holderConfig()).free) throw new Error("This is for $RADAR and $LARPCHECK holders. Check your wallet first.");
+      const res = await fetch(`${API_BASE}/ask`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...h ? { token: h.token } : {}, coin, question, evidence }), signal: AbortSignal.timeout(3e4) });
       const data = await res.json().catch(() => ({}));
       if (res.status === 401) await host.store.set(HOLDER_KEY, null);
       if (!res.ok) throw new Error(data.error || `Ask ${res.status}`);
@@ -1700,8 +1700,8 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     const lcSettings = () => lcGet("/lc/settings", 6e5);
     async function lcHolderPost(path, body) {
       const h = await holderStored();
-      if (!h) throw new Error("This is for $RADAR and $LARPCHECK holders. Check your wallet first.");
-      const res = await fetch(`${API_BASE}${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ token: h.token, ...body }), signal: AbortSignal.timeout(5e4) });
+      if (!h && !(await holderConfig()).free) throw new Error("This is for $RADAR and $LARPCHECK holders. Check your wallet first.");
+      const res = await fetch(`${API_BASE}${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...h ? { token: h.token } : {}, ...body }), signal: AbortSignal.timeout(5e4) });
       const data = await res.json().catch(() => ({}));
       if (res.status === 401) await host.store.set(HOLDER_KEY, null);
       if (!res.ok) throw new Error(data.error || `Larpcheck ${res.status}`);
@@ -1886,13 +1886,15 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       const h = await host.store.get(HOLDER_KEY);
       return h?.token && h.exp > Date.now() ? h : null;
     };
+    const holderConfig = () => cached("holder:config", 6e5, async () => (await fetch(`${API_BASE}/holder/settings`, { signal: AbortSignal.timeout(6e3) })).json()).catch(() => ({ on: false }));
     async function holderStatus() {
-      const config = await cached("holder:config", 6e5, async () => (await fetch(`${API_BASE}/holder/settings`, { signal: AbortSignal.timeout(6e3) })).json()).catch(() => ({ on: false }));
+      const config = await holderConfig();
       const h = await holderStored();
+      if (config.free) return { on: true, free: true, holder: true, exp: h?.exp || null };
       if (!config.on && !h) return { on: false };
       return { on: true, pitch: config.pitch, holder: !!h, exp: h?.exp || null };
     }
-    const holderActive = async () => !!await holderStored();
+    const holderActive = async () => !!(await holderConfig()).free || !!await holderStored();
     async function holderCoinFacts(rows) {
       const facts = /* @__PURE__ */ new Map();
       const cas = rows.map((r) => r.ca);
@@ -1917,8 +1919,8 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     }
     async function holderWho({ handle }) {
       const h = await holderStored();
-      if (!h) return { locked: true };
-      const r = await fetch(`${API_BASE}/holder/who`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ token: h.token, handle }), signal: AbortSignal.timeout(25e3) });
+      if (!h && !(await holderConfig()).free) return { locked: true };
+      const r = await fetch(`${API_BASE}/holder/who`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...h ? { token: h.token } : {}, handle }), signal: AbortSignal.timeout(25e3) });
       const d = await r.json().catch(() => ({}));
       if (r.status === 401) {
         await host.store.set(HOLDER_KEY, null);
@@ -2045,7 +2047,7 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
   var render = () => {
     const list = $("al-list");
     $("al-empty").hidden = items.length > 0;
-    $("al-status").textContent = live ? "Live. You hold enough to get these as they land." : "You're seeing these 10 minutes late.";
+    $("al-status").textContent = live ? "Live, as they land. Free for everyone." : "You're seeing these 10 minutes late.";
     $("al-status").classList.toggle("on", live);
     $("al-unlock").hidden = live;
     $("al-notify").hidden = !live || !("Notification" in window) || /Android/i.test(navigator.userAgent) || Notification.permission === "denied";

@@ -1,7 +1,7 @@
 // Big account alerts: the posts the account watcher (bot/signals.js) scored as something people launch coins off. Holders get them
 // live: what's here costs real money to find, so the server checks the holder token, since the code is public. The alerts page
 // (tryradar.fun/alerts) can also ask for the public list, which is the same posts 10 minutes later, with nothing to scan for coins.
-import { readToken } from './holder.js';
+import { readToken, freeForAll } from './holder.js';
 
 const MAX_AGE_MS = 3_600_000;
 const HISTORY_MS = 24 * 3_600_000;
@@ -35,7 +35,8 @@ const view = (r, live) => {
 
 /** { token, since, history } -> live, newest first. { public: true } -> the same list 10 minutes late. A bad token is refused, so it never gets the public list by mistake. */
 export async function signalFeed(body, env, { now = Date.now(), cache = typeof caches !== 'undefined' ? caches.default : null } = {}) {
-  const holder = !!(body?.token && env.HOLDER_SECRET && await readToken(env, body.token, now));
+  // Live for everyone since 15 Nov (server/holder.js freeForAll), the site's alerts page included.
+  const holder = freeForAll(env) || !!(body?.token && env.HOLDER_SECRET && await readToken(env, body.token, now));
   if (holder) {
     const since = body.history ? now - HISTORY_MS : Math.max(Number(body.since) || 0, now - MAX_AGE_MS);
     return { status: 200, body: { live: true, items: (await read(env, since, now, body.history ? HISTORY_ROWS : MAX_ROWS, true, !body.history)).map((r) => view(r, true)) } };

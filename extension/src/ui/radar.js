@@ -1962,8 +1962,16 @@ class Radar {
       ['Radar Guard', "When a watchlist coin's post is gone, Larpcheck's verdict turns bad, or liquidity falls 30%.", tag('ON')],
       ['Who posted this', "On any post: the account's past coins, its deleted posts and its past usernames.", tag('ON')],
       ['Ask Radar', 'Ask about any coin card. Radar answers from what it found, never with a buy or sell call.', tag('ON')],
-      ['Live feeds', 'Breaking now and the track record as they happen. Everyone else sees them 10 and 30 minutes late.', tag('ON')],
+      ['Live feeds', this.holder.free ? 'Breaking now and the track record, as they happen.' : 'Breaking now and the track record as they happen. Everyone else sees them 10 and 30 minutes late.', tag('ON')],
     ].map(([name, line, end]) => `<div class="al-w perk"><div><b>${name}</b><span>${line}</span></div>${end}</div>`).join('');
+    // Since 15 Nov 2026 everything is free (server/holder.js freeForAll): no wallet check, nothing locked.
+    if (this.holder.free) {
+      return `<section class="settings perks">
+      <div class="set-head"><h3>Everything's free</h3><span class="verdict ok">FREE</span></div>
+      <p>Every feature in Radar is free for everyone. No wallet check, nothing to hold.</p>
+      <div class="al-list">${rows}</div>
+    </section>`;
+    }
     return `<section class="settings perks">
       <div class="set-head"><h3>Holder perks</h3><span class="verdict ${holder ? 'ok' : 'neutral'}">${holder ? 'UNLOCKED' : 'LOCKED'}</span></div>
       <p>${holder ? 'Your wallet passed the check. Every perk below is yours.' : 'Hold $10 of $RADAR or $LARPCHECK, or have held $RADAR at any point, and all of this is yours.'}</p>

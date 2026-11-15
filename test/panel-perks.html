@@ -22,7 +22,8 @@ const h = makeHandlers({
 const sw = { big: true, diamond: true, bag: false, pings: false };
 const state = () => ({ watches: holder ? [{ id: 'w1', author: 'elonmusk', label: 'a post about a dog', until: Date.now() + 9 * 3_600_000 }] : [], feed: [], unread: 0,
   notifications: true, freshBadges: true, bigAccounts: sw.big, diamond: sw.diamond, myWallets: [], holder, bagGuard: sw.bag, proved: holder ? 'WaLLet1aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' : null, bags: null });
-h.holderStatus = async () => ({ on: true, holder, exp: Date.now() + 86_400_000 });
+// ?free: everything free (15 Nov 2026), the server's holder settings say so and everyone has every perk.
+h.holderStatus = async () => (q.has('free') ? { on: true, free: true, holder: true, exp: null } : { on: true, holder, exp: Date.now() + 86_400_000 });
 h.lcSettings = async () => ({ plan: false });
 h['alerts:list'] = async () => state();
 h['alerts:read'] = async () => state();

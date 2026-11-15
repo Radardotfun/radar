@@ -30,6 +30,9 @@ const json = (status, body, extra = {}) =>
 // is Radar's own bot over its service binding, whose tags and account watcher would otherwise all share one bucket. The
 // AI's daily cap bounds those instead.
 export const INSIDE = 'inside';
+// A JSON body with the caller's address set by us (server/holder.js askerOf counts a capped request against it when no
+// holder wallet signs it). Whatever __ip the request itself sent is overwritten.
+const withIp = async (request) => ({ ...(await jsonOf(request)), __ip: ipOf(request) });
 export function ipOf(request) {
   const a = String(request.headers.get('cf-connecting-ip') || '').trim().toLowerCase();
   if (!a) return INSIDE;
@@ -421,15 +424,15 @@ const app = {
       const out = pathname === '/lc/board' && request.method === 'GET' ? await lcBoard(q.get('sort'), env, ctx)
         : pathname === '/lc/holders' && request.method === 'GET' ? await lcHolders(q.get('address'), q.get('chain'), env, ctx)
           : pathname === '/lc/check' && request.method === 'GET' ? ((await lcSettings(env, ctx)).plan ? await lcPoll(q.get('id'), env) : { status: 404, data: { error: 'Not found' } })
-            : pathname === '/lc/check' && request.method === 'POST' ? await lcStart(await jsonOf(request), env)
-              : pathname === '/lc/ask' && request.method === 'POST' ? await lcAsk(await jsonOf(request), env)
+            : pathname === '/lc/check' && request.method === 'POST' ? await lcStart(await withIp(request), env)
+              : pathname === '/lc/ask' && request.method === 'POST' ? await lcAsk(await withIp(request), env)
                 : { status: 404, data: { error: 'Not found' } };
       return json(out.status, out.data);
     }
     // Ask Radar (server/ask.js): a holder's question about a coin card, answered from the card's own evidence.
     if (pathname === '/ask' && request.method === 'POST') {
       if (limited(`ask:${ipOf(request)}`, 30)) return json(429, { error: 'Too many questions. Try again in a few minutes.' });
-      const out = await askRoute(await jsonOf(request), env, { ai: () => engine({ apiKey: env.ANTHROPIC_API_KEY, binding: env.AI, env }), answer: askCoin });
+      const out = await askRoute(await withIp(request), env, { ai: () => engine({ apiKey: env.ANTHROPIC_API_KEY, binding: env.AI, env }), answer: askCoin });
       return json(out.status, out.data);
     }
     // Holder-only data (server/holder.js). 1.7.17 reads /holder/config and its panel promises Frontrun's data, so that
@@ -466,7 +469,7 @@ const app = {
     if ((pathname === '/holder/verify' || pathname === '/holder/who') && request.method === 'POST') {
       if (!holderOn(env)) return json(200, { off: true });
       if (limited(`holder:${ipOf(request)}`, 120)) return json(429, { error: 'Too many requests. Try again in a few minutes.' });
-      const body = await jsonOf(request);
+      const body = pathname === '/holder/who' ? await withIp(request) : await jsonOf(request);
       const r = pathname === '/holder/verify' ? await holderVerify(body, env, relayUrl(env)) : await holderWho(body, env, { limited });
       // Signed on a phone for a computer that showed a QR code: it collects the answer from here.
       if (pathname === '/holder/verify' && r.status === 200 && body.pair) await savePair(env.DB, body.pair, r.body).catch((e) => console.error('pair', e?.message));

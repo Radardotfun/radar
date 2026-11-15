@@ -34,5 +34,7 @@ service = "radar-bot"
 
 [vars]
 BOT_LIVE = "1"
+# The tag bot on X. "0" pauses it: no mentions read, no replies (paused 15 Nov 2026 by the user). "1" turns it back on.
+X_TAGS = "0"
 # The account watcher (bot/signals.js). "0" stops it and its X spending.
 SIGNALS = "1"

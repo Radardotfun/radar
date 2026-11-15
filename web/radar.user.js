@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Radar
 // @namespace    https://tryradar.fun
-// @version      1.7.157
+// @version      1.7.158
 // @description  See the coins behind any post on X and instantly reroute to the biggest match that passes available on-chain safety checks.
 // @homepageURL  https://tryradar.fun
 // @supportURL   https://tryradar.fun
@@ -31,7 +31,7 @@
 // @downloadURL  https://tryradar.fun/radar.user.js
 // ==/UserScript==
 
-// Radar 1.7.157: built from the extension source at https://tryradar.fun. Not financial advice.
+// Radar 1.7.158: built from the extension source at https://tryradar.fun. Not financial advice.
 (() => {
   var __defProp = Object.defineProperty;
   var __export = (target, all) => {
@@ -1804,8 +1804,8 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     }
     async function askCoin({ coin, question, evidence }) {
       const h = await holderStored();
-      if (!h) throw new Error("This is for $RADAR and $LARPCHECK holders. Check your wallet first.");
-      const res = await gmFetch(`${API_BASE}/ask`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ token: h.token, coin, question, evidence }), signal: AbortSignal.timeout(3e4) });
+      if (!h && !(await holderConfig()).free) throw new Error("This is for $RADAR and $LARPCHECK holders. Check your wallet first.");
+      const res = await gmFetch(`${API_BASE}/ask`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...h ? { token: h.token } : {}, coin, question, evidence }), signal: AbortSignal.timeout(3e4) });
       const data = await res.json().catch(() => ({}));
       if (res.status === 401) await host.store.set(HOLDER_KEY, null);
       if (!res.ok) throw new Error(data.error || `Ask ${res.status}`);
@@ -1822,8 +1822,8 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     const lcSettings = () => lcGet("/lc/settings", 6e5);
     async function lcHolderPost(path, body) {
       const h = await holderStored();
-      if (!h) throw new Error("This is for $RADAR and $LARPCHECK holders. Check your wallet first.");
-      const res = await gmFetch(`${API_BASE}${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ token: h.token, ...body }), signal: AbortSignal.timeout(5e4) });
+      if (!h && !(await holderConfig()).free) throw new Error("This is for $RADAR and $LARPCHECK holders. Check your wallet first.");
+      const res = await gmFetch(`${API_BASE}${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...h ? { token: h.token } : {}, ...body }), signal: AbortSignal.timeout(5e4) });
       const data = await res.json().catch(() => ({}));
       if (res.status === 401) await host.store.set(HOLDER_KEY, null);
       if (!res.ok) throw new Error(data.error || `Larpcheck ${res.status}`);
@@ -2008,13 +2008,15 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
       const h = await host.store.get(HOLDER_KEY);
       return h?.token && h.exp > Date.now() ? h : null;
     };
+    const holderConfig = () => cached("holder:config", 6e5, async () => (await gmFetch(`${API_BASE}/holder/settings`, { signal: AbortSignal.timeout(6e3) })).json()).catch(() => ({ on: false }));
     async function holderStatus() {
-      const config = await cached("holder:config", 6e5, async () => (await gmFetch(`${API_BASE}/holder/settings`, { signal: AbortSignal.timeout(6e3) })).json()).catch(() => ({ on: false }));
+      const config = await holderConfig();
       const h = await holderStored();
+      if (config.free) return { on: true, free: true, holder: true, exp: h?.exp || null };
       if (!config.on && !h) return { on: false };
       return { on: true, pitch: config.pitch, holder: !!h, exp: h?.exp || null };
     }
-    const holderActive = async () => !!await holderStored();
+    const holderActive = async () => !!(await holderConfig()).free || !!await holderStored();
     async function holderCoinFacts(rows) {
       const facts = /* @__PURE__ */ new Map();
       const cas = rows.map((r) => r.ca);
@@ -2039,8 +2041,8 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
     }
     async function holderWho({ handle }) {
       const h = await holderStored();
-      if (!h) return { locked: true };
-      const r = await gmFetch(`${API_BASE}/holder/who`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ token: h.token, handle }), signal: AbortSignal.timeout(25e3) });
+      if (!h && !(await holderConfig()).free) return { locked: true };
+      const r = await gmFetch(`${API_BASE}/holder/who`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...h ? { token: h.token } : {}, handle }), signal: AbortSignal.timeout(25e3) });
       const d = await r.json().catch(() => ({}));
       if (r.status === 401) {
         await host.store.set(HOLDER_KEY, null);
@@ -4247,8 +4249,15 @@ wow omg damn yes yeah okay ok please thanks thank everyone`.split(/\s+/));
         ["Radar Guard", "When a watchlist coin's post is gone, Larpcheck's verdict turns bad, or liquidity falls 30%.", tag("ON")],
         ["Who posted this", "On any post: the account's past coins, its deleted posts and its past usernames.", tag("ON")],
         ["Ask Radar", "Ask about any coin card. Radar answers from what it found, never with a buy or sell call.", tag("ON")],
-        ["Live feeds", "Breaking now and the track record as they happen. Everyone else sees them 10 and 30 minutes late.", tag("ON")]
+        ["Live feeds", this.holder.free ? "Breaking now and the track record, as they happen." : "Breaking now and the track record as they happen. Everyone else sees them 10 and 30 minutes late.", tag("ON")]
       ].map(([name, line, end]) => `<div class="al-w perk"><div><b>${name}</b><span>${line}</span></div>${end}</div>`).join("");
+      if (this.holder.free) {
+        return `<section class="settings perks">
+      <div class="set-head"><h3>Everything's free</h3><span class="verdict ok">FREE</span></div>
+      <p>Every feature in Radar is free for everyone. No wallet check, nothing to hold.</p>
+      <div class="al-list">${rows}</div>
+    </section>`;
+      }
       return `<section class="settings perks">
       <div class="set-head"><h3>Holder perks</h3><span class="verdict ${holder ? "ok" : "neutral"}">${holder ? "UNLOCKED" : "LOCKED"}</span></div>
       <p>${holder ? "Your wallet passed the check. Every perk below is yours." : "Hold $10 of $RADAR or $LARPCHECK, or have held $RADAR at any point, and all of this is yours."}</p>

@@ -527,7 +527,7 @@ export default {
         oldestInflightMin: infl.length ? Math.max(...infl.map((p) => ageMin(p.at) ?? 0)) : null,
         lastReplyAt: (s.log || []).find((e) => e.reply && !e.already)?.at || null,
       };
-      return json(200, { live: env.BOT_LIVE === '1', keys: hasKeys(env), keyShape: keyShape(env), account: s.me?.username || null, today: { day: s.day, replies: s.sent }, since: s.since, queue, chat: await chatFor(env).status(env).catch((e) => String(e.message || e)) });
+      return json(200, { live: env.BOT_LIVE === '1', xTags: env.X_TAGS !== '0', keys: hasKeys(env), keyShape: keyShape(env), account: s.me?.username || null, today: { day: s.day, replies: s.sent }, since: s.since, queue, chat: await chatFor(env).status(env).catch((e) => String(e.message || e)) });
     }
     // One Discord or Telegram scan, in a run of its own.
     if (u.pathname === '/chat-job' && request.method === 'POST') {
@@ -643,7 +643,9 @@ export default {
   async scheduled(event, env, ctx) {
     radar = env.RADAR;
     useDexProxy(env);
-    ctx.waitUntil(poll(env).catch((e) => console.log('poll failed', e.message)));
+    // X_TAGS "0" pauses the tag bot on X (15 Nov 2026: the user paused it while @Larpcheckbot is free again): no mentions
+    // are read and nothing is posted. Discord, Telegram, signals and Diamond Hand keep running.
+    if (env.X_TAGS !== '0') ctx.waitUntil(poll(env).catch((e) => console.log('poll failed', e.message)));
     ctx.waitUntil(chatFor(env).tick(env).catch((e) => console.log('chat failed', e.message)));
     if (env.SIGNALS === '1') ctx.waitUntil(env.SELF.fetch(new Request('https://radar-bot/signals-tick', { method: 'POST', headers: { 'x-bot-token': env.BOT_TOKEN } })).catch((e) => console.log('signals failed', e.message)));
     if (env.DIAMOND !== '0') ctx.waitUntil(env.SELF.fetch(new Request('https://radar-bot/diamond-tick', { method: 'POST', headers: { 'x-bot-token': env.BOT_TOKEN } })).catch((e) => console.log('diamond failed', e.message)));

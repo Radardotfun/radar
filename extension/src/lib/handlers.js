@@ -167,8 +167,9 @@ export function makeHandlers(host) {
   // Ask Radar about a coin card: answered on our server from what the card shows (holders only, a daily limit).
   async function askCoin({ coin, question, evidence }) {
     const h = await holderStored();
-    if (!h) throw new Error('This is for $RADAR and $LARPCHECK holders. Check your wallet first.');
-    const res = await fetch(`${API_BASE}/ask`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ token: h.token, coin, question, evidence }), signal: AbortSignal.timeout(30_000) });
+    // Free for everyone since 15 Nov (holderConfig().free): the server counts the daily limit against the caller then.
+    if (!h && !(await holderConfig()).free) throw new Error('This is for $RADAR and $LARPCHECK holders. Check your wallet first.');
+    const res = await fetch(`${API_BASE}/ask`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...(h ? { token: h.token } : {}), coin, question, evidence }), signal: AbortSignal.timeout(30_000) });
     const data = await res.json().catch(() => ({}));
     if (res.status === 401) await host.store.set(HOLDER_KEY, null);
     if (!res.ok) throw new Error(data.error || `Ask ${res.status}`);
@@ -188,8 +189,9 @@ export function makeHandlers(host) {
   const lcSettings = () => lcGet('/lc/settings', 600_000);
   async function lcHolderPost(path, body) {
     const h = await holderStored();
-    if (!h) throw new Error('This is for $RADAR and $LARPCHECK holders. Check your wallet first.');
-    const res = await fetch(`${API_BASE}${path}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ token: h.token, ...body }), signal: AbortSignal.timeout(50_000) });
+    // Free for everyone since 15 Nov (holderConfig().free): the server counts the daily limit against the caller then.
+    if (!h && !(await holderConfig()).free) throw new Error('This is for $RADAR and $LARPCHECK holders. Check your wallet first.');
+    const res = await fetch(`${API_BASE}${path}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...(h ? { token: h.token } : {}), ...body }), signal: AbortSignal.timeout(50_000) });
     const data = await res.json().catch(() => ({}));
     if (res.status === 401) await host.store.set(HOLDER_KEY, null);
     if (!res.ok) throw new Error(data.error || `Larpcheck ${res.status}`);
@@ -410,15 +412,19 @@ export function makeHandlers(host) {
     const h = await host.store.get(HOLDER_KEY);
     return h?.token && h.exp > Date.now() ? h : null;
   };
+  // Since 15 Nov 2026 everything in Radar is free (server/holder.js freeForAll): the server says so in its settings, and
+  // then everyone has every perk, with or without a wallet check. The server can turn the holder gate back on.
+  const holderConfig = () => cached('holder:config', 600_000, async () => (await fetch(`${API_BASE}/holder/settings`, { signal: AbortSignal.timeout(6000) })).json()).catch(() => ({ on: false }));
   async function holderStatus() {
-    const config = await cached('holder:config', 600_000, async () => (await fetch(`${API_BASE}/holder/settings`, { signal: AbortSignal.timeout(6000) })).json()).catch(() => ({ on: false }));
+    const config = await holderConfig();
     const h = await holderStored();
+    if (config.free) return { on: true, free: true, holder: true, exp: h?.exp || null };
     // Someone who has already passed keeps their perks through a failed settings read.
     if (!config.on && !h) return { on: false };
     return { on: true, pitch: config.pitch, holder: !!h, exp: h?.exp || null };
   }
-  // Whether this browser holds a current holder check, for perks that run here (launch alerts).
-  const holderActive = async () => !!(await holderStored());
+  // Whether this browser has the perks that run here (launch alerts, the guards, big account alerts): everyone while it's free.
+  const holderActive = async () => !!(await holderConfig()).free || !!(await holderStored());
   // The coins in Radar's record, with their ticker and market cap now, read from DexScreener by this browser.
   async function holderCoinFacts(rows) {
     const facts = new Map();
@@ -443,8 +449,8 @@ export function makeHandlers(host) {
   }
   async function holderWho({ handle }) {
     const h = await holderStored();
-    if (!h) return { locked: true };
-    const r = await fetch(`${API_BASE}/holder/who`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ token: h.token, handle }), signal: AbortSignal.timeout(25_000) });
+    if (!h && !(await holderConfig()).free) return { locked: true };
+    const r = await fetch(`${API_BASE}/holder/who`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...(h ? { token: h.token } : {}), handle }), signal: AbortSignal.timeout(25_000) });
     const d = await r.json().catch(() => ({}));
     if (r.status === 401) { await host.store.set(HOLDER_KEY, null); return { locked: true }; }
     if (!r.ok) throw new Error(d.error || 'Radar could not look this account up right now.');

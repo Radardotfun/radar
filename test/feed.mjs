@@ -44,7 +44,7 @@ const fresh = burst('Vamplon', 8, 6);
 const rows = [{ at: now - 3 * min, coins: fresh }];
 const store = new Map();
 const cache = { match: async (k) => store.get(k.url)?.clone(), put: async (k, v) => { store.set(k.url, v); } };
-const env = { DB: fakeDb(rows), HOLDER_SECRET: 'test-secret' };
+const env = { DB: fakeDb(rows), HOLDER_SECRET: 'test-secret', FREE: '0' };
 const opts = { cache, now };
 const anon = await feed({}, env, opts);
 assert.equal(anon.live, false);

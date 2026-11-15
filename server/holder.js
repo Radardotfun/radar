@@ -21,6 +21,19 @@ const SOL_ADDRESS = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 
 export const holderMinUsd = (env) => { const n = Number(env.HOLDER_MIN_USD); return Number.isFinite(n) && n > 0 ? n : 1; };
 export const holderOn = (env) => !!(env.HOLDER_SECRET && env.RADAR_MINT && env.DB);
+// 15 Nov 2026, the user: "lets make everything free, no holder perks". Every holder-only route answers everyone; the
+// per-person and per-day caps stay, counted against the caller's address when there's no holder wallet. FREE "0" brings
+// the holder gate back.
+export const freeForAll = (env) => env.FREE !== '0';
+/**
+ * Who a capped request counts against: the holder's wallet when the token is good, else (everything free) the caller's
+ * address, which the worker sets as body.__ip itself (whatever the request sent). null: not allowed.
+ */
+export async function askerOf(env, body, now = Date.now()) {
+  const wallet = body?.token ? await readToken(env, body.token, now).catch(() => null) : null;
+  if (wallet) return wallet;
+  return freeForAll(env) && body?.__ip ? `ip:${body.__ip}` : null;
+}
 const money = (n) => `$${Number.isInteger(n) ? n : n.toFixed(2)}`;
 const coinsOf = (env) => [{ symbol: 'RADAR', mint: env.RADAR_MINT }, ...(env.LARPCHECK_MINT ? [{ symbol: 'LARPCHECK', mint: env.LARPCHECK_MINT }] : [])];
 const tickers = (env) => coinsOf(env).map((c) => `$${c.symbol}`).join(' or ');
@@ -43,7 +56,7 @@ export async function holderConfig(env) {
   if (!holderOn(env)) return { on: false, minUsd };
   const google = env.GOOGLE_CLIENT_ID ? { googleClientId: env.GOOGLE_CLIENT_ID, googleLive: env.GOOGLE_LIVE === '1' } : {};
   // A failed price read isn't a reason to hide holder perks from people who've already passed: the check itself says when it can't read a price.
-  return { on: true, minUsd, pitch: pitch(env), ...google };
+  return { on: true, minUsd, pitch: pitch(env), free: freeForAll(env), ...google };
 }
 
 // What the wallet signs. web/holder.js writes the same words.
@@ -168,7 +181,7 @@ export function whoView(handle, smart, past, info) {
 /** { token, handle } -> who's behind the account, for holders: { handle, own, ...Frontrun's fields once there's a key }. */
 export async function holderWho(body, env, { limited, cache = caches.default, now = Date.now() }) {
   if (!holderOn(env)) return { status: 200, body: { off: true } };
-  const wallet = await readToken(env, body?.token, now);
+  const wallet = await askerOf(env, body, now);
   if (!wallet) return { status: 401, body: { error: 'Your holder check ran out. Connect your wallet again.' } };
   const handle = String(body?.handle || '').replace(/^@/, '');
   if (!HANDLE.test(handle)) return { status: 400, body: { error: 'Not an X account' } };

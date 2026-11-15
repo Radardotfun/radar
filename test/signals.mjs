@@ -199,16 +199,16 @@ assert.deepEqual(signalCoins(null), []);
 assert.deepEqual(signalCoins({ picks: [] }), []);
 assert.deepEqual(item.coins, [], 'the alert starts with none');
 // Holders only, and a bad token gets nothing out of the table.
-const shut = await signalFeed({}, { DB: { prepare() { throw new Error('should not reach the table'); } }, HOLDER_SECRET: 'x' });
+const shut = await signalFeed({}, { DB: { prepare() { throw new Error('should not reach the table'); } }, HOLDER_SECRET: 'x', FREE: '0' });
 assert.equal(shut.status, 401);
-const forged = await signalFeed({ token: 'made.up' }, { DB: { prepare() { throw new Error('should not reach the table'); } }, HOLDER_SECRET: 'x' });
+const forged = await signalFeed({ token: 'made.up' }, { DB: { prepare() { throw new Error('should not reach the table'); } }, HOLDER_SECRET: 'x', FREE: '0' });
 assert.equal(forged.status, 401);
 // A real signed token on the real query: flagged posts only, newest first, nothing older than asked, none too old.
 const db6 = fakeD1();
 let fed = [tweet('600', 'I have this great idea for a drug called Regretamine'), tweet('601', 'Tesla deliveries were up this quarter')];
 const hand = async () => { const a = answer(fed); fed = []; return a; };
 await tick({ db: db6, x: hand, read, now, accounts, clock: () => now });
-const env6 = { DB: db6, HOLDER_SECRET: 'test-secret' };
+const env6 = { DB: db6, HOLDER_SECRET: 'test-secret', FREE: '0' };
 const { token } = await makeToken(env6, 'So11111111111111111111111111111111111111112', now);
 const fedOut = await signalFeed({ token, since: now - 600_000 }, env6, { now });
 assert.equal(fedOut.status, 200);
@@ -223,7 +223,7 @@ assert.match(one.post.text, /Regretamine/, 'the post comes along, for the scan')
 assert.equal(one.at, now, 'the cursor is when it was judged');
 // An older post flagged after a newer one was delivered is still picked up.
 const db7 = fakeD1();
-const env7 = { DB: db7, HOLDER_SECRET: 'test-secret' };
+const env7 = { DB: db7, HOLDER_SECRET: 'test-secret', FREE: '0' };
 const { token: t7 } = await makeToken(env7, 'So11111111111111111111111111111111111111112', now);
 let fed7 = [{ ...tweet('701', 'a drug called Newer'), created_at: new Date(now - 1000).toISOString() }];
 const hand7 = async () => { const a = answer(fed7); fed7 = []; return a; };
@@ -243,7 +243,7 @@ assert.equal(alertFrom.watch.author, 'elonmusk');
 assert.equal(alertFrom.text, 'A made up drug');
 // The alerts page. No token and asking for the public list: the same posts 10 minutes late, with nothing to scan.
 const db8 = fakeD1();
-const env8 = { DB: db8, HOLDER_SECRET: 'test-secret' };
+const env8 = { DB: db8, HOLDER_SECRET: 'test-secret', FREE: '0' };
 let fed8 = [tweet('800', 'a drug called Delayed')];
 const hand8 = async () => { const a = answer(fed8); fed8 = []; return a; };
 await tick({ db: db8, x: hand8, read, now, accounts, clock: () => now });

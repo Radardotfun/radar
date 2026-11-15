@@ -2,7 +2,7 @@
 // link every verdict to its check, never reword one. Reads are free at 30 calls a minute, so answers are cached. New checks
 // and questions need an API plan, and they cost money, so they're for holders (server/holder.js) with daily limits. Without a plan
 // /lc/settings says so and the panel doesn't offer them.
-import { readToken } from './holder.js';
+import { askerOf } from './holder.js';
 
 const BASE = 'https://larpcheck.app/api/v1';
 const ADDRESS = /^([1-9A-HJ-NP-Za-km-z]{32,44}|0x[0-9a-fA-F]{40})$/;
@@ -135,7 +135,7 @@ const refused = (r) => (r.status === 402 || r.status === 403
 
 // POST /lc/check { token, input }: starts a check for a holder, or finds a recent one (which costs nothing).
 export async function lcStart(body, env) {
-  const wallet = await readToken(env, body?.token);
+  const wallet = await askerOf(env, body);
   if (!wallet) return { status: 401, data: { error: 'Your holder check ran out. Connect your wallet again.' } };
   const input = String(body?.input || '').trim();
   if (!ADDRESS.test(input) && !POST_LINK.test(input)) return { status: 400, data: { error: 'That is not a coin or a post on X' } };
@@ -169,7 +169,7 @@ export async function lcPoll(id, env) {
 
 // POST /lc/ask { token, id, question }: a question about a finished check, answered by Larpcheck from its evidence.
 export async function lcAsk(body, env) {
-  const wallet = await readToken(env, body?.token);
+  const wallet = await askerOf(env, body);
   if (!wallet) return { status: 401, data: { error: 'Your holder check ran out. Connect your wallet again.' } };
   const id = String(body?.id || '');
   const question = clip(String(body?.question || ''), 499);

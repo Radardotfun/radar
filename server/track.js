@@ -1,7 +1,7 @@
 // Track record, read side (the bot writes it: bot/track.js). Every coin Radar flagged in the last few days with its cap when
 // flagged, now and at its peak, losers included. Holders see it live; everyone else sees flags from 30 minutes ago and older,
 // decided here since the code is public. A summary says how many flags there were and how many did 2x and 10x at their peak.
-import { readToken } from './holder.js';
+import { readToken, freeForAll } from './holder.js';
 
 export const TRACK_DELAY_MS = 30 * 60_000;
 export const TRACK_WINDOW_MS = 3 * 86_400_000;
@@ -12,7 +12,8 @@ export const ROWS_BEST = 100;
 
 /** { token?, hours? } -> { live, asOf, summary: { flags, x2, x10, best }, rows: [...] } */
 export async function trackRecord(body, env, { now = Date.now() } = {}) {
-  const live = !!(body?.token && env.HOLDER_SECRET && await readToken(env, body.token, now));
+  // Live for everyone since 15 Nov (server/holder.js freeForAll); the holder token only matters with FREE "0".
+  const live = freeForAll(env) || !!(body?.token && env.HOLDER_SECRET && await readToken(env, body.token, now));
   const until = live ? now : now - TRACK_DELAY_MS;
   const hours = Math.min(72, Math.max(1, Number(body?.hours) || 24));
   const since = now - hours * 3_600_000;

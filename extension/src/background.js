@@ -188,7 +188,7 @@ handlers['alerts:fresh'] = async ({ on }) => {
 async function diamondState() {
   const got = await ext.storage.local.get([DH_KEY, MY_WALLETS, 'radarHolder']);
   const bag = await ext.storage.local.get([BAG_ON, BAG_LIST]);
-  return { diamond: got[DH_KEY] !== false, myWallets: (got[MY_WALLETS] || []).map((w) => w.address), holder: !!(got.radarHolder?.token && got.radarHolder.exp > Date.now()),
+  return { diamond: got[DH_KEY] !== false, myWallets: (got[MY_WALLETS] || []).map((w) => w.address), holder: await handlers.holderActive(),
     bagGuard: bag[BAG_ON] !== false, bags: bag[BAG_LIST] || null, proved: provedWallet(got.radarHolder?.token) };
 }
 handlers['alerts:bagGuard'] = async ({ on }) => {
@@ -213,8 +213,8 @@ handlers['alerts:breakingPings'] = async ({ on } = {}) => {
 async function runBreakingPings() {
   const got = await ext.storage.local.get(['radarHolder', BREAK_KEY, BREAK_SEEN]);
   if (got[BREAK_KEY] !== true) return;
-  const holder = got.radarHolder;
-  if (!(holder?.token && holder.exp > Date.now())) return;
+  // Everyone has the perks while Radar is free (handlers holderActive); the feed then comes back live.
+  if (!(await handlers.holderActive())) return;
   // The live feed is for holders; if it comes back late, a ping would be old news.
   const feed = await handlers.breaking().catch(() => null);
   if (!feed?.live || !Array.isArray(feed.stories)) return;
@@ -484,10 +484,12 @@ async function runBagGuard(now = false) {
     const got = await ext.storage.local.get([BAG_ON, MY_WALLETS, 'radarHolder', BAG_KEY, BAG_LIST, BAG_MUTED]);
     if (got[BAG_ON] === false) return;
     const holder = got.radarHolder;
-    if (!(holder?.token && holder.exp > Date.now())) return;
+    if (!(await handlers.holderActive())) return;
     // Turned on from the panel: run straight away, unless a run just finished.
     if (now && Date.now() - (got[BAG_LIST]?.at || 0) < 60_000) return;
-    const wallets = [...new Set([provedWallet(holder.token), ...(got[MY_WALLETS] || []).map((w) => w.address)].filter(Boolean))];
+    // The wallet a holder check proved (if any) and the ones given to Diamond Hand: with Radar free, those may be all.
+    const proved = holder?.token && holder.exp > Date.now() ? provedWallet(holder.token) : null;
+    const wallets = [...new Set([proved, ...(got[MY_WALLETS] || []).map((w) => w.address)].filter(Boolean))];
     if (!wallets.length) { await ext.storage.local.set({ [BAG_LIST]: { at: Date.now(), wallets: 0, bags: [] } }); return; }
     const holdings = new Map();
     let unread = 0;
@@ -557,14 +559,15 @@ ext.alarms.get(SIGNAL_ALARM).then((a) => a || ext.alarms.create(SIGNAL_ALARM, { 
 async function runSignals() {
   const got = await ext.storage.local.get(['radarHolder', BIG_KEY, DH_KEY, SIGNAL_SINCE]);
   const holder = got.radarHolder;
-  if (!(holder?.token && holder.exp > Date.now())) return;
+  // Everyone while Radar is free (handlers holderActive); the server answers live without a token then.
+  if (!(await handlers.holderActive())) return;
   if (got[DH_KEY] !== false) await runMyWallets().catch(() => {});
   const big = got[BIG_KEY] !== false;
   const diamond = got[DH_KEY] !== false;
   if (!big && !diamond) return;
   // The first look starts from now, so turning it on doesn't bring up the last hour.
   if (!got[SIGNAL_SINCE]) { await ext.storage.local.set({ [SIGNAL_SINCE]: Date.now() }); return; }
-  const res = await fetch(`${API_BASE}/signals`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ token: holder.token, since: got[SIGNAL_SINCE] }), signal: AbortSignal.timeout(10_000) }).catch(() => null);
+  const res = await fetch(`${API_BASE}/signals`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...(holder?.token && holder.exp > Date.now() ? { token: holder.token } : {}), since: got[SIGNAL_SINCE] }), signal: AbortSignal.timeout(10_000) }).catch(() => null);
   if (!res?.ok) return;
   const all = (await res.json().catch(() => ({}))).items || [];
   if (!all.length) return;

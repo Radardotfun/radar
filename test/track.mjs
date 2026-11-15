@@ -68,7 +68,7 @@ row = sql.prepare('SELECT * FROM track WHERE mint = ?').get(M(13));
 assert.equal(row.mc, 20000, 'a coin DexScreener no longer lists keeps its last numbers');
 
 // ---- read side: holders live, others 30 minutes behind and without Diamond Hand
-const env = { DB: db, HOLDER_SECRET: 'test-secret' };
+const env = { DB: db, HOLDER_SECRET: 'test-secret', FREE: '0' };
 const t = now + 300_000;
 const { token } = await makeToken(env, 'WaLLet1aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', t);
 const live = await trackRecord({ token }, env, { now: t });
@@ -97,7 +97,7 @@ assert.deepEqual((await trackRecord({}, empty, { now })).rows, []);
   const T0 = now + 86_400_000;
   // The oldest flag is the day's best (12x); the newest ones are flat; one in the middle is a diamond.
   for (let i = 0; i < n; i++) ins.run(`B${i}`, i === 300 ? 'diamond' : 'breaking', T0 - (n - i) * 60_000, `S${i}`, '', '', 5000, 5000, i === 0 ? 60000 : i % 50 === 0 ? 12000 : 5000, null);
-  const env2 = { DB: bdb, HOLDER_SECRET: 'test-secret' };
+  const env2 = { DB: bdb, HOLDER_SECRET: 'test-secret', FREE: '0' };
   const { token: tk } = await makeToken(env2, 'WaLLet1aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', T0);
   const all = await trackRecord({ token: tk, hours: 72 }, env2, { now: T0 });
   assert.equal(all.summary.flags, n, 'every flag in range is counted, not just the ones listed');
